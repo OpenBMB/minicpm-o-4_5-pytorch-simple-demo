@@ -4,8 +4,6 @@
 
 This demo system is officially provided by the `MiniCPM-o 4.5` model training team. It uses a PyTorch + CUDA inference backend, combined with a lightweight frontend-backend design, aiming to demonstrate the full audio-video omnimodal full-duplex capabilities of MiniCPM-o 4.5 in a transparent, concise, and lossless manner.
 
-This demo system supports text/image/audio input with real-time voice output. It supports non-streaming, half-duplex, and full-duplex interaction modes.
-
 | Mode | Features | I/O Modalities | Paradigm
 |------|----------|------|------
 | **Turn-based Chat** | Low-latency streaming interaction; requires button or VAD (Voice Activity Detection) to trigger responses; high response accuracy; strong basic capabilities | Audio + Text input, Audio + Text output | Turn-based
