@@ -70,6 +70,9 @@ You can also install dependencies manually in 2 steps:
 
 ```bash
 # First, prepare an empty Python 3.10 environment
+source ./miniconda3/bin/activate
+python -m venv .venv/base
+source .venv/base/bin/activate
 
 # Install PyTorch
 pip install "torch==2.8.0" "torchaudio==2.8.0"

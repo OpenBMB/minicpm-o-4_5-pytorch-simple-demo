@@ -71,6 +71,9 @@ bash ./install.sh
 
 ```bash
 # 首先准备好一个空的 python 3.10 环境
+source ./miniconda3/bin/activate
+python -m venv .venv/base
+source .venv/base/bin/activate
 
 # 安装 PyTorch。
 pip install "torch==2.8.0" "torchaudio==2.8.0"
