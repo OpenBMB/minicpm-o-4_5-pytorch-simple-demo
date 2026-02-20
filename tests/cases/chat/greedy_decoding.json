@@ -1,0 +1,13 @@
+{
+  "description": "测试贪婪解码（do_sample=False）：天空是什么颜色？期望包含'蓝'",
+  "input": {
+    "messages": [
+      {"role": "user", "content": "天空是什么颜色？"}
+    ],
+    "generation": {"max_new_tokens": 50, "do_sample": false}
+  },
+  "expected": {
+    "success": true,
+    "text_contains": ["蓝"]
+  }
+}

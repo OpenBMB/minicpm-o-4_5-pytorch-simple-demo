@@ -1,0 +1,19 @@
+{
+  "description": "测试图像理解：从路径加载图像并描述，期望有响应",
+  "input": {
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "image", "path": "${INPUT_DIR}/images/image.png"},
+          {"type": "text", "text": "这张图片是什么？简短回答。"}
+        ]
+      }
+    ],
+    "generation": {"max_new_tokens": 100}
+  },
+  "expected": {
+    "success": true,
+    "text_min_length": 1
+  }
+}

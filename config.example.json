@@ -1,0 +1,29 @@
+{
+    "model": {
+        "model_path": "/path/to/your/model",
+        "pt_path": null,
+        "attn_implementation": "auto"
+    },
+    "audio": {
+        "ref_audio_path": "assets/ref_audio/ref_minicpm_signature.wav",
+        "playback_delay_ms": 200,
+        "chat_vocoder": "token2wav"
+    },
+    "service": {
+        "gateway_port": 10024,
+        "worker_base_port": 22400,
+        "max_queue_size": 1000,
+        "request_timeout": 300.0,
+        "compile": false,
+        "data_dir": "data",
+        "eta_chat_s": 15.0,
+        "eta_streaming_s": 20.0,
+        "eta_audio_duplex_s": 120.0,
+        "eta_omni_duplex_s": 90.0,
+        "eta_ema_alpha": 0.3,
+        "eta_ema_min_samples": 3
+    },
+    "duplex": {
+        "pause_timeout": 60.0
+    }
+}

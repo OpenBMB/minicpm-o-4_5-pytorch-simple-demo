@@ -1,0 +1,18 @@
+{
+  "description": "测试双工对话+图像过渡：黑屏→真实图像（第10秒切换），期望模型在图像出现后响应",
+  "input": {
+    "system_prompt": "你是一个视频监控助手。当出现特定内容时，请提醒用户。",
+    "user_audio_path": "${INPUT_DIR}/user_audio/当出现植物大战僵尸的时候提醒我.wav",
+    "ref_audio_path": "${REF_AUDIO_PATH}",
+    "image_path": "${INPUT_DIR}/images/image.png",
+    "total_duration_s": 20,
+    "image_transition_at_s": 10,
+    "config": {
+      "force_listen_count": 3
+    }
+  },
+  "expected": {
+    "success": true,
+    "text_min_length": 1
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "description": "测试 Streaming 音频输入 + TTS 输出：传入用户音频，要求复述并生成语音",
+  "input": {
+    "session_id": "test_audio_with_tts",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "audio", "path": "${INPUT_DIR}/user_audio/000_user_audio0.wav"},
+          {"type": "text", "text": "请复述用户说的话。"}
+        ]
+      }
+    ],
+    "generate_audio": true,
+    "ref_audio_path": "${REF_AUDIO_PATH}"
+  },
+  "expected": {
+    "success": true,
+    "text_min_length": 1,
+    "has_audio": true,
+    "has_chunks": true
+  }
+}

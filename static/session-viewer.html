@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Session Viewer — MiniCPMO45</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
+            background: #f5f5f0; color: #2d2d2d;
+            height: 100vh; display: flex; flex-direction: column;
+        }
+        .header {
+            background: #fff; padding: 12px 24px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid #e5e5e0; flex-shrink: 0;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.3px; }
+        .nav-links { display: flex; gap: 6px; }
+        .nav-links a {
+            font-size: 13px; padding: 4px 12px; border-radius: 6px;
+            text-decoration: none; color: #666; transition: all 0.15s;
+        }
+        .nav-links a:hover { background: #f0f0eb; }
+        .main-content {
+            flex: 1; overflow-y: auto;
+            max-width: 1040px; width: 100%; margin: 0 auto; padding: 0 16px 40px;
+        }
+
+        /* Area 1: Session info */
+        .session-info { padding: 12px 0; border-bottom: 1px solid #eee; margin-bottom: 8px; }
+        .si-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .si-title { font-size: 15px; font-weight: 600; }
+        .si-actions { display: flex; gap: 8px; align-items: center; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+        .badge-streaming { color: #1a7f37; background: #ddf4e4; }
+        .badge-chat { color: #92400e; background: #fef3c7; }
+        .badge-duplex { color: #1e40af; background: #dbeafe; }
+        .dl-btn {
+            font-size: 12px; padding: 3px 10px; border-radius: 6px;
+            background: #f0f0eb; border: 1px solid #e5e5e0; cursor: pointer;
+            color: #555; text-decoration: none; transition: all 0.15s;
+        }
+        .dl-btn:hover { background: #e5e5e0; color: #2d2d2d; }
+        .si-meta { font-size: 12px; color: #999; display: flex; gap: 16px; flex-wrap: wrap; }
+        .si-meta strong { color: #888; font-weight: 500; }
+        .cfg-toggle {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 12px; color: #bbb; cursor: pointer; margin-top: 6px;
+            border: none; background: none;
+        }
+        .cfg-toggle:hover { color: #888; }
+        .cfg-body {
+            display: none; margin-top: 6px; padding: 10px 12px;
+            background: #fafaf8; border-radius: 8px; border: 1px solid #eee;
+            font-size: 11px; font-family: 'SF Mono', Menlo, monospace;
+            white-space: pre-wrap; word-break: break-all; color: #888;
+            max-height: 200px; overflow-y: auto;
+        }
+        .cfg-body.open { display: block; }
+
+        /* Areas 2 & 3: Replay sections */
+        .area-sec {
+            margin: 14px auto; padding: 14px 16px; max-width: 80%;
+            background: #fff; border: 1px solid #e5e5e0; border-radius: 12px;
+        }
+        .area-hd {
+            font-size: 13px; font-weight: 600; color: #555; margin-bottom: 10px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .area-hd .sub { color: #bbb; font-weight: 400; font-size: 11px; }
+        .area-sec video { width: 100%; border-radius: 8px; max-height: 384px; background: #000; }
+
+        /* Shared audio ctrl */
+        .audio-ctrl {
+            margin-top: 8px; background: #fff; border: 1px solid #e5e5e0;
+            border-radius: 8px; padding: 6px 12px;
+            display: flex; align-items: center; gap: 8px; user-select: none; font-size: 12px;
+        }
+        .audio-ctrl button {
+            width: 24px; height: 24px; border-radius: 50%; border: none;
+            color: #fff; cursor: pointer; display: flex; align-items: center;
+            justify-content: center; flex-shrink: 0; font-size: 10px;
+            background: #2d2d2d; transition: opacity 0.15s;
+        }
+        .audio-ctrl button:hover { opacity: 0.75; }
+        .audio-ctrl .ac-time {
+            color: #999; white-space: nowrap; min-width: 68px;
+            font-variant-numeric: tabular-nums; font-size: 11px;
+        }
+        .audio-ctrl .ac-bar {
+            flex: 1; height: 3px; background: #e5e5e0; border-radius: 2px;
+            position: relative; cursor: pointer; min-width: 60px;
+        }
+        .audio-ctrl .ac-bar-fill {
+            position: absolute; top: 0; left: 0; height: 100%;
+            background: #2d2d2d; border-radius: 2px; pointer-events: none;
+        }
+        .audio-ctrl .ac-bar-dot {
+            position: absolute; top: -4px; width: 11px; height: 11px;
+            background: #2d2d2d; border: 2px solid #fff; border-radius: 50%;
+            transform: translateX(-50%); box-shadow: 0 0 2px rgba(0,0,0,0.15);
+            pointer-events: none;
+        }
+
+        /* Area 4: Multi-track timeline */
+        .mt-wrap {
+            margin: 14px 0; background: #fff;
+            border: 1px solid #e5e5e0; border-radius: 12px; overflow: hidden;
+        }
+        .mt-ctrl {
+            padding: 8px 16px; background: #fafaf8;
+            border-bottom: 1px solid #e5e5e0;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .mt-pbtn {
+            width: 30px; height: 30px; border-radius: 50%; border: none;
+            background: #2d2d2d; color: #fff; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; flex-shrink: 0;
+        }
+        .mt-pbtn:hover { opacity: 0.8; }
+        .mt-status { font-size: 12px; color: #999; font-variant-numeric: tabular-nums; }
+        .mt-heading { font-size: 13px; font-weight: 500; color: #555; margin-left: auto; }
+
+        .mt-body { display: flex; }
+        .mt-lbl {
+            flex-shrink: 0; width: 84px;
+            background: #fafaf8; border-right: 1px solid #e5e5e0;
+            position: sticky; left: 0; z-index: 2;
+        }
+        .mt-lbl-cell {
+            padding: 0 6px; font-size: 10px; font-weight: 500; color: #999;
+            display: flex; align-items: center; border-bottom: 1px solid #f0f0eb;
+        }
+        .mt-scroll { flex: 1; overflow-x: auto; }
+        .mt-grid { display: grid; grid-auto-flow: column; }
+        .mt-c {
+            padding: 3px 2px; border-bottom: 1px solid #f0f0eb;
+            border-right: 1px solid #f8f8f5; font-size: 11px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: background 0.12s; overflow: hidden;
+        }
+        .mt-c:hover { background: #fafaf8; }
+        .mt-c.active { background: rgba(212, 165, 116, 0.15); }
+
+        .mt-thumb { width: 96px; height: 54px; object-fit: cover; border-radius: 3px; border: 1px solid #eee; }
+        .mt-mp {
+            display: inline-flex; align-items: center; gap: 3px; font-size: 10px; color: #999;
+        }
+        .mt-mp .b {
+            width: 18px; height: 18px; border-radius: 50%; border: none;
+            background: #e8e8e3; color: #555; cursor: pointer; font-size: 8px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .mt-mp .b:hover, .mt-mp .b.on { background: #d4a574; color: #fff; }
+        .mt-tc { flex-direction: column; text-align: center; gap: 1px; }
+        .mt-m { font-size: 10px; font-weight: 600; text-transform: uppercase; }
+        .mt-m.listen { color: #ccc; }
+        .mt-m.speak { color: #d4a574; }
+        .mt-sn { font-size: 9px; color: #666; max-height: 28px; overflow: hidden; line-height: 1.25; word-break: break-all; }
+        .mt-eot { font-size: 9px; color: #aaa; }
+        .mt-dash { color: #ddd; font-size: 10px; }
+        .mt-time { font-size: 11px; color: #999; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .mt-prog {
+            flex: 1; height: 4px; background: #e5e5e0; border-radius: 2px;
+            cursor: pointer; position: relative; min-width: 80px;
+        }
+        .mt-prog { overflow: hidden; }
+        .mt-prog-fill {
+            height: 100%; background: #d4a574;
+            pointer-events: none; width: 100%;
+            transform-origin: left; transform: scaleX(0);
+            will-change: transform;
+        }
+
+        /* Chunk index header row */
+        .mt-idx { font-size: 9px; color: #bbb; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+        /* Turn-based messages */
+        .messages { padding: 8px 0 24px; }
+        .message { margin-bottom: 20px; display: flex; gap: 12px; }
+        .message .avatar {
+            width: 28px; height: 28px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; flex-shrink: 0; margin-top: 2px;
+        }
+        .message.user .avatar { background: #e8e8e3; }
+        .message.assistant .avatar { background: #d4a574; color: #fff; font-size: 12px; }
+        .message .msg-body { max-width: 85%; min-width: 0; flex: 1; }
+        .message .content {
+            line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+            font-size: 14.5px; color: #2d2d2d;
+        }
+        .message.user .content {
+            background: #fff; border: 1px solid #e5e5e0;
+            border-radius: 12px; padding: 10px 14px;
+        }
+        .message .meta { font-size: 11px; color: #999; margin-top: 6px; }
+        .msg-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+        .msg-images img { max-width: 200px; max-height: 150px; border-radius: 8px; border: 1px solid #e5e5e0; }
+
+        .center-msg { text-align: center; padding: 60px 20px; font-size: 15px; color: #999; }
+        .error-msg { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>MiniCPMO45</h1>
+            <nav class="nav-links">
+                <a href="/">Home</a>
+                <a href="/turnbased">Turn-based</a>
+                <a href="/omni">Omni</a>
+                <a href="/audio_duplex">Audio Duplex</a>
+            </nav>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div id="loading" class="center-msg">Loading session...</div>
+        <div id="error" class="center-msg error-msg" style="display:none;"></div>
+        <div id="content" style="display:none;">
+            <div id="session-info" class="session-info"></div>
+            <div id="area-backend"></div>
+            <div id="area-frontend"></div>
+            <div id="timeline"></div>
+        </div>
+    </div>
+
+<script>
+(async function() {
+    const SID = window.location.pathname.split('/s/')[1];
+    if (!SID) { showError('No session ID in URL'); return; }
+
+    const $load = document.getElementById('loading');
+    const $err  = document.getElementById('error');
+    const $content = document.getElementById('content');
+
+    function showError(msg) { $load.style.display='none'; $err.textContent=msg; $err.style.display='block'; }
+    function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+    function aUrl(rel) { return `/api/sessions/${SID}/assets/${rel}`; }
+    function fmt(s) { if(!isFinite(s))return'0:00'; const m=Math.floor(s/60),sec=Math.floor(s%60); return `${m}:${sec<10?'0':''}${sec}`; }
+
+    async function assetExists(rel) {
+        try { return (await fetch(aUrl(rel), {method:'HEAD'})).ok; } catch { return false; }
+    }
+
+    /* ── Multi-track playback engine (must be defined before try block to avoid TDZ) ── */
+    let _mtPlayer = null;
+
+    class MTPlayer {
+        constructor(chunks) {
+            this.chunks = chunks;
+            this.idx = -1;
+            this.playing = false;
+            this._gen = 0;
+            this._ctx = null;
+            this._source = null;
+            this._buf = null;
+            this._segs = [];
+            this._t0 = 0;
+            this._off = 0;
+            this._dur = 0;
+            this._raf = null;
+            this._ok = false;
+        }
+        async _build() {
+            if (this._ok) return;
+            if (!this._ctx) this._ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const ctx = this._ctx;
+            if (!this._elStatus) this._cacheEls();
+            if (this._elStatus) this._elStatus.textContent = 'Loading audio chunks…';
+
+            const decA = async (rel) => {
+                if (!rel) return null;
+                try {
+                    const r = await fetch(aUrl(rel));
+                    if (!r.ok) return null;
+                    return await ctx.decodeAudioData(await r.arrayBuffer());
+                } catch { return null; }
+            };
+
+            let done = 0;
+            const decoded = await Promise.all(this.chunks.map(async (c) => {
+                const res = c.result || {};
+                const [uBuf, aBuf] = await Promise.all([decA(c.user_audio), decA(res.ai_audio)]);
+                if (this._elStatus) this._elStatus.textContent = `Loading ${++done}/${this.chunks.length}…`;
+                return { uBuf, aBuf };
+            }));
+
+            const sr = ctx.sampleRate;
+            let total = 0;
+            const lens = decoded.map(({ uBuf, aBuf }) => {
+                const n = Math.max(uBuf ? uBuf.length : 0, aBuf ? aBuf.length : 0, 1);
+                total += n;
+                return n;
+            });
+
+            const buf = ctx.createBuffer(2, total, sr);
+            const L = buf.getChannelData(0), R = buf.getChannelData(1);
+            let off = 0;
+            this._segs = [];
+            for (let i = 0; i < decoded.length; i++) {
+                const { uBuf, aBuf } = decoded[i];
+                const n = lens[i];
+                if (uBuf) { const d = uBuf.getChannelData(0); L.set(d.subarray(0, Math.min(d.length, n)), off); }
+                if (aBuf) { const d = aBuf.getChannelData(0); R.set(d.subarray(0, Math.min(d.length, n)), off); }
+                this._segs.push({ s: off / sr, e: (off + n) / sr, ai: i });
+                off += n;
+            }
+
+            this._buf = buf;
+            this._dur = buf.duration;
+            this._ok = true;
+            if (this._elStatus) this._elStatus.textContent = 'Ready';
+        }
+        async play() {
+            if (this.playing) return;
+            await this._build();
+            if (!this._buf) return;
+            if (this.idx < 0 || this.idx >= this.chunks.length) { this.idx = 0; this._off = 0; }
+            if (this._off >= this._dur) this._off = 0;
+            this.playing = true;
+            this._go();
+            this._ui();
+        }
+        pause() {
+            if (!this.playing) return;
+            this._off = this._now();
+            this.playing = false;
+            this._halt();
+            this._ui();
+        }
+        jumpTo(ci) {
+            const ai = this.chunks.findIndex(c => c.index === ci);
+            if (ai < 0) return;
+            const was = this.playing;
+            if (was) this._halt();
+            this.idx = ai;
+            const seg = this._segs.find(s => s.ai === ai);
+            this._off = seg ? seg.s : 0;
+            this._hl(ci); this._scroll(ci); this._ui();
+            if (was && this._ok) { this.playing = true; this._go(); }
+        }
+        seekTo(frac) {
+            if (!this._ok) return;
+            const sec = Math.max(0, Math.min(frac * this._dur, this._dur));
+            const was = this.playing;
+            if (was) this._halt();
+            this._off = sec;
+            for (let i = this._segs.length - 1; i >= 0; i--) {
+                if (sec >= this._segs[i].s - 0.01) { this.idx = this._segs[i].ai; break; }
+            }
+            const ci = this.chunks[this.idx]?.index;
+            if (ci != null) { this._hl(ci); this._scroll(ci); }
+            this._ui();
+            if (was) { this.playing = true; this._go(); }
+        }
+        _go() {
+            this._ctx.resume();
+            const src = this._ctx.createBufferSource();
+            src.buffer = this._buf;
+            src.connect(this._ctx.destination);
+            src.onended = () => {
+                if (this._source === src && this.playing) {
+                    this.playing = false; this.idx = this.chunks.length - 1;
+                    this._off = this._dur; this._stopRaf(); this._ui();
+                }
+            };
+            this._source = src;
+            this._t0 = this._ctx.currentTime;
+            src.start(0, this._off);
+            this._startRaf();
+        }
+        _halt() {
+            if (this._source) { try { this._source.stop(); } catch {} this._source = null; }
+            this._stopRaf();
+        }
+        _now() {
+            if (!this.playing || !this._ctx) return this._off;
+            return Math.min(this._off + (this._ctx.currentTime - this._t0), this._dur);
+        }
+        _cacheEls() {
+            this._elFill = document.getElementById('mt-prog-fill');
+            this._elTime = document.getElementById('mt-time');
+            this._elStatus = document.getElementById('mt-status');
+            this._elBtn = document.getElementById('mt-pbtn');
+            this._elScroll = document.getElementById('mt-scroll');
+        }
+        _startRaf() {
+            const gen = ++this._gen;
+            let lastCi = -1, segHint = 0;
+            if (!this._elFill) this._cacheEls();
+            const tick = () => {
+                if (gen !== this._gen) return;
+                const t = this._now();
+                let found = -1;
+                for (let i = segHint; i < this._segs.length; i++) {
+                    if (t < this._segs[i].e) { found = i; break; }
+                }
+                if (found < 0) found = this._segs.length - 1;
+                segHint = Math.max(0, found - 1);
+                const seg = this._segs[found];
+                if (seg) {
+                    const ai = seg.ai, ci = this.chunks[ai]?.index ?? -1;
+                    if (ci !== lastCi) { lastCi = ci; this.idx = ai; this._hl(ci); this._scroll(ci); }
+                }
+                if (this._elFill) this._elFill.style.transform = `scaleX(${this._dur > 0 ? t / this._dur : 0})`;
+                if (this._elTime) this._elTime.textContent = `${fmt(t)} / ${fmt(this._dur)}`;
+                if (this._elStatus) {
+                    const ci2 = this.idx >= 0 && this.idx < this.chunks.length ? this.chunks[this.idx].index : '—';
+                    this._elStatus.textContent = `Chunk ${ci2} / ${this.chunks.length}`;
+                }
+                this._raf = requestAnimationFrame(tick);
+            };
+            this._raf = requestAnimationFrame(tick);
+        }
+        _stopRaf() { this._gen++; if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; } }
+        _hl(ci) {
+            if (this._prevActive) this._prevActive.forEach(e => e.classList.remove('active'));
+            const cells = document.querySelectorAll(`.mt-c[data-ci="${ci}"]`);
+            cells.forEach(e => e.classList.add('active'));
+            this._prevActive = cells;
+        }
+        _scroll(ci) {
+            const cell = document.querySelector(`.mt-c[data-ci="${ci}"]`);
+            if (!cell) return;
+            const scr = this._elScroll;
+            if (!scr) return;
+            scr.scrollLeft = cell.offsetLeft - scr.clientWidth / 2 + cell.offsetWidth / 2;
+        }
+        _ui() {
+            if (!this._elBtn) this._cacheEls();
+            if (this._elBtn) this._elBtn.textContent = this.playing ? '⏸' : '▶';
+            if (!this.playing) {
+                const t = this._now();
+                if (this._elFill) this._elFill.style.transform = `scaleX(${this._dur > 0 ? t / this._dur : 0})`;
+                if (this._elTime) this._elTime.textContent = `${fmt(t)} / ${fmt(this._dur)}`;
+                if (this._elStatus) {
+                    const ci = this.idx >= 0 && this.idx < this.chunks.length ? this.chunks[this.idx].index : '—';
+                    this._elStatus.textContent = `Chunk ${ci} / ${this.chunks.length}`;
+                }
+            }
+        }
+    }
+
+    window.mtTogglePlay = function() {
+        if (!_mtPlayer) return;
+        _mtPlayer.playing ? _mtPlayer.pause() : _mtPlayer.play();
+    };
+
+    let _miniAud = null, _miniBtn = null;
+    window.mtMiniPlay = function(btn) {
+        const src = btn.dataset.asrc;
+        if (!src) return;
+        if (_miniBtn === btn) {
+            if (_miniAud && !_miniAud.paused) { _miniAud.pause(); btn.textContent='▶'; btn.classList.remove('on'); }
+            else if (_miniAud) { _miniAud.play(); btn.textContent='⏸'; btn.classList.add('on'); }
+            return;
+        }
+        if (_miniBtn) { _miniBtn.textContent='▶'; _miniBtn.classList.remove('on'); }
+        if (!_miniAud) _miniAud = new Audio();
+        _miniAud.src = src;
+        _miniAud.play().catch(()=>{});
+        btn.textContent = '⏸'; btn.classList.add('on');
+        _miniBtn = btn;
+        _miniAud.onended = () => { btn.textContent='▶'; btn.classList.remove('on'); _miniBtn=null; };
+    };
+
+    /* ── Fetch data ── */
+    try {
+        const [metaR, recR] = await Promise.all([
+            fetch(`/api/sessions/${SID}`),
+            fetch(`/api/sessions/${SID}/recording`),
+        ]);
+        if (!metaR.ok) { showError(`Session not found: ${SID} (${metaR.status})`); return; }
+        const meta = await metaR.json();
+        const rec  = recR.ok ? await recR.json() : null;
+
+        $load.style.display='none';
+        $content.style.display='block';
+        document.title = `${meta.title||SID} — Session Viewer`;
+
+        renderInfo(meta);
+
+        if (rec) {
+            if (rec.mode === 'duplex') {
+                await renderBackendReplay(rec);
+                await renderFrontendReplay();
+                renderMultitrack(rec);
+            } else {
+                renderTurnBased(rec);
+            }
+        } else {
+            document.getElementById('timeline').innerHTML =
+                '<div class="center-msg">Recording data not available (session may still be active)</div>';
+        }
+    } catch(e) { showError(`Failed to load: ${e.message}`); }
+
+    /* ══════════════ Area 1: Session info ══════════════ */
+    function renderInfo(m) {
+        const t = m.app_type||'unknown';
+        const bc = t.includes('duplex')?'badge-duplex': t==='streaming'?'badge-streaming':'badge-chat';
+        const cr = m.created_at ? new Date(m.created_at).toLocaleString() : '-';
+        const dur = m.duration_s!=null ? `${m.duration_s}s` : 'active';
+        const cfg = m.config ? JSON.stringify(m.config,null,2) : '{}';
+        document.getElementById('session-info').innerHTML = `
+            <div class="si-top">
+                <span class="si-title">${esc(m.title||SID)}</span>
+                <div class="si-actions">
+                    <span class="badge ${bc}">${t}</span>
+                    <a class="dl-btn" href="/api/sessions/${SID}/download">⬇ Download</a>
+                </div>
+            </div>
+            <div class="si-meta">
+                <span><strong>ID:</strong> ${SID}</span>
+                <span><strong>Created:</strong> ${cr}</span>
+                <span><strong>Duration:</strong> ${dur}</span>
+                <span><strong>Worker:</strong> GPU ${m.worker_id??'-'}</span>
+            </div>
+            <button class="cfg-toggle" onclick="this.nextElementSibling.classList.toggle('open')">▸ Config</button>
+            <div class="cfg-body">${esc(cfg)}</div>`;
+    }
+
+    /* ══════════════ Area 2: Backend merged replay ══════════════ */
+    async function renderBackendReplay(rec) {
+        const el = document.getElementById('area-backend');
+        const videoRel = rec.merged_replay_video;
+        const audioRel = rec.merged_replay;
+        if (!videoRel && !audioRel) {
+            el.innerHTML = '<div class="area-sec"><div class="area-hd">Backend Replay <span class="sub">not available</span></div></div>';
+            return;
+        }
+        let inner = '<div class="area-hd">Backend Replay <span class="sub">auto-stitched from chunks</span></div>';
+        if (videoRel && await assetExists(videoRel)) {
+            inner += `<video controls preload="metadata" src="${aUrl(videoRel)}"></video>`;
+        } else if (audioRel && await assetExists(audioRel)) {
+            inner += `<div class="area-hd sub" style="margin-top:0;margin-bottom:4px;">Stereo: L=User R=AI</div>`;
+            inner += makeAudioCtrl(aUrl(audioRel));
+        }
+        el.innerHTML = `<div class="area-sec">${inner}</div>`;
+        initAudioCtrls(el);
+    }
+
+    /* ══════════════ Area 3: Frontend recorded replay ══════════════ */
+    async function renderFrontendReplay() {
+        const el = document.getElementById('area-frontend');
+        const candidates = ['frontend_replay.webm','frontend_replay.mp4','frontend_replay.wav'];
+        for (const name of candidates) {
+            if (await assetExists(name)) {
+                const url = aUrl(name);
+                const isVideo = name.endsWith('.webm') || name.endsWith('.mp4');
+                let inner = '<div class="area-hd">Frontend Recording <span class="sub">uploaded by user</span></div>';
+                if (isVideo) {
+                    inner += `<video controls preload="auto" src="${url}"></video>`;
+                } else {
+                    inner += makeAudioCtrl(url);
+                }
+                el.innerHTML = `<div class="area-sec">${inner}</div>`;
+                if (isVideo) {
+                    const vid = el.querySelector('video');
+                    if (vid) fixWebmDuration(vid);
+                }
+                initAudioCtrls(el);
+                return;
+            }
+        }
+    }
+
+    function fixWebmDuration(video) {
+        video.addEventListener('loadedmetadata', () => {
+            if (!isFinite(video.duration)) {
+                video.currentTime = 1e10;
+                video.addEventListener('timeupdate', function once() {
+                    video.removeEventListener('timeupdate', once);
+                    video.currentTime = 0;
+                });
+            }
+        });
+    }
+
+    /* ══════════════ Area 4: Multi-track timeline ══════════════ */
+    function renderMultitrack(rec) {
+        const el = document.getElementById('timeline');
+        const chunks = rec.chunks || [];
+        if (!chunks.length) { el.innerHTML='<div class="center-msg">No audio chunks recorded</div>'; return; }
+
+        const isOmni = chunks.some(c => c.user_frame);
+        const colW = 108;
+        const rowH_idx = 22;
+        const rowH_vid = isOmni ? 60 : 0;
+        const rowH_ua  = 36;
+        const rowH_txt = 44;
+        const rowH_aa  = 36;
+        const rows = isOmni
+            ? `${rowH_idx}px ${rowH_vid}px ${rowH_ua}px ${rowH_txt}px ${rowH_aa}px`
+            : `${rowH_idx}px ${rowH_ua}px ${rowH_txt}px ${rowH_aa}px`;
+
+        let labelsHtml = `<div class="mt-lbl-cell" style="height:${rowH_idx}px">#</div>`;
+        if (isOmni) labelsHtml += `<div class="mt-lbl-cell" style="height:${rowH_vid}px">User Video</div>`;
+        labelsHtml += `<div class="mt-lbl-cell" style="height:${rowH_ua}px">User Audio</div>`;
+        labelsHtml += `<div class="mt-lbl-cell" style="height:${rowH_txt}px">AI Text</div>`;
+        labelsHtml += `<div class="mt-lbl-cell" style="height:${rowH_aa}px">AI Audio</div>`;
+
+        let gridHtml = '';
+        for (const c of chunks) {
+            const r = c.result || {};
+            const mode = (r.mode||'LISTEN').toLowerCase();
+            const isSpeak = mode === 'speak';
+            const ci = c.index;
+
+            // Index row
+            gridHtml += `<div class="mt-c mt-idx" data-ci="${ci}">${ci}</div>`;
+
+            // User Video (Omni only)
+            if (isOmni) {
+                if (c.user_frame) {
+                    gridHtml += `<div class="mt-c" data-ci="${ci}"><img class="mt-thumb" src="${aUrl(c.user_frame)}" loading="lazy"></div>`;
+                } else {
+                    gridHtml += `<div class="mt-c" data-ci="${ci}"><span class="mt-dash">—</span></div>`;
+                }
+            }
+
+            // User Audio
+            if (c.user_audio) {
+                gridHtml += `<div class="mt-c" data-ci="${ci}">
+                    <div class="mt-mp"><button class="b" data-asrc="${aUrl(c.user_audio)}" onclick="mtMiniPlay(this)">▶</button><span>1.0s</span></div></div>`;
+            } else {
+                gridHtml += `<div class="mt-c" data-ci="${ci}"><span class="mt-dash">—</span></div>`;
+            }
+
+            // AI Text
+            gridHtml += `<div class="mt-c mt-tc" data-ci="${ci}">
+                <span class="mt-m ${mode}">${r.mode||'LISTEN'}${r.end_of_turn?' ⏎':''}</span>
+                ${isSpeak && r.text ? `<span class="mt-sn">${esc(r.text)}</span>` : ''}
+            </div>`;
+
+            // AI Audio
+            if (isSpeak && r.ai_audio) {
+                const durMs = r.ai_audio_duration_ms;
+                const durStr = durMs ? `${(durMs/1000).toFixed(1)}s` : '';
+                gridHtml += `<div class="mt-c" data-ci="${ci}">
+                    <div class="mt-mp"><button class="b" data-asrc="${aUrl(r.ai_audio)}" onclick="mtMiniPlay(this)">▶</button><span>${durStr}</span></div></div>`;
+            } else {
+                gridHtml += `<div class="mt-c" data-ci="${ci}"><span class="mt-dash">—</span></div>`;
+            }
+        }
+
+        el.innerHTML = `
+        <div class="mt-wrap">
+            <div class="mt-ctrl">
+                <button class="mt-pbtn" id="mt-pbtn" onclick="mtTogglePlay()">▶</button>
+                <span class="mt-time" id="mt-time">0:00 / 0:00</span>
+                <div class="mt-prog" id="mt-prog"><div class="mt-prog-fill" id="mt-prog-fill"></div></div>
+                <span class="mt-status" id="mt-status">Chunk — / ${chunks.length}</span>
+                <span class="mt-heading">Chunk-level Timeline</span>
+            </div>
+            <div class="mt-body">
+                <div class="mt-lbl">${labelsHtml}</div>
+                <div class="mt-scroll" id="mt-scroll">
+                    <div class="mt-grid" id="mt-grid"
+                         style="grid-template-columns:repeat(${chunks.length},${colW}px);grid-template-rows:${rows};">
+                        ${gridHtml}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+        // Click chunk column to jump
+        document.querySelectorAll('.mt-c[data-ci]').forEach(cell => {
+            cell.addEventListener('click', (e) => {
+                if (e.target.closest('.b')) return; // mini play button handled separately
+                const idx = parseInt(cell.dataset.ci);
+                if (isFinite(idx)) _mtPlayer.jumpTo(idx);
+            });
+        });
+
+        _mtPlayer = new MTPlayer(chunks);
+
+        document.getElementById('mt-prog')?.addEventListener('click', e => {
+            if (!_mtPlayer || !_mtPlayer._ok) return;
+            const r = e.currentTarget.getBoundingClientRect();
+            _mtPlayer.seekTo((e.clientX - r.left) / r.width);
+        });
+    }
+
+    /* ══════════════ Turn-based renderer ══════════════ */
+    function renderTurnBased(rec) {
+        const el = document.getElementById('timeline');
+        const turns = rec.turns || [];
+        if (!turns.length) { el.innerHTML='<div class="center-msg">No turns recorded</div>'; return; }
+        let html = '';
+        for (const t of turns) {
+            const inp = t.input||{}, out = t.output||{}, tm = t.timing||{};
+            let uInner = '';
+            if (inp.text) uInner += `<div>${esc(inp.text)}</div>`;
+            if (inp.images?.length) {
+                uInner += '<div class="msg-images">';
+                for (const img of inp.images) uInner += `<img src="${aUrl(img)}" loading="lazy">`;
+                uInner += '</div>';
+            }
+            if (inp.audio) uInner += makeAudioCtrl(aUrl(inp.audio));
+            if (!uInner && inp.summary) uInner = `<div style="color:#999">${esc(JSON.stringify(inp.summary))}</div>`;
+            html += `<div class="message user"><div class="avatar">U</div><div class="msg-body"><div class="content">${uInner}</div></div></div>`;
+
+            let aInner = out.text ? esc(out.text) : '';
+            const aAud = out.audio ? makeAudioCtrl(aUrl(out.audio)) : '';
+            const parts = [];
+            if (tm.elapsed_ms!=null) parts.push(`${tm.elapsed_ms.toFixed(0)}ms`);
+            if (tm.tokens!=null) parts.push(`${tm.tokens} tokens`);
+            if (out.audio_duration_ms!=null) parts.push(`audio ${(out.audio_duration_ms/1000).toFixed(1)}s`);
+            html += `<div class="message assistant"><div class="avatar">M</div><div class="msg-body">
+                <div class="content">${aInner}</div>${aAud}
+                ${parts.length?`<div class="meta">${parts.join(' · ')}</div>`:''}
+            </div></div>`;
+        }
+        el.innerHTML = `<div class="messages">${html}</div>`;
+        initAudioCtrls(el);
+    }
+
+    /* ══════════════ Audio control helpers ══════════════ */
+    function makeAudioCtrl(src) {
+        return `<div class="audio-ctrl" data-src="${src}">
+            <button class="ac-play">▶</button>
+            <span class="ac-time">0:00 / 0:00</span>
+            <div class="ac-bar"><div class="ac-bar-fill"></div><div class="ac-bar-dot" style="left:0"></div></div>
+        </div>`;
+    }
+    function initAudioCtrls(root) {
+        for (const ctrl of (root||document).querySelectorAll('.audio-ctrl[data-src]')) {
+            const src = ctrl.dataset.src; delete ctrl.dataset.src;
+            const audio = new Audio(); audio.preload='metadata'; audio.src=src;
+            const playBtn=ctrl.querySelector('.ac-play'), timeEl=ctrl.querySelector('.ac-time');
+            const bar=ctrl.querySelector('.ac-bar'), fill=ctrl.querySelector('.ac-bar-fill'), dot=ctrl.querySelector('.ac-bar-dot');
+            function upd() {
+                const p=audio.duration?(audio.currentTime/audio.duration*100):0;
+                fill.style.width=p+'%'; dot.style.left=p+'%';
+                timeEl.textContent=`${fmt(audio.currentTime)} / ${fmt(audio.duration)}`;
+            }
+            audio.addEventListener('loadedmetadata',upd);
+            audio.addEventListener('timeupdate',upd);
+            audio.addEventListener('ended',()=>{ playBtn.textContent='▶'; });
+            playBtn.addEventListener('click',()=>{
+                if(audio.paused){audio.play();playBtn.textContent='⏸';}
+                else{audio.pause();playBtn.textContent='▶';}
+            });
+            bar.addEventListener('click',(e)=>{
+                if(!audio.duration)return;
+                const r=bar.getBoundingClientRect();
+                audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration; upd();
+            });
+        }
+    }
+})();
+</script>
+</body>
+</html>

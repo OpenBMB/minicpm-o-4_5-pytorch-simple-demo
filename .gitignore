@@ -1,0 +1,37 @@
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+
+# 本地配置与运行时（用户从 config.example.json 复制）
+config.json
+certs/
+
+# 运行时数据
+data/
+
+# 临时文件
+tmp/
+
+# 测试输出（可重新生成）
+tests/results/
+
+# 模型权重与大型资源（用户自行准备）
+*.safetensors
+MiniCPMO45/assets/
+resources/
+
+# IDE（可选）
+.idea/
+.vscode/
+*.swp
+*.swo

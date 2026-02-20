@@ -1,0 +1,2082 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Content List Editor — UX Prototype</title>
+<style>
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+/* ── Layout ── */
+.page-header {
+    text-align: center;
+    padding: 24px 20px 16px;
+    border-bottom: 1px solid #21262d;
+}
+.page-header h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+.page-header p { font-size: 13px; color: #8b949e; }
+
+.tabs {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    padding: 12px 20px;
+    background: #161b22;
+    border-bottom: 1px solid #21262d;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+.tab-btn {
+    padding: 8px 20px;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    background: transparent;
+    color: #8b949e;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s;
+}
+.tab-btn:hover { border-color: #58a6ff; color: #c9d1d9; }
+.tab-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+.main { max-width: 800px; margin: 0 auto; padding: 20px; }
+
+.variant-panel { display: none; }
+.variant-panel.active { display: block; }
+
+.variant-desc {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #8b949e;
+}
+.variant-desc strong { color: #e6edf3; }
+
+/* ── Section titles ── */
+.section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 20px 0 8px;
+}
+
+/* ── Chat simulation ── */
+.chat-sim {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+.chat-msg {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 14px;
+    align-items: flex-start;
+}
+.chat-msg:last-child { margin-bottom: 0; }
+.chat-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600;
+    flex-shrink: 0;
+}
+.chat-avatar.user { background: #1f6feb; color: #fff; }
+.chat-avatar.ai { background: #238636; color: #fff; }
+.chat-bubble {
+    flex: 1;
+    min-width: 0;
+}
+.chat-bubble-view {
+    background: #1c2129;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+}
+.chat-role { font-size: 11px; font-weight: 600; color: #8b949e; margin-bottom: 4px; }
+
+/* ── Content item rendering (view mode) ── */
+.ci-view-text { margin: 4px 0; }
+.ci-view-audio {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #21262d;
+    border-radius: 6px;
+    padding: 4px 10px;
+    margin: 4px 0;
+    font-size: 12px;
+    color: #8b949e;
+}
+.ci-view-audio .play-btn {
+    background: none; border: none; color: #58a6ff; cursor: pointer;
+    font-size: 14px; padding: 0;
+}
+
+/* ── Edit button ── */
+.chat-edit-btn {
+    font-size: 11px;
+    color: #58a6ff;
+    cursor: pointer;
+    padding: 2px 8px;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    background: transparent;
+    white-space: nowrap;
+    align-self: flex-start;
+    margin-top: 4px;
+    transition: all 0.12s;
+}
+.chat-edit-btn:hover { background: #1f6feb22; border-color: #58a6ff; }
+
+/* ── Editor container (shared) ── */
+.editor-container {
+    background: #1c2129;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 12px;
+}
+
+/* ══════════════════════════════════════
+   Variant A: Classic Panel
+   ══════════════════════════════════════ */
+.va-items { display: flex; flex-direction: column; gap: 6px; }
+.va-item {
+    display: flex; gap: 8px; align-items: flex-start;
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    padding: 8px 10px;
+    transition: border-color 0.12s;
+}
+.va-item:hover { border-color: #30363d; }
+.va-badge {
+    font-size: 10px; font-weight: 700;
+    padding: 2px 7px; border-radius: 3px;
+    flex-shrink: 0; margin-top: 4px;
+    user-select: none;
+}
+.va-badge-text { background: #21262d; color: #8b949e; }
+.va-badge-audio { background: #2d1f0e; color: #d4a574; }
+.va-content { flex: 1; min-width: 0; }
+.va-textarea {
+    width: 100%;
+    background: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 4px;
+    color: #e6edf3;
+    padding: 6px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 32px;
+}
+.va-textarea:focus { border-color: #58a6ff; outline: none; }
+.va-actions {
+    display: flex; flex-direction: column; gap: 2px;
+    flex-shrink: 0;
+}
+.va-act-btn {
+    width: 22px; height: 20px;
+    border: none; border-radius: 3px;
+    cursor: pointer; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    background: #21262d; color: #8b949e;
+    transition: all 0.1s; padding: 0;
+}
+.va-act-btn:hover { background: #30363d; color: #e6edf3; }
+.va-act-btn:disabled { opacity: 0.25; cursor: default; }
+.va-act-btn.remove { color: #f85149; }
+.va-act-btn.remove:hover { background: #f8514922; }
+.va-add-row {
+    display: flex; gap: 6px; margin-top: 8px;
+}
+.va-add-btn {
+    font-size: 12px; padding: 4px 12px;
+    border: 1px dashed #30363d; border-radius: 5px;
+    background: transparent; color: #8b949e;
+    cursor: pointer; transition: all 0.12s;
+}
+.va-add-btn:hover { border-color: #58a6ff; color: #58a6ff; background: #1f6feb11; }
+
+/* ══════════════════════════════════════
+   Variant B: Modern Block (hover actions)
+   ══════════════════════════════════════ */
+.vb-items { display: flex; flex-direction: column; gap: 2px; }
+.vb-item {
+    display: flex; align-items: flex-start; gap: 0;
+    padding: 6px 8px;
+    border-radius: 6px;
+    position: relative;
+    transition: background 0.12s;
+    border: 1px solid transparent;
+}
+.vb-item:hover { background: #161b22; border-color: #21262d; }
+.vb-drag {
+    width: 16px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #30363d; font-size: 12px;
+    cursor: grab; padding-top: 5px;
+    opacity: 0; transition: opacity 0.12s;
+    user-select: none;
+}
+.vb-item:hover .vb-drag { opacity: 1; }
+.vb-item.dragging { opacity: 0.5; border-color: #58a6ff; }
+.vb-drop-indicator {
+    height: 2px; background: #58a6ff; border-radius: 1px;
+    margin: 0 20px; transition: all 0.1s;
+}
+.vb-content { flex: 1; min-width: 0; }
+.vb-textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #e6edf3;
+    padding: 4px 6px;
+    font-size: 13px;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: none;
+    min-height: 28px;
+    outline: none;
+}
+.vb-textarea::placeholder { color: #484f58; }
+.vb-audio-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 6px;
+    color: #8b949e; font-size: 12px;
+}
+.vb-audio-row .icon { color: #d4a574; }
+.vb-close {
+    position: absolute; top: 6px; right: 6px;
+    width: 20px; height: 20px;
+    border: none; border-radius: 3px;
+    background: transparent; color: #484f58;
+    cursor: pointer; font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: all 0.12s;
+}
+.vb-item:hover .vb-close { opacity: 1; }
+.vb-close:hover { background: #f8514922; color: #f85149; }
+.vb-add-zone {
+    display: flex; justify-content: center;
+    margin-top: 6px;
+}
+.vb-add-btn {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 14px;
+    border: none;
+    background: transparent;
+    color: #484f58;
+    cursor: pointer;
+    font-size: 12px;
+    border-radius: 4px;
+    transition: all 0.12s;
+}
+.vb-add-btn:hover { background: #21262d; color: #8b949e; }
+.vb-add-menu {
+    display: none;
+    position: absolute;
+    background: #1c2129;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    z-index: 20;
+}
+.vb-add-menu.show { display: block; }
+.vb-add-menu-item {
+    display: block; width: 100%;
+    padding: 6px 14px;
+    border: none; background: transparent;
+    color: #e6edf3; font-size: 13px;
+    cursor: pointer; text-align: left;
+    border-radius: 4px;
+}
+.vb-add-menu-item:hover { background: #21262d; }
+
+/* ══════════════════════════════════════
+   Variant C: Document Flow
+   ══════════════════════════════════════ */
+.vc-items { display: flex; flex-direction: column; gap: 0; }
+.vc-item {
+    position: relative;
+    padding: 2px 0;
+}
+.vc-item + .vc-item.vc-type-audio,
+.vc-item.vc-type-audio + .vc-item {
+    border-top: 1px solid #21262d;
+    margin-top: 4px;
+    padding-top: 6px;
+}
+.vc-textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #e6edf3;
+    padding: 4px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    line-height: 1.6;
+    resize: none;
+    min-height: 28px;
+    outline: none;
+}
+.vc-textarea:focus {
+    background: #161b2266;
+    border-radius: 4px;
+}
+.vc-textarea::placeholder { color: #484f58; }
+.vc-audio-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 6px 12px;
+    margin: 2px 8px;
+    font-size: 12px;
+    color: #8b949e;
+    position: relative;
+}
+.vc-audio-chip .chip-icon { color: #d4a574; font-size: 14px; }
+.vc-audio-chip .chip-play {
+    background: none; border: none; color: #58a6ff; cursor: pointer;
+    font-size: 13px; padding: 0;
+}
+.vc-audio-chip .chip-remove {
+    background: none; border: none; color: #484f58; cursor: pointer;
+    font-size: 11px; padding: 0 0 0 4px;
+    transition: color 0.12s;
+}
+.vc-audio-chip .chip-remove:hover { color: #f85149; }
+.vc-toolbar {
+    display: flex; gap: 4px; padding: 8px 0 0;
+    border-top: 1px solid #21262d;
+    margin-top: 4px;
+}
+.vc-tool-btn {
+    padding: 4px 12px;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    background: transparent;
+    color: #8b949e;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.12s;
+}
+.vc-tool-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+
+/* ── Audio shared styles ── */
+.audio-action-zone {
+    display: flex; gap: 6px; align-items: stretch;
+}
+.audio-action-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px;
+    border: 1px dashed #30363d;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 12px;
+    color: #8b949e;
+    background: transparent;
+    flex: 1;
+    justify-content: center;
+}
+.audio-action-btn:hover { border-color: #58a6ff; color: #58a6ff; background: #1f6feb08; }
+.audio-action-btn.record-btn:hover { border-color: #f85149; color: #f85149; background: #f8514908; }
+.audio-info {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: #8b949e;
+}
+.audio-info .name { color: #e6edf3; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audio-play-btn {
+    background: none; border: none; color: #58a6ff; cursor: pointer;
+    font-size: 14px; padding: 2px;
+}
+.audio-remove-btn {
+    background: none; border: none; color: #484f58; cursor: pointer;
+    font-size: 11px; padding: 2px; transition: color 0.12s;
+}
+.audio-remove-btn:hover { color: #f85149; }
+
+/* ── Recording UI ── */
+.recording-inline {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    background: #1c0a0a;
+    border: 1px solid #f85149;
+    border-radius: 6px;
+    animation: rec-border-pulse 1.5s ease-in-out infinite;
+}
+@keyframes rec-border-pulse {
+    0%, 100% { border-color: #f85149; box-shadow: 0 0 0 0 #f8514900; }
+    50% { border-color: #f8514988; box-shadow: 0 0 8px 0 #f8514933; }
+}
+.rec-dot {
+    width: 10px; height: 10px;
+    background: #f85149;
+    border-radius: 50%;
+    flex-shrink: 0;
+    animation: rec-dot-pulse 1s ease-in-out infinite;
+}
+@keyframes rec-dot-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+}
+.rec-label { color: #f85149; font-size: 12px; font-weight: 500; }
+.rec-timer {
+    color: #f85149; font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    min-width: 36px;
+}
+.rec-stop-btn {
+    margin-left: auto;
+    padding: 4px 14px;
+    border: 1px solid #f85149;
+    border-radius: 5px;
+    background: #f8514922;
+    color: #f85149;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: all 0.12s;
+}
+.rec-stop-btn:hover { background: #f8514944; }
+.rec-cancel-btn {
+    padding: 4px 10px;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    background: transparent;
+    color: #8b949e;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.12s;
+}
+.rec-cancel-btn:hover { border-color: #8b949e; color: #e6edf3; }
+.rec-keys-hint { font-size: 10px; color: #484f58; margin-left: auto; white-space: nowrap; }
+
+/* ── Add buttons record variant ── */
+.va-add-btn.record, .vc-tool-btn.record { color: #f8514999; border-color: #f8514944; }
+.va-add-btn.record:hover, .vc-tool-btn.record:hover { color: #f85149; border-color: #f85149; background: #f8514911; }
+.vb-add-menu-item.record { color: #f85149; }
+
+/* ══════════════════════════════════════
+   Variant D: Unified (Best)
+   ══════════════════════════════════════ */
+.vu-wrap { min-height: 40px; }
+
+/* ── Empty state ── */
+.vu-empty {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 4px 0;
+}
+.vu-empty-ta {
+    width: 100%;
+    background: transparent;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    color: #e6edf3;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: none;
+    min-height: 40px;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.vu-empty-ta:focus { border-color: #58a6ff; }
+.vu-empty-ta::placeholder { color: #484f58; }
+.vu-empty-bottom {
+    display: flex; align-items: center; justify-content: space-between;
+}
+.vu-empty-adds {
+    display: flex; gap: 6px;
+}
+.vu-empty-add-btn {
+    font-size: 11px; padding: 3px 10px;
+    border: 1px solid #21262d; border-radius: 4px;
+    background: transparent; color: #484f58;
+    cursor: pointer; transition: all 0.12s;
+}
+.vu-empty-add-btn:hover { border-color: #30363d; color: #8b949e; }
+.vu-empty-rec-zone {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.vu-empty-rec-btn {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: 1px solid #30363d;
+    background: #161b22;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+}
+.vu-empty-rec-btn:hover { border-color: #f85149; background: #f8514911; }
+.vu-empty-rec-btn.recording {
+    border-color: #f85149; background: #f8514922;
+    animation: rec-border-pulse 1.5s ease-in-out infinite;
+}
+.vu-empty-rec-hint {
+    font-size: 9px; color: #30363d; letter-spacing: 0.5px;
+}
+
+/* ── Full state items ── */
+.vu-items { display: flex; flex-direction: column; gap: 2px; }
+.vu-item {
+    display: flex; align-items: flex-start; gap: 6px;
+    padding: 5px 6px;
+    border-radius: 6px;
+    position: relative;
+    transition: background 0.1s;
+    border: 1px solid transparent;
+}
+.vu-item:hover { background: #161b22; border-color: #21262d; }
+.vu-item.vu-dragging { opacity: 0.4; border-color: #58a6ff; }
+.vu-drag {
+    width: 14px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #21262d; font-size: 11px;
+    cursor: grab; padding-top: 5px;
+    opacity: 0; transition: opacity 0.1s;
+    user-select: none;
+}
+.vu-item:hover .vu-drag { opacity: 1; color: #484f58; }
+.vu-badge {
+    font-size: 9px; font-weight: 700;
+    padding: 2px 6px; border-radius: 3px;
+    flex-shrink: 0; margin-top: 4px;
+    user-select: none; letter-spacing: 0.3px;
+}
+.vu-badge-text { background: #21262d; color: #8b949e; }
+.vu-badge-audio { background: #2d1f0e; color: #d4a574; }
+.vu-content { flex: 1; min-width: 0; }
+.vu-textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #e6edf3;
+    padding: 3px 6px;
+    font-size: 13px;
+    font-family: inherit;
+    line-height: 1.5;
+    resize: none;
+    min-height: 26px;
+    outline: none;
+}
+.vu-textarea:focus { background: #0d111766; border-radius: 3px; }
+.vu-textarea::placeholder { color: #30363d; }
+.vu-item-actions {
+    display: flex; align-items: center; gap: 1px;
+    flex-shrink: 0; margin-top: 2px;
+    opacity: 0; transition: opacity 0.1s;
+}
+.vu-item:hover .vu-item-actions { opacity: 1; }
+.vu-act {
+    width: 20px; height: 20px;
+    border: none; border-radius: 3px;
+    background: transparent; color: #484f58;
+    cursor: pointer; font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s; padding: 0;
+}
+.vu-act:hover { background: #21262d; color: #8b949e; }
+.vu-act:disabled { opacity: 0.2; cursor: default; }
+.vu-act:disabled:hover { background: transparent; }
+.vu-act.vu-act-remove:hover { background: #f8514922; color: #f85149; }
+
+/* ── Add row ── */
+.vu-add-row {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 6px; padding-top: 6px;
+    border-top: 1px solid #21262d;
+}
+.vu-add-btn {
+    font-size: 11px; padding: 4px 10px;
+    border: 1px dashed #21262d; border-radius: 4px;
+    background: transparent; color: #484f58;
+    cursor: pointer; transition: all 0.12s;
+}
+.vu-add-btn:hover { border-color: #58a6ff; color: #58a6ff; background: #1f6feb08; }
+.vu-rec-wrap {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    margin-left: auto;
+}
+.vu-rec-btn {
+    border-color: #f8514933 !important; color: #f8514988 !important;
+}
+.vu-rec-btn:hover { border-color: #f85149 !important; color: #f85149 !important; background: #f8514911 !important; }
+.vu-rec-hint {
+    font-size: 8px; color: #30363d; letter-spacing: 0.5px;
+}
+
+/* ── Save bar ── */
+.editor-save-bar {
+    display: flex; gap: 8px; justify-content: flex-end;
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid #21262d;
+}
+.btn-primary {
+    padding: 6px 16px; border: none; border-radius: 6px;
+    background: #238636; color: #fff; cursor: pointer;
+    font-size: 13px; font-weight: 500;
+    transition: background 0.12s;
+}
+.btn-primary:hover { background: #2ea043; }
+.btn-secondary {
+    padding: 6px 16px; border: 1px solid #30363d; border-radius: 6px;
+    background: transparent; color: #8b949e; cursor: pointer;
+    font-size: 13px; transition: all 0.12s;
+}
+.btn-secondary:hover { border-color: #8b949e; color: #e6edf3; }
+
+/* ── Output preview ── */
+.output-panel {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 16px;
+}
+.output-panel pre {
+    font-size: 11px;
+    color: #8b949e;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+}
+</style>
+</head>
+<body>
+
+<div class="page-header">
+    <h1>User Content List Editor — UX Prototype</h1>
+    <p>对比三种编辑方案，体验操作手感。每种方案支持：添加/删除/排序 text & audio items</p>
+</div>
+
+<div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('d')">★ Unified Content List Editor</button>
+</div>
+
+<div class="main">
+
+<!-- ═══════════════════ Variant D: Unified (Best) ═══════════════════ -->
+<div class="variant-panel active" id="panel-d">
+    <div class="variant-desc">
+        <strong>★ Unified</strong> — 融合最佳实践：B 的拖拽紧凑布局 + A 的 T/A badge 和展开式按钮。
+        <br><strong>空列表</strong>：直接打字创建 text item（零点击）；🎤 或 Space 键录音。
+        <br><strong>有内容</strong>：拖拽排序、hover 显示 handle/close、Backspace 删空 item。
+    </div>
+
+    <div class="section-title">Chat Context — Edit a User Message</div>
+    <div class="chat-sim">
+        <div class="chat-msg">
+            <div class="chat-avatar ai">M</div>
+            <div class="chat-bubble">
+                <div class="chat-role">MiniCPM-o</div>
+                <div class="chat-bubble-view">你好！我是面壁小钢炮，有什么可以帮你的吗？</div>
+            </div>
+        </div>
+        <div class="chat-msg">
+            <div class="chat-avatar user">U</div>
+            <div class="chat-bubble">
+                <div class="chat-role">User</div>
+                <div id="d-view" class="chat-bubble-view"></div>
+                <div id="d-editor-wrap" style="display:none;"></div>
+                <div id="d-save-bar" class="editor-save-bar" style="display:none;">
+                    <button class="btn-secondary" onclick="toggleEdit('d', false)">Cancel</button>
+                    <button class="btn-primary" onclick="saveEdit('d')">Save & Resend</button>
+                </div>
+            </div>
+            <button class="chat-edit-btn" id="d-edit-btn" onclick="toggleEdit('d', true)">Edit</button>
+        </div>
+    </div>
+
+    <div class="section-title">Standalone — With Existing Content</div>
+    <div class="editor-container" id="d-standalone"></div>
+
+    <div class="section-title" style="margin-top:20px">Standalone — Empty (Try: just type, or press Space to record)</div>
+    <div class="editor-container" id="d-empty-standalone"></div>
+
+    <div class="output-panel">
+        <div class="section-title" style="margin-top:0;">Content List Output (live)</div>
+        <pre id="d-output"></pre>
+    </div>
+</div>
+
+<!-- ═══════════════════ Variant A: Classic Panel ═══════════════════ -->
+<div class="variant-panel" id="panel-a">
+    <div class="variant-desc">
+        <strong>A: Classic Panel</strong> — 与现有 SystemContentEditor 风格一致。每个 item 一行：
+        左侧 badge（T/A）、中间内容、右侧操作按钮（↑↓✕）。底部 +Text / +Audio 按钮。
+        <br>特点：所有控件始终可见，操作明确，无隐藏状态。
+    </div>
+
+    <div class="section-title">Chat Context</div>
+    <div class="chat-sim">
+        <div class="chat-msg">
+            <div class="chat-avatar ai">M</div>
+            <div class="chat-bubble">
+                <div class="chat-role">MiniCPM-o</div>
+                <div class="chat-bubble-view">你好！我是面壁小钢炮，有什么可以帮你的吗？</div>
+            </div>
+        </div>
+        <div class="chat-msg">
+            <div class="chat-avatar user">U</div>
+            <div class="chat-bubble">
+                <div class="chat-role">User</div>
+                <div id="a-view" class="chat-bubble-view"></div>
+                <div id="a-editor-wrap" style="display:none;"></div>
+                <div id="a-save-bar" class="editor-save-bar" style="display:none;">
+                    <button class="btn-secondary" onclick="toggleEdit('a', false)">Cancel</button>
+                    <button class="btn-primary" onclick="saveEdit('a')">Save & Resend</button>
+                </div>
+            </div>
+            <button class="chat-edit-btn" id="a-edit-btn" onclick="toggleEdit('a', true)">Edit</button>
+        </div>
+    </div>
+
+    <div class="section-title">Standalone Editor Playground</div>
+    <div class="editor-container" id="a-standalone"></div>
+
+    <div class="output-panel">
+        <div class="section-title" style="margin-top:0;">Content List Output (live)</div>
+        <pre id="a-output"></pre>
+    </div>
+</div>
+
+<!-- ═══════════════════ Variant B: Modern Block ═══════════════════ -->
+<div class="variant-panel" id="panel-b">
+    <div class="variant-desc">
+        <strong>B: Modern Block</strong> — Notion 风格。无边框文本编辑，hover 显示控件。
+        左侧 drag handle（⠿）可拖拽排序，右上角 ✕ 删除。底部 + 按钮展开菜单。
+        <br>特点：视觉清爽，减少干扰，操作需 hover 触发。
+    </div>
+
+    <div class="section-title">Chat Context</div>
+    <div class="chat-sim">
+        <div class="chat-msg">
+            <div class="chat-avatar ai">M</div>
+            <div class="chat-bubble">
+                <div class="chat-role">MiniCPM-o</div>
+                <div class="chat-bubble-view">你好！我是面壁小钢炮，有什么可以帮你的吗？</div>
+            </div>
+        </div>
+        <div class="chat-msg">
+            <div class="chat-avatar user">U</div>
+            <div class="chat-bubble">
+                <div class="chat-role">User</div>
+                <div id="b-view" class="chat-bubble-view"></div>
+                <div id="b-editor-wrap" style="display:none;"></div>
+                <div id="b-save-bar" class="editor-save-bar" style="display:none;">
+                    <button class="btn-secondary" onclick="toggleEdit('b', false)">Cancel</button>
+                    <button class="btn-primary" onclick="saveEdit('b')">Save & Resend</button>
+                </div>
+            </div>
+            <button class="chat-edit-btn" id="b-edit-btn" onclick="toggleEdit('b', true)">Edit</button>
+        </div>
+    </div>
+
+    <div class="section-title">Standalone Editor Playground</div>
+    <div class="editor-container" id="b-standalone"></div>
+
+    <div class="output-panel">
+        <div class="section-title" style="margin-top:0;">Content List Output (live)</div>
+        <pre id="b-output"></pre>
+    </div>
+</div>
+
+<!-- ═══════════════════ Variant C: Document Flow ═══════════════════ -->
+<div class="variant-panel" id="panel-c">
+    <div class="variant-desc">
+        <strong>C: Document Flow</strong> — 文档编辑器风格。文本无边框直接编辑，音频显示为 chip 卡片。
+        底部 toolbar 添加 items。item 之间用细线分隔。
+        <br>特点：接近所见即所得，最自然的编辑体验，但排序需 toolbar 操作。
+    </div>
+
+    <div class="section-title">Chat Context</div>
+    <div class="chat-sim">
+        <div class="chat-msg">
+            <div class="chat-avatar ai">M</div>
+            <div class="chat-bubble">
+                <div class="chat-role">MiniCPM-o</div>
+                <div class="chat-bubble-view">你好！我是面壁小钢炮，有什么可以帮你的吗？</div>
+            </div>
+        </div>
+        <div class="chat-msg">
+            <div class="chat-avatar user">U</div>
+            <div class="chat-bubble">
+                <div class="chat-role">User</div>
+                <div id="c-view" class="chat-bubble-view"></div>
+                <div id="c-editor-wrap" style="display:none;"></div>
+                <div id="c-save-bar" class="editor-save-bar" style="display:none;">
+                    <button class="btn-secondary" onclick="toggleEdit('c', false)">Cancel</button>
+                    <button class="btn-primary" onclick="saveEdit('c')">Save & Resend</button>
+                </div>
+            </div>
+            <button class="chat-edit-btn" id="c-edit-btn" onclick="toggleEdit('c', true)">Edit</button>
+        </div>
+    </div>
+
+    <div class="section-title">Standalone Editor Playground</div>
+    <div class="editor-container" id="c-standalone"></div>
+
+    <div class="output-panel">
+        <div class="section-title" style="margin-top:0;">Content List Output (live)</div>
+        <pre id="c-output"></pre>
+    </div>
+</div>
+
+</div><!-- .main -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// Shared utilities
+// ═══════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════
+// Recording Manager
+// ═══════════════════════════════════════════════════════════════
+
+let _recordingCount = 0;
+
+/** Global recording lock — only one recording at a time (one microphone) */
+let _globalRecordingActive = false;
+/** Reference to the active RecordingSession instance (for programmatic stop/cancel) */
+let _activeRecordingSession = null;
+/** The UnifiedEditor that last received user interaction (click/focus) */
+let _lastActiveEditor = null;
+
+// ── Space key: tap = toggle, hold = push-to-talk; ESC = cancel ──
+//
+// 与 index.html 的录音快捷键完全一致：
+//   Space keydown (非输入框, 非 repeat):
+//     未录音 → 开始录音，记录按下时间
+//     录音中 + 新的 Space（上一次 tap 留下的）→ toggle 停止
+//   Space keyup:
+//     按住 >= 300ms → push-to-talk，松开停止录音
+//     按住 < 300ms  → tap/toggle，录音继续，等下一次 tap 停止
+//   ESC → 取消录音（丢弃）
+//
+(function initRecordingShortcuts() {
+    const HOLD_THRESHOLD_MS = 300;
+    let spaceDownTime = 0;
+    let spaceHeld = false;
+
+    function isInputFocused() {
+        const tag = document.activeElement?.tagName;
+        return tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT';
+    }
+
+    document.addEventListener('keydown', (e) => {
+        // ESC: cancel recording (always, even when input focused)
+        if (e.key === 'Escape' && _globalRecordingActive && _activeRecordingSession) {
+            e.preventDefault();
+            _activeRecordingSession.cancel();
+            spaceHeld = false;
+            return;
+        }
+
+        // Space: only when not in text input, not repeat
+        if (e.code !== 'Space' || isInputFocused() || e.repeat) return;
+        if (!_lastActiveEditor) return;
+        if (!_lastActiveEditor.wrap.offsetParent) return; // not visible
+        e.preventDefault();
+
+        if (!_globalRecordingActive) {
+            // Not recording → start
+            spaceHeld = true;
+            spaceDownTime = Date.now();
+            _lastActiveEditor._startRecording();
+        } else if (!spaceHeld && _activeRecordingSession) {
+            // Recording + new Space keydown (from previous tap's toggle) → stop
+            _activeRecordingSession.stop();
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        if (e.code !== 'Space' || !spaceHeld) return;
+        e.preventDefault();
+        spaceHeld = false;
+
+        if (!_globalRecordingActive || !_activeRecordingSession) return;
+
+        const holdMs = Date.now() - spaceDownTime;
+        if (holdMs >= HOLD_THRESHOLD_MS) {
+            // Hold >= 300ms → push-to-talk, release stops recording
+            _activeRecordingSession.stop();
+        }
+        // Tap < 300ms → toggle mode, recording continues until next Space tap
+    });
+})();
+
+class RecordingSession {
+    /**
+     * @param {HTMLElement} container - Where to render recording UI
+     * @param {Object} callbacks
+     * @param {Function} callbacks.onDone - (objectUrl, name, duration) => void
+     * @param {Function} callbacks.onCancel - () => void
+     */
+    constructor(container, callbacks) {
+        this.container = container;
+        this.callbacks = callbacks;
+        this.mediaRecorder = null;
+        this.chunks = [];
+        this.startTime = 0;
+        this.timerInterval = null;
+        this.stream = null;
+        this._start();
+    }
+
+    async _start() {
+        if (_globalRecordingActive) {
+            console.warn('Another recording is already active');
+            this.callbacks.onCancel();
+            return;
+        }
+        _globalRecordingActive = true;
+        _activeRecordingSession = this;
+
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (e) {
+            _globalRecordingActive = false;
+            _activeRecordingSession = null;
+            alert('Microphone access denied. Please allow microphone access.');
+            this.callbacks.onCancel();
+            return;
+        }
+
+        this.chunks = [];
+        this.mediaRecorder = new MediaRecorder(this.stream);
+
+        this.mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) this.chunks.push(e.data);
+        };
+
+        this.mediaRecorder.onstop = () => {
+            this._stopTimer();
+            this._stopStream();
+            _globalRecordingActive = false;
+            _activeRecordingSession = null;
+            if (this._cancelled || this.chunks.length === 0) {
+                this.callbacks.onCancel();
+                return;
+            }
+            const blob = new Blob(this.chunks, { type: 'audio/webm' });
+            const objectUrl = URL.createObjectURL(blob);
+            const duration = (Date.now() - this.startTime) / 1000;
+            _recordingCount++;
+            const name = `recording_${String(_recordingCount).padStart(3, '0')}.webm`;
+            this.callbacks.onDone(objectUrl, name, duration);
+        };
+
+        this.mediaRecorder.start(100); // 100ms timeslice
+        this.startTime = Date.now();
+        this._cancelled = false;
+
+        // Render recording UI
+        this._renderUI();
+        this._startTimer();
+    }
+
+    _renderUI() {
+        this.container.innerHTML = '';
+        const row = document.createElement('div');
+        row.className = 'recording-inline';
+
+        row.innerHTML = `
+            <div class="rec-dot"></div>
+            <span class="rec-label">Recording</span>
+            <span class="rec-timer">0:00</span>
+            <span class="rec-keys-hint">Space stop · ESC cancel</span>
+            <button class="rec-cancel-btn">Cancel</button>
+            <button class="rec-stop-btn">⏹ Stop</button>
+        `;
+
+        this._timerEl = row.querySelector('.rec-timer');
+
+        row.querySelector('.rec-stop-btn').addEventListener('click', () => this.stop());
+        row.querySelector('.rec-cancel-btn').addEventListener('click', () => this.cancel());
+
+        this.container.appendChild(row);
+    }
+
+    _startTimer() {
+        this.timerInterval = setInterval(() => {
+            const elapsed = (Date.now() - this.startTime) / 1000;
+            const mins = Math.floor(elapsed / 60);
+            const secs = Math.floor(elapsed % 60);
+            if (this._timerEl) {
+                this._timerEl.textContent = `${mins}:${String(secs).padStart(2, '0')}`;
+            }
+        }, 200);
+    }
+
+    _stopTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+    }
+
+    _stopStream() {
+        if (this.stream) {
+            this.stream.getTracks().forEach(t => t.stop());
+            this.stream = null;
+        }
+    }
+
+    stop() {
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            this.mediaRecorder.stop();
+        }
+    }
+
+    cancel() {
+        this._cancelled = true;
+        this._stopTimer();
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            // onstop will fire → checks _cancelled → calls onCancel + releases global lock
+            this.mediaRecorder.stop();
+        } else {
+            // MediaRecorder not started yet
+            _globalRecordingActive = false;
+            _activeRecordingSession = null;
+            this._stopStream();
+            this.callbacks.onCancel();
+        }
+    }
+}
+
+/** Sample content list for demo */
+function getSampleItems() {
+    return [
+        { type: 'text', text: '请帮我分析一下这段音频的内容' },
+        { type: 'audio', file: null, name: 'recording_001.wav', duration: 3.2, objectUrl: null },
+        { type: 'text', text: '重点关注情感变化和语调特征' },
+    ];
+}
+
+function deepCopy(items) {
+    return JSON.parse(JSON.stringify(items));
+}
+
+/** Render content items in view mode (non-editing) */
+function renderViewMode(container, items) {
+    container.innerHTML = '';
+    items.forEach(item => {
+        if (item.type === 'text') {
+            const div = document.createElement('div');
+            div.className = 'ci-view-text';
+            div.textContent = item.text;
+            container.appendChild(div);
+        } else if (item.type === 'audio') {
+            const div = document.createElement('div');
+            div.className = 'ci-view-audio';
+            div.innerHTML = `<button class="play-btn">&#9654;</button>
+                <span>${escapeHtml(item.name || 'audio')}</span>
+                <span style="color:#484f58">${item.duration ? item.duration.toFixed(1) + 's' : ''}</span>`;
+            container.appendChild(div);
+        }
+    });
+}
+
+function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+/** Auto-resize textarea */
+function autoResize(textarea) {
+    textarea.style.height = '0';
+    textarea.style.height = Math.max(28, textarea.scrollHeight) + 'px';
+}
+
+/**
+ * Create audio UI (shared by all variants)
+ * States: empty (upload/record), recording, has-audio (info + play)
+ */
+function createAudioUploadUI(item, idx, onChange) {
+    const wrap = document.createElement('div');
+
+    if (item._recording) {
+        // Recording state — show inline recorder
+        new RecordingSession(wrap, {
+            onDone: (objectUrl, name, duration) => {
+                item._recording = false;
+                item.objectUrl = objectUrl;
+                item.name = name;
+                item.duration = duration;
+                onChange();
+            },
+            onCancel: () => {
+                item._recording = false;
+                onChange();
+            }
+        });
+    } else if (item.name) {
+        // Has audio — show info + play + remove
+        wrap.className = 'audio-info';
+
+        const noteIcon = document.createElement('span');
+        noteIcon.style.color = '#d4a574';
+        noteIcon.innerHTML = '&#9835;';
+        wrap.appendChild(noteIcon);
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'name';
+        nameSpan.textContent = item.name;
+        wrap.appendChild(nameSpan);
+
+        const durSpan = document.createElement('span');
+        durSpan.style.color = '#484f58';
+        durSpan.textContent = item.duration ? item.duration.toFixed(1) + 's' : '';
+        wrap.appendChild(durSpan);
+
+        // Play button (actually plays!)
+        const playBtn = document.createElement('button');
+        playBtn.className = 'audio-play-btn';
+        playBtn.innerHTML = '&#9654;';
+        playBtn.title = 'Play';
+        let audioEl = null;
+        playBtn.addEventListener('click', () => {
+            if (audioEl && !audioEl.paused) {
+                audioEl.pause();
+                audioEl.currentTime = 0;
+                playBtn.innerHTML = '&#9654;';
+                return;
+            }
+            const src = item.objectUrl || (item.file ? URL.createObjectURL(item.file) : null);
+            if (!src) return;
+            audioEl = new Audio(src);
+            playBtn.innerHTML = '⏸';
+            audioEl.play();
+            audioEl.addEventListener('ended', () => { playBtn.innerHTML = '&#9654;'; });
+            audioEl.addEventListener('pause', () => { playBtn.innerHTML = '&#9654;'; });
+        });
+        wrap.appendChild(playBtn);
+
+        // Remove button
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'audio-remove-btn';
+        removeBtn.innerHTML = '&#10005;';
+        removeBtn.title = 'Remove audio';
+        removeBtn.addEventListener('click', () => {
+            item.file = null; item.name = ''; item.duration = 0; item.objectUrl = null;
+            onChange();
+        });
+        wrap.appendChild(removeBtn);
+    } else {
+        // Empty — show Upload + Record buttons
+        wrap.className = 'audio-action-zone';
+
+        // Upload button
+        const uploadBtn = document.createElement('button');
+        uploadBtn.className = 'audio-action-btn';
+        uploadBtn.innerHTML = '<span>📎</span> Upload';
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file'; fileInput.accept = 'audio/*';
+        fileInput.style.display = 'none';
+        fileInput.addEventListener('change', (e) => {
+            const f = e.target.files[0];
+            if (!f) return;
+            item.file = f;
+            item.name = f.name;
+            const url = URL.createObjectURL(f);
+            item.objectUrl = url;
+            const audio = new Audio(url);
+            audio.addEventListener('loadedmetadata', () => {
+                item.duration = audio.duration;
+                onChange();
+            });
+            audio.addEventListener('error', () => { item.duration = 0; onChange(); });
+        });
+        uploadBtn.appendChild(fileInput);
+        uploadBtn.addEventListener('click', () => fileInput.click());
+        wrap.appendChild(uploadBtn);
+
+        // Record button
+        const recordBtn = document.createElement('button');
+        recordBtn.className = 'audio-action-btn record-btn';
+        recordBtn.innerHTML = '<span>🎤</span> Record';
+        recordBtn.addEventListener('click', () => {
+            item._recording = true;
+            onChange();
+        });
+        wrap.appendChild(recordBtn);
+    }
+    return wrap;
+}
+
+/** Start recording into a new audio item for a given editor */
+function startRecordForEditor(editor) {
+    if (_globalRecordingActive) return; // global lock
+    const newItem = { type: 'audio', file: null, name: '', duration: 0, objectUrl: null, _recording: true };
+    editor.items.push(newItem);
+    editor.render();
+    editor.onChange(editor.getItems());
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Variant A: Classic Panel
+// ═══════════════════════════════════════════════════════════════
+
+class PanelEditor {
+    constructor(container, onChange) {
+        this.container = container;
+        this.onChange = onChange;
+        this.items = [];
+        this.wrap = document.createElement('div');
+        container.appendChild(this.wrap);
+    }
+
+    setItems(items) {
+        this.items = items.map(it => ({ ...it }));
+        this.render();
+    }
+
+    getItems() { return deepCopy(this.items); }
+
+    render() {
+        this.wrap.innerHTML = '';
+        const list = document.createElement('div');
+        list.className = 'va-items';
+
+        this.items.forEach((item, idx) => {
+            const row = document.createElement('div');
+            row.className = 'va-item';
+
+            // Badge
+            const badge = document.createElement('span');
+            badge.className = `va-badge va-badge-${item.type}`;
+            badge.textContent = item.type === 'text' ? 'T' : 'A';
+            row.appendChild(badge);
+
+            // Content
+            const content = document.createElement('div');
+            content.className = 'va-content';
+
+            if (item.type === 'text') {
+                const ta = document.createElement('textarea');
+                ta.className = 'va-textarea';
+                ta.value = item.text || '';
+                ta.placeholder = 'Enter text...';
+                ta.rows = 1;
+                let composing = false;
+                ta.addEventListener('compositionstart', () => { composing = true; });
+                ta.addEventListener('compositionend', () => {
+                    composing = false;
+                    item.text = ta.value;
+                    autoResize(ta);
+                    this.onChange(this.getItems());
+                });
+                ta.addEventListener('input', () => {
+                    item.text = ta.value;
+                    autoResize(ta);
+                    if (!composing) this.onChange(this.getItems());
+                });
+                content.appendChild(ta);
+                requestAnimationFrame(() => autoResize(ta));
+            } else {
+                content.appendChild(createAudioUploadUI(item, idx, () => {
+                    this.render();
+                    this.onChange(this.getItems());
+                }));
+            }
+            row.appendChild(content);
+
+            // Actions
+            const actions = document.createElement('div');
+            actions.className = 'va-actions';
+
+            const upBtn = document.createElement('button');
+            upBtn.className = 'va-act-btn'; upBtn.textContent = '↑'; upBtn.title = 'Move up';
+            upBtn.disabled = idx === 0;
+            upBtn.addEventListener('click', () => this._move(idx, -1));
+            actions.appendChild(upBtn);
+
+            const downBtn = document.createElement('button');
+            downBtn.className = 'va-act-btn'; downBtn.textContent = '↓'; downBtn.title = 'Move down';
+            downBtn.disabled = idx === this.items.length - 1;
+            downBtn.addEventListener('click', () => this._move(idx, 1));
+            actions.appendChild(downBtn);
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'va-act-btn remove'; delBtn.textContent = '✕'; delBtn.title = 'Remove';
+            delBtn.addEventListener('click', () => this._remove(idx));
+            actions.appendChild(delBtn);
+
+            row.appendChild(actions);
+            list.appendChild(row);
+        });
+
+        this.wrap.appendChild(list);
+
+        // Add buttons
+        const addRow = document.createElement('div');
+        addRow.className = 'va-add-row';
+        const addTextBtn = document.createElement('button');
+        addTextBtn.className = 'va-add-btn'; addTextBtn.textContent = '+ Text';
+        addTextBtn.addEventListener('click', () => this._add('text'));
+        addRow.appendChild(addTextBtn);
+        const addAudioBtn = document.createElement('button');
+        addAudioBtn.className = 'va-add-btn'; addAudioBtn.textContent = '+ Audio';
+        addAudioBtn.addEventListener('click', () => this._add('audio'));
+        addRow.appendChild(addAudioBtn);
+        const recBtn = document.createElement('button');
+        recBtn.className = 'va-add-btn record'; recBtn.textContent = '🎤 Record';
+        recBtn.addEventListener('click', () => startRecordForEditor(this));
+        addRow.appendChild(recBtn);
+        this.wrap.appendChild(addRow);
+    }
+
+    _move(idx, dir) {
+        const ni = idx + dir;
+        if (ni < 0 || ni >= this.items.length) return;
+        [this.items[idx], this.items[ni]] = [this.items[ni], this.items[idx]];
+        this.render();
+        this.onChange(this.getItems());
+    }
+    _remove(idx) {
+        this.items.splice(idx, 1);
+        this.render();
+        this.onChange(this.getItems());
+    }
+    _add(type) {
+        if (type === 'text') this.items.push({ type: 'text', text: '' });
+        else this.items.push({ type: 'audio', file: null, name: '', duration: 0, objectUrl: null });
+        this.render();
+        this.onChange(this.getItems());
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Variant B: Modern Block (drag & drop)
+// ═══════════════════════════════════════════════════════════════
+
+class BlockEditor {
+    constructor(container, onChange) {
+        this.container = container;
+        this.onChange = onChange;
+        this.items = [];
+        this.wrap = document.createElement('div');
+        container.appendChild(this.wrap);
+        this._dragIdx = -1;
+    }
+
+    setItems(items) {
+        this.items = items.map(it => ({ ...it }));
+        this.render();
+    }
+
+    getItems() { return deepCopy(this.items); }
+
+    render() {
+        this.wrap.innerHTML = '';
+        const list = document.createElement('div');
+        list.className = 'vb-items';
+
+        this.items.forEach((item, idx) => {
+            const row = document.createElement('div');
+            row.className = 'vb-item';
+            row.draggable = true;
+            row.dataset.idx = idx;
+
+            // Drag handle
+            const drag = document.createElement('div');
+            drag.className = 'vb-drag';
+            drag.innerHTML = '⠿';
+            row.appendChild(drag);
+
+            // Content
+            const content = document.createElement('div');
+            content.className = 'vb-content';
+
+            if (item.type === 'text') {
+                const ta = document.createElement('textarea');
+                ta.className = 'vb-textarea';
+                ta.value = item.text || '';
+                ta.placeholder = 'Type something...';
+                ta.rows = 1;
+                let composing = false;
+                ta.addEventListener('compositionstart', () => { composing = true; });
+                ta.addEventListener('compositionend', () => {
+                    composing = false;
+                    item.text = ta.value;
+                    autoResize(ta);
+                    this.onChange(this.getItems());
+                });
+                ta.addEventListener('input', () => {
+                    item.text = ta.value;
+                    autoResize(ta);
+                    if (!composing) this.onChange(this.getItems());
+                });
+                content.appendChild(ta);
+                requestAnimationFrame(() => autoResize(ta));
+            } else {
+                content.appendChild(createAudioUploadUI(item, idx, () => {
+                    this.render();
+                    this.onChange(this.getItems());
+                }));
+            }
+            row.appendChild(content);
+
+            // Close button
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'vb-close';
+            closeBtn.innerHTML = '&#10005;';
+            closeBtn.addEventListener('click', () => this._remove(idx));
+            row.appendChild(closeBtn);
+
+            // Drag events
+            row.addEventListener('dragstart', (e) => {
+                this._dragIdx = idx;
+                row.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            row.addEventListener('dragend', () => {
+                row.classList.remove('dragging');
+                this._dragIdx = -1;
+                list.querySelectorAll('.vb-drop-indicator').forEach(el => el.remove());
+            });
+            row.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+            });
+            row.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const fromIdx = this._dragIdx;
+                const toIdx = idx;
+                if (fromIdx === -1 || fromIdx === toIdx) return;
+                const [moved] = this.items.splice(fromIdx, 1);
+                this.items.splice(toIdx, 0, moved);
+                this.render();
+                this.onChange(this.getItems());
+            });
+
+            list.appendChild(row);
+        });
+
+        this.wrap.appendChild(list);
+
+        // Add button with menu
+        const addZone = document.createElement('div');
+        addZone.className = 'vb-add-zone';
+        addZone.style.position = 'relative';
+
+        const addBtn = document.createElement('button');
+        addBtn.className = 'vb-add-btn';
+        addBtn.innerHTML = '<span style="font-size:14px">+</span> Add item';
+
+        const menu = document.createElement('div');
+        menu.className = 'vb-add-menu';
+
+        const menuText = document.createElement('button');
+        menuText.className = 'vb-add-menu-item';
+        menuText.textContent = '📝 Text';
+        menuText.addEventListener('click', () => { this._add('text'); menu.classList.remove('show'); });
+        menu.appendChild(menuText);
+
+        const menuAudio = document.createElement('button');
+        menuAudio.className = 'vb-add-menu-item';
+        menuAudio.textContent = '🎵 Audio (upload)';
+        menuAudio.addEventListener('click', () => { this._add('audio'); menu.classList.remove('show'); });
+        menu.appendChild(menuAudio);
+
+        const menuRecord = document.createElement('button');
+        menuRecord.className = 'vb-add-menu-item record';
+        menuRecord.textContent = '🎤 Record';
+        menuRecord.addEventListener('click', () => { menu.classList.remove('show'); startRecordForEditor(this); });
+        menu.appendChild(menuRecord);
+
+        addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.classList.toggle('show');
+            // Position menu above button
+            const rect = addBtn.getBoundingClientRect();
+            menu.style.bottom = '32px';
+            menu.style.left = '50%';
+            menu.style.transform = 'translateX(-50%)';
+        });
+
+        // Close menu on outside click
+        document.addEventListener('click', () => { menu.classList.remove('show'); });
+
+        addZone.appendChild(addBtn);
+        addZone.appendChild(menu);
+        this.wrap.appendChild(addZone);
+    }
+
+    _remove(idx) {
+        this.items.splice(idx, 1);
+        this.render();
+        this.onChange(this.getItems());
+    }
+    _add(type) {
+        if (type === 'text') this.items.push({ type: 'text', text: '' });
+        else this.items.push({ type: 'audio', file: null, name: '', duration: 0, objectUrl: null });
+        this.render();
+        this.onChange(this.getItems());
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Variant C: Document Flow
+// ═══════════════════════════════════════════════════════════════
+
+class FlowEditor {
+    constructor(container, onChange) {
+        this.container = container;
+        this.onChange = onChange;
+        this.items = [];
+        this.wrap = document.createElement('div');
+        container.appendChild(this.wrap);
+    }
+
+    setItems(items) {
+        this.items = items.map(it => ({ ...it }));
+        this.render();
+    }
+
+    getItems() { return deepCopy(this.items); }
+
+    render() {
+        this.wrap.innerHTML = '';
+        const list = document.createElement('div');
+        list.className = 'vc-items';
+
+        this.items.forEach((item, idx) => {
+            const row = document.createElement('div');
+            row.className = `vc-item vc-type-${item.type}`;
+
+            if (item.type === 'text') {
+                const ta = document.createElement('textarea');
+                ta.className = 'vc-textarea';
+                ta.value = item.text || '';
+                ta.placeholder = 'Type here...';
+                ta.rows = 1;
+                let composing = false;
+                ta.addEventListener('compositionstart', () => { composing = true; });
+                ta.addEventListener('compositionend', () => {
+                    composing = false;
+                    item.text = ta.value;
+                    autoResize(ta);
+                    this.onChange(this.getItems());
+                });
+                ta.addEventListener('input', () => {
+                    item.text = ta.value;
+                    autoResize(ta);
+                    if (!composing) this.onChange(this.getItems());
+                });
+                // Handle backspace on empty — remove item
+                ta.addEventListener('keydown', (e) => {
+                    if (e.key === 'Backspace' && ta.value === '' && this.items.length > 1) {
+                        e.preventDefault();
+                        this._remove(idx);
+                    }
+                });
+                row.appendChild(ta);
+                requestAnimationFrame(() => autoResize(ta));
+            } else {
+                const chip = document.createElement('div');
+                chip.className = 'vc-audio-chip';
+                if (item.name) {
+                    chip.innerHTML = `
+                        <span class="chip-icon">&#9835;</span>
+                        <span>${escapeHtml(item.name)}</span>
+                        <span style="color:#484f58">${item.duration ? item.duration.toFixed(1) + 's' : ''}</span>
+                        <button class="chip-play">&#9654;</button>
+                        <button class="chip-remove" title="Remove">&#10005;</button>`;
+                    chip.querySelector('.chip-remove').addEventListener('click', () => this._remove(idx));
+                } else {
+                    const uploadUI = createAudioUploadUI(item, idx, () => {
+                        this.render();
+                        this.onChange(this.getItems());
+                    });
+                    chip.appendChild(uploadUI);
+                }
+                row.appendChild(chip);
+            }
+
+            list.appendChild(row);
+        });
+
+        this.wrap.appendChild(list);
+
+        // Toolbar
+        const toolbar = document.createElement('div');
+        toolbar.className = 'vc-toolbar';
+
+        const addTextBtn = document.createElement('button');
+        addTextBtn.className = 'vc-tool-btn';
+        addTextBtn.textContent = '+ Text';
+        addTextBtn.addEventListener('click', () => this._add('text'));
+        toolbar.appendChild(addTextBtn);
+
+        const addAudioBtn = document.createElement('button');
+        addAudioBtn.className = 'vc-tool-btn';
+        addAudioBtn.textContent = '+ Audio';
+        addAudioBtn.addEventListener('click', () => this._add('audio'));
+        toolbar.appendChild(addAudioBtn);
+
+        const recBtn = document.createElement('button');
+        recBtn.className = 'vc-tool-btn record';
+        recBtn.textContent = '🎤 Record';
+        recBtn.addEventListener('click', () => startRecordForEditor(this));
+        toolbar.appendChild(recBtn);
+
+        this.wrap.appendChild(toolbar);
+    }
+
+    _remove(idx) {
+        this.items.splice(idx, 1);
+        this.render();
+        this.onChange(this.getItems());
+    }
+    _add(type) {
+        if (type === 'text') this.items.push({ type: 'text', text: '' });
+        else this.items.push({ type: 'audio', file: null, name: '', duration: 0, objectUrl: null });
+        this.render();
+        this.onChange(this.getItems());
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Variant D: Unified (Best)
+// ═══════════════════════════════════════════════════════════════
+
+class UnifiedEditor {
+    constructor(container, onChange) {
+        this.container = container;
+        this.onChange = onChange;
+        this.items = [];
+        this.wrap = document.createElement('div');
+        this.wrap.className = 'vu-wrap';
+        container.appendChild(this.wrap);
+        this._dragIdx = -1;
+
+        // Track focus: any click/focus inside this editor → mark as last active
+        this.wrap.addEventListener('focusin', () => { _lastActiveEditor = this; });
+        this.wrap.addEventListener('click', () => { _lastActiveEditor = this; });
+    }
+
+    destroy() { /* no global listener to clean up */ }
+
+    setItems(items) {
+        this.items = items.map(it => ({ ...it }));
+        this.render();
+    }
+
+    getItems() { return deepCopy(this.items); }
+
+    render() {
+        this.wrap.innerHTML = '';
+        if (this.items.length === 0) {
+            this._renderEmpty();
+        } else {
+            this._renderFull();
+        }
+    }
+
+    // ── Empty state: just type or record ──
+    _renderEmpty() {
+        const empty = document.createElement('div');
+        empty.className = 'vu-empty';
+
+        // Textarea — typing anything creates a text item
+        const ta = document.createElement('textarea');
+        ta.className = 'vu-empty-ta';
+        ta.placeholder = 'Type a message...';
+        ta.rows = 1;
+        let composing = false;
+        ta.addEventListener('compositionstart', () => { composing = true; });
+        ta.addEventListener('compositionend', () => {
+            composing = false;
+            if (ta.value) this._promoteText(ta);
+        });
+        ta.addEventListener('input', () => {
+            autoResize(ta);
+            if (!composing && ta.value.length > 0) {
+                this._promoteText(ta);
+            }
+        });
+        empty.appendChild(ta);
+
+        // Bottom row: add hints + record button
+        const bottom = document.createElement('div');
+        bottom.className = 'vu-empty-bottom';
+
+        const adds = document.createElement('div');
+        adds.className = 'vu-empty-adds';
+
+        const addAudioBtn = document.createElement('button');
+        addAudioBtn.className = 'vu-empty-add-btn';
+        addAudioBtn.textContent = '+ Audio (upload)';
+        addAudioBtn.addEventListener('click', () => {
+            this.items.push({ type: 'audio', file: null, name: '', duration: 0, objectUrl: null });
+            this.render();
+            this.onChange(this.getItems());
+        });
+        adds.appendChild(addAudioBtn);
+        bottom.appendChild(adds);
+
+        const recZone = document.createElement('div');
+        recZone.className = 'vu-empty-rec-zone';
+        const recBtn = document.createElement('button');
+        recBtn.className = 'vu-empty-rec-btn';
+        recBtn.textContent = '🎤';
+        recBtn.title = 'Tap Space: toggle record\nHold Space: push-to-talk\nESC: cancel';
+        recBtn.addEventListener('click', () => this._startRecording());
+        recZone.appendChild(recBtn);
+        const recHint = document.createElement('span');
+        recHint.className = 'vu-empty-rec-hint';
+        recHint.textContent = 'Space';
+        recZone.appendChild(recHint);
+        bottom.appendChild(recZone);
+
+        empty.appendChild(bottom);
+        this.wrap.appendChild(empty);
+        requestAnimationFrame(() => autoResize(ta));
+    }
+
+    _promoteText(ta) {
+        const text = ta.value;
+        this.items.push({ type: 'text', text });
+        this.render();
+        this.onChange(this.getItems());
+        // Restore cursor
+        const newTa = this.wrap.querySelector('.vu-textarea');
+        if (newTa) {
+            newTa.focus();
+            newTa.selectionStart = newTa.selectionEnd = text.length;
+        }
+    }
+
+    _startRecording() {
+        if (_globalRecordingActive) return; // another editor is already recording
+        this.items.push({
+            type: 'audio', file: null, name: '', duration: 0, objectUrl: null, _recording: true
+        });
+        this.render();
+        this.onChange(this.getItems());
+    }
+
+    // ── Full state: items + add row ──
+    _renderFull() {
+        const list = document.createElement('div');
+        list.className = 'vu-items';
+
+        this.items.forEach((item, idx) => {
+            const row = document.createElement('div');
+            row.className = 'vu-item';
+            row.draggable = true;
+            row.dataset.idx = idx;
+
+            // Drag handle
+            const drag = document.createElement('div');
+            drag.className = 'vu-drag';
+            drag.textContent = '⠿';
+            row.appendChild(drag);
+
+            // Badge
+            const badge = document.createElement('span');
+            badge.className = `vu-badge vu-badge-${item.type}`;
+            badge.textContent = item.type === 'text' ? 'T' : 'A';
+            row.appendChild(badge);
+
+            // Content
+            const content = document.createElement('div');
+            content.className = 'vu-content';
+
+            if (item.type === 'text') {
+                const ta = document.createElement('textarea');
+                ta.className = 'vu-textarea';
+                ta.value = item.text || '';
+                ta.placeholder = 'Type here...';
+                ta.rows = 1;
+                let composing = false;
+                ta.addEventListener('compositionstart', () => { composing = true; });
+                ta.addEventListener('compositionend', () => {
+                    composing = false;
+                    item.text = ta.value;
+                    autoResize(ta);
+                    this.onChange(this.getItems());
+                });
+                ta.addEventListener('input', () => {
+                    item.text = ta.value;
+                    autoResize(ta);
+                    if (!composing) this.onChange(this.getItems());
+                });
+                // Backspace on empty text → remove item
+                ta.addEventListener('keydown', (e) => {
+                    if (e.key === 'Backspace' && ta.value === '' && this.items.length > 1) {
+                        e.preventDefault();
+                        this._remove(idx);
+                    }
+                });
+                content.appendChild(ta);
+                requestAnimationFrame(() => autoResize(ta));
+            } else {
+                content.appendChild(createAudioUploadUI(item, idx, () => {
+                    this.render();
+                    this.onChange(this.getItems());
+                }));
+            }
+            row.appendChild(content);
+
+            // Action buttons: ↑ ↓ ✕ (horizontal, hover to show)
+            const actions = document.createElement('div');
+            actions.className = 'vu-item-actions';
+
+            const upBtn = document.createElement('button');
+            upBtn.className = 'vu-act';
+            upBtn.textContent = '↑';
+            upBtn.title = 'Move up';
+            upBtn.disabled = idx === 0;
+            upBtn.addEventListener('click', () => this._move(idx, -1));
+            actions.appendChild(upBtn);
+
+            const downBtn = document.createElement('button');
+            downBtn.className = 'vu-act';
+            downBtn.textContent = '↓';
+            downBtn.title = 'Move down';
+            downBtn.disabled = idx === this.items.length - 1;
+            downBtn.addEventListener('click', () => this._move(idx, 1));
+            actions.appendChild(downBtn);
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'vu-act vu-act-remove';
+            delBtn.textContent = '✕';
+            delBtn.title = 'Remove';
+            delBtn.addEventListener('click', () => this._remove(idx));
+            actions.appendChild(delBtn);
+
+            row.appendChild(actions);
+
+            // Drag & drop
+            row.addEventListener('dragstart', (e) => {
+                this._dragIdx = idx;
+                row.classList.add('vu-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            row.addEventListener('dragend', () => {
+                row.classList.remove('vu-dragging');
+                this._dragIdx = -1;
+            });
+            row.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+            });
+            row.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const from = this._dragIdx;
+                const to = idx;
+                if (from === -1 || from === to) return;
+                const [moved] = this.items.splice(from, 1);
+                this.items.splice(to, 0, moved);
+                this.render();
+                this.onChange(this.getItems());
+            });
+
+            list.appendChild(row);
+        });
+
+        this.wrap.appendChild(list);
+
+        // Add row (always visible, expanded)
+        const addRow = document.createElement('div');
+        addRow.className = 'vu-add-row';
+
+        const addText = document.createElement('button');
+        addText.className = 'vu-add-btn';
+        addText.textContent = '+ Text';
+        addText.addEventListener('click', () => this._add('text'));
+        addRow.appendChild(addText);
+
+        const addAudio = document.createElement('button');
+        addAudio.className = 'vu-add-btn';
+        addAudio.textContent = '+ Audio';
+        addAudio.addEventListener('click', () => this._add('audio'));
+        addRow.appendChild(addAudio);
+
+        const recWrap = document.createElement('div');
+        recWrap.className = 'vu-rec-wrap';
+        const recBtn = document.createElement('button');
+        recBtn.className = 'vu-add-btn vu-rec-btn';
+        recBtn.textContent = '🎤 Record';
+        recBtn.addEventListener('click', () => this._startRecording());
+        recWrap.appendChild(recBtn);
+        const recHint = document.createElement('span');
+        recHint.className = 'vu-rec-hint';
+        recHint.textContent = 'Space';
+        recWrap.appendChild(recHint);
+        addRow.appendChild(recWrap);
+
+        this.wrap.appendChild(addRow);
+    }
+
+    _add(type) {
+        if (type === 'text') this.items.push({ type: 'text', text: '' });
+        else this.items.push({ type: 'audio', file: null, name: '', duration: 0, objectUrl: null });
+        this.render();
+        this.onChange(this.getItems());
+        if (type === 'text') {
+            const tas = this.wrap.querySelectorAll('.vu-textarea');
+            const last = tas[tas.length - 1];
+            if (last) last.focus();
+        }
+    }
+
+    _move(idx, dir) {
+        const ni = idx + dir;
+        if (ni < 0 || ni >= this.items.length) return;
+        [this.items[idx], this.items[ni]] = [this.items[ni], this.items[idx]];
+        this.render();
+        this.onChange(this.getItems());
+    }
+
+    _remove(idx) {
+        this.items.splice(idx, 1);
+        this.render();
+        this.onChange(this.getItems());
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// App initialization
+// ═══════════════════════════════════════════════════════════════
+
+const editors = {};
+const chatEditors = {};
+const editStates = { a: false, b: false, c: false, d: false };
+
+function getEditorClass(variant) {
+    switch (variant) {
+        case 'a': return PanelEditor;
+        case 'b': return BlockEditor;
+        case 'c': return FlowEditor;
+        case 'd': return UnifiedEditor;
+    }
+}
+
+function initAll() {
+    // Init A/B/C
+    ['a', 'b', 'c'].forEach(variant => {
+        const EditorClass = getEditorClass(variant);
+        const outputEl = document.getElementById(`${variant}-output`);
+
+        const standalone = new EditorClass(
+            document.getElementById(`${variant}-standalone`),
+            (items) => { outputEl.textContent = JSON.stringify(items, null, 2); }
+        );
+        standalone.setItems(getSampleItems());
+        editors[variant] = standalone;
+        outputEl.textContent = JSON.stringify(standalone.getItems(), null, 2);
+
+        renderViewMode(document.getElementById(`${variant}-view`), getSampleItems());
+        chatEditors[variant] = null;
+    });
+
+    // Init D (Unified) — has two standalone editors: one with content, one empty
+    const dOutput = document.getElementById('d-output');
+    const dStandalone = new UnifiedEditor(
+        document.getElementById('d-standalone'),
+        (items) => { dOutput.textContent = JSON.stringify(items, null, 2); }
+    );
+    dStandalone.setItems(getSampleItems());
+    editors['d'] = dStandalone;
+    dOutput.textContent = JSON.stringify(dStandalone.getItems(), null, 2);
+
+    // Empty standalone for D
+    const dEmptyStandalone = new UnifiedEditor(
+        document.getElementById('d-empty-standalone'),
+        (items) => { /* secondary editor, no output binding */ }
+    );
+    dEmptyStandalone.setItems([]);
+    editors['d-empty'] = dEmptyStandalone;
+
+    renderViewMode(document.getElementById('d-view'), getSampleItems());
+    chatEditors['d'] = null;
+}
+
+function switchTab(variant) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.variant-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.tab-btn[onclick="switchTab('${variant}')"]`).classList.add('active');
+    document.getElementById(`panel-${variant}`).classList.add('active');
+}
+
+function toggleEdit(variant, editing) {
+    const viewEl = document.getElementById(`${variant}-view`);
+    const editorWrap = document.getElementById(`${variant}-editor-wrap`);
+    const saveBar = document.getElementById(`${variant}-save-bar`);
+    const editBtn = document.getElementById(`${variant}-edit-btn`);
+
+    if (editing) {
+        viewEl.style.display = 'none';
+        editorWrap.style.display = 'block';
+        saveBar.style.display = 'flex';
+        editBtn.style.display = 'none';
+
+        // Create editor if not exists
+        if (!chatEditors[variant]) {
+            const EditorClass = getEditorClass(variant);
+            chatEditors[variant] = new EditorClass(editorWrap, () => {});
+        }
+        chatEditors[variant].setItems(getSampleItems());
+    } else {
+        viewEl.style.display = '';
+        editorWrap.style.display = 'none';
+        saveBar.style.display = 'none';
+        editBtn.style.display = '';
+    }
+    editStates[variant] = editing;
+}
+
+function saveEdit(variant) {
+    if (!chatEditors[variant]) return;
+    const items = chatEditors[variant].getItems();
+
+    // Update view
+    renderViewMode(document.getElementById(`${variant}-view`), items);
+
+    // Close editor
+    toggleEdit(variant, false);
+
+    // Flash effect to show save
+    const viewEl = document.getElementById(`${variant}-view`);
+    viewEl.style.transition = 'background 0.3s';
+    viewEl.style.background = '#238636';
+    setTimeout(() => { viewEl.style.background = ''; }, 300);
+
+    console.log(`[Variant ${variant.toUpperCase()}] Saved:`, items);
+}
+
+// Initialize on load
+initAll();
+</script>
+</body>
+</html>

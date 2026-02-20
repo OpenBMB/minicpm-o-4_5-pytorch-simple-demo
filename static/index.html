@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiniCPMO45 — Multimodal Inference Service</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Noto Sans SC', sans-serif;
+            background: #f5f5f0;
+            color: #2d2d2d;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header (same as demo pages) */
+        .header {
+            background: #fff;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e5e5e0;
+            flex-shrink: 0;
+        }
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header h1 { font-size: 16px; font-weight: 600; color: #2d2d2d; letter-spacing: -0.3px; }
+        .header .nav-links { display: flex; gap: 8px; }
+        .header .nav-links a {
+            font-size: 13px; padding: 4px 12px; border-radius: 6px;
+            text-decoration: none; color: #666; transition: all 0.15s;
+        }
+        .header .nav-links a:hover { background: #f0f0eb; color: #2d2d2d; }
+        .header .nav-links a.active { background: #2d2d2d; color: #fff; }
+        .header .nav-links a:not(.active):focus { outline: none; }
+
+        /* Main: centered mode cards */
+        .home-main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 24px;
+            gap: 28px;
+        }
+        .home-title {
+            font-size: 22px;
+            font-weight: 600;
+            color: #2d2d2d;
+            margin-bottom: 8px;
+        }
+        .home-subtitle {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 32px;
+        }
+
+        .mode-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            max-width: 960px;
+            width: 100%;
+        }
+        @media (max-width: 800px) {
+            .mode-cards { grid-template-columns: 1fr; }
+        }
+
+        .mode-card {
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            border: 1px solid #e5e5e0;
+            border-radius: 16px;
+            padding: 28px 24px;
+            text-decoration: none;
+            color: inherit;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            min-height: 200px;
+        }
+        .mode-card:hover {
+            border-color: #999;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+        }
+        .mode-card .card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        .mode-card.turnbased .card-icon { background: #e8e8e3; }
+        .mode-card.omni .card-icon { background: #d4e4f7; }
+        .mode-card.audio .card-icon { background: #e8f0e8; }
+        .mode-card .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d2d2d;
+            margin-bottom: 8px;
+        }
+        .mode-card .card-desc {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.5;
+            flex: 1;
+        }
+        .mode-card .card-enter {
+            font-size: 12px;
+            color: #999;
+            margin-top: 12px;
+        }
+        .mode-card:hover .card-enter { color: #2d2d2d; }
+
+        /* Recent sessions */
+        .recent-section {
+            max-width: 960px;
+            width: 100%;
+            margin-top: 8px;
+        }
+        .recent-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .recent-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #999;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .recent-clear {
+            font-size: 12px;
+            color: #bbb;
+            border: none;
+            background: none;
+            cursor: pointer;
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: all 0.15s;
+        }
+        .recent-clear:hover { color: #888; background: #f0f0eb; }
+        .recent-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .recent-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            text-decoration: none;
+            color: #2d2d2d;
+            font-size: 13px;
+            transition: background 0.1s;
+        }
+        .recent-item:hover { background: #fff; }
+        .recent-badge {
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 4px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .recent-badge.streaming { color: #1a7f37; background: #ddf4e4; }
+        .recent-badge.chat { color: #92400e; background: #fef3c7; }
+        .recent-badge.omni_duplex { color: #1e40af; background: #dbeafe; }
+        .recent-badge.audio_duplex { color: #6d28d9; background: #ede9fe; }
+        .recent-badge.unknown { color: #888; background: #eee; }
+        .recent-id {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-family: 'SF Mono', Menlo, monospace;
+            font-size: 12px;
+            color: #555;
+        }
+        .recent-date {
+            font-size: 11px;
+            color: #bbb;
+            white-space: nowrap;
+        }
+        .recent-empty {
+            font-size: 13px;
+            color: #ccc;
+            text-align: center;
+            padding: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>MiniCPM-o 4.5</h1>
+            <div class="nav-links">
+                <a href="/" class="active">Home</a>
+                <a href="/turnbased">Turn-based Chat</a>
+                <a href="/omni">Omni Full-Duplex</a>
+                <a href="/audio_duplex">Audio Full-Duplex</a>
+            </div>
+        </div>
+    </div>
+
+    <main class="home-main">
+        <div class="home-title">Choose mode</div>
+        <div class="home-subtitle">Text · Image · Audio · Video — Multimodal inference</div>
+
+        <div class="mode-cards">
+            <a href="/turnbased" class="mode-card turnbased">
+                <div class="card-icon" aria-hidden="true">💬</div>
+                <div class="card-title">Turn-based Chat</div>
+                <div class="card-desc">Multi-turn chat: text, image, and audio input with streaming and TTS. For Q&amp;A, editing, and multi-turn tasks.</div>
+                <div class="card-enter">Enter →</div>
+            </a>
+            <a href="/omni" class="mode-card omni">
+                <div class="card-icon" aria-hidden="true">🎥</div>
+                <div class="card-title">Omni Full-Duplex</div>
+                <div class="card-desc">Full-duplex real-time: camera + mic or local video/audio file; speak and see with live replies. Live / File modes.</div>
+                <div class="card-enter">Enter →</div>
+            </a>
+            <a href="/audio_duplex" class="mode-card audio">
+                <div class="card-icon" aria-hidden="true">🎤</div>
+                <div class="card-title">Audio Full-Duplex</div>
+                <div class="card-desc">Voice-only full-duplex: live mic or local audio file, low-latency voice conversation. Live / File modes.</div>
+                <div class="card-enter">Enter →</div>
+            </a>
+        </div>
+
+        <div class="recent-section" id="recent-section" style="display:none;">
+            <div class="recent-header">
+                <span class="recent-title">Recent Sessions</span>
+                <button class="recent-clear" id="recent-clear-btn">Clear</button>
+            </div>
+            <div class="recent-list" id="recent-list"></div>
+        </div>
+    </main>
+
+    <script>
+    (function() {
+        const KEY = 'minicpmo45_recent_sessions';
+        const section = document.getElementById('recent-section');
+        const listEl = document.getElementById('recent-list');
+        const clearBtn = document.getElementById('recent-clear-btn');
+
+        function render() {
+            let sessions = [];
+            try { sessions = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch {}
+
+            if (!sessions.length) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+
+            listEl.innerHTML = sessions.map(function(s) {
+                const d = new Date(s.savedAt);
+                const dateStr = (d.getMonth()+1) + '/' + d.getDate() + ' '
+                    + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+                const badgeType = s.appType || 'unknown';
+                return '<a class="recent-item" href="/s/' + s.id + '" target="_blank" title="' + s.id + '">'
+                    + '<span class="recent-badge ' + badgeType + '">' + badgeType.replace('_', ' ') + '</span>'
+                    + '<span class="recent-id">' + s.id + '</span>'
+                    + '<span class="recent-date">' + dateStr + '</span>'
+                    + '</a>';
+            }).join('');
+        }
+
+        clearBtn.addEventListener('click', function() {
+            localStorage.removeItem(KEY);
+            render();
+        });
+
+        render();
+    })();
+    </script>
+</body>
+</html>

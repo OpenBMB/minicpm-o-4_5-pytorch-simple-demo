@@ -1,0 +1,15 @@
+{
+  "description": "测试多轮对话：数学计算延续，期望回答包含'84'",
+  "input": {
+    "messages": [
+      {"role": "user", "content": "请帮我计算 15 + 27 等于多少？"},
+      {"role": "assistant", "content": "15 + 27 = 42"},
+      {"role": "user", "content": "那这个结果再乘以 2 呢？"}
+    ],
+    "generation": {"max_new_tokens": 100}
+  },
+  "expected": {
+    "success": true,
+    "text_contains": ["84"]
+  }
+}

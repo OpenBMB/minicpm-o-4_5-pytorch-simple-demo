@@ -1,0 +1,16 @@
+{
+  "description": "测试基础双工对话：用户音频输入，期望模型响应文本和音频",
+  "input": {
+    "system_prompt": "Streaming Duplex Conversation! You are a helpful assistant.",
+    "user_audio_path": "${INPUT_DIR}/user_audio/000_user_audio0.wav",
+    "ref_audio_path": "${REF_AUDIO_PATH}",
+    "config": {
+      "force_listen_count": 3
+    }
+  },
+  "expected": {
+    "success": true,
+    "text_min_length": 1,
+    "has_audio": true
+  }
+}

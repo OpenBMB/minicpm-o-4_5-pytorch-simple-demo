@@ -1,0 +1,1514 @@
+"""MiniCPMO45 推理 Worker
+
+每个 Worker 占用一张 GPU，持有一个 UnifiedProcessor 实例，
+提供 Chat (HTTP) / Streaming (WebSocket) / Duplex (WebSocket) 三种推理 API。
+
+启动方式：
+    cd /user/sunweiyue/lib/swy-dev/minicpmo45_service
+    CUDA_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/base/bin/python worker.py \\
+        --port 10031 \\
+        --model-path /path/to/base_model \\
+        --pt-path /path/to/custom.pt \\
+        --ref-audio-path /path/to/ref.wav
+"""
+
+import gc
+import re
+import json
+import time
+import uuid
+import asyncio
+import argparse
+import logging
+import base64
+import threading
+from enum import Enum
+from typing import Optional, List, Dict, Any, Iterator
+from datetime import datetime
+
+import numpy as np
+import torch
+import uvicorn
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
+
+from core.schemas.common import Message, Role, TextContent, AudioContent, ImageContent, ContentItem
+from core.schemas.chat import ChatRequest, ChatResponse
+from core.schemas.streaming import (
+    StreamingRequest, StreamingChunk, StreamingResponse, StreamingConfig,
+)
+from core.schemas.duplex import (
+    DuplexConfig, DuplexGenerateResult, DuplexPrefillRequest,
+)
+from session_recorder import DuplexSessionRecorder, TurnBasedSessionRecorder, generate_session_id
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("worker")
+
+
+# ============ Worker 状态 ============
+
+class WorkerStatus(str, Enum):
+    """Worker 状态"""
+    LOADING = "loading"        # 正在加载模型
+    IDLE = "idle"              # 空闲（可接受新请求）
+    BUSY_CHAT = "busy_chat"    # 正在处理 Chat 请求
+    BUSY_STREAMING = "busy_streaming"  # 正在处理 Streaming 请求
+    DUPLEX_ACTIVE = "duplex_active"    # Duplex 活跃中
+    DUPLEX_PAUSED = "duplex_paused"    # Duplex 暂停中
+    ERROR = "error"            # 异常状态
+
+
+class WorkerState(BaseModel):
+    """Worker 运行时状态"""
+    status: WorkerStatus = WorkerStatus.LOADING
+    current_session_id: Optional[str] = None
+    duplex_pause_time: Optional[float] = None  # Duplex 暂停的时间戳
+    total_requests: int = 0
+    total_inference_time_ms: float = 0.0
+    last_activity: Optional[str] = None
+
+    @property
+    def is_idle(self) -> bool:
+        return self.status == WorkerStatus.IDLE
+
+    @property
+    def is_busy(self) -> bool:
+        return self.status in (
+            WorkerStatus.BUSY_CHAT,
+            WorkerStatus.BUSY_STREAMING,
+            WorkerStatus.DUPLEX_ACTIVE,
+            WorkerStatus.DUPLEX_PAUSED,
+        )
+
+
+# ============ 请求/响应模型 ============
+
+class WorkerHealthResponse(BaseModel):
+    """健康检查响应"""
+    status: str
+    worker_status: WorkerStatus
+    gpu_id: int
+    model_loaded: bool
+    current_session_id: Optional[str] = None
+    total_requests: int = 0
+    avg_inference_time_ms: float = 0.0
+    kv_cache_length: int = 0  # 当前 LLM KV cache token 总数
+
+
+class StreamingWsMessage(BaseModel):
+    """Streaming WebSocket 消息（Client → Server）"""
+    type: str  # "prefill" | "generate" | "complete_turn" | "close"
+    # prefill 参数
+    messages: Optional[List[Dict[str, Any]]] = None
+    session_id: Optional[str] = None
+    is_last_chunk: bool = True
+    # generate 参数
+    generate_audio: bool = True
+    max_new_tokens: int = 256
+    # complete_turn 参数
+    output_audio_path: Optional[str] = None
+
+
+class DuplexWsMessage(BaseModel):
+    """Duplex WebSocket 消息（Client → Server）"""
+    type: str  # "prepare" | "audio_chunk" | "pause" | "resume" | "stop"
+    # prepare 参数
+    system_prompt: Optional[str] = None
+    ref_audio_path: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    # audio_chunk 参数
+    audio_base64: Optional[str] = None
+    frame_base64_list: Optional[List[str]] = None
+    force_listen: Optional[bool] = None  # Force Listen 开关（per-chunk）
+
+
+# ============ Worker 主类 ============
+
+class MiniCPMOWorker:
+    """MiniCPMO45 推理 Worker
+
+    持有一个 UnifiedProcessor 实例，提供三种推理模式。
+    """
+
+    def __init__(
+        self,
+        model_path: str,
+        gpu_id: int,
+        pt_path: Optional[str] = None,
+        ref_audio_path: Optional[str] = None,
+        duplex_pause_timeout: float = 60.0,
+        compile: bool = False,
+        chat_vocoder: str = "token2wav",
+        attn_implementation: str = "auto",
+    ):
+        self.model_path = model_path
+        self.gpu_id = gpu_id
+        self.pt_path = pt_path
+        self.ref_audio_path = ref_audio_path
+        self.duplex_pause_timeout = duplex_pause_timeout
+        self.compile = compile
+        self.chat_vocoder = chat_vocoder
+        self.attn_implementation = attn_implementation
+
+        self.state = WorkerState()
+        self.processor = None
+
+        # Duplex 暂停超时监控 task
+        self._duplex_timeout_task: Optional[asyncio.Task] = None
+
+    def load_model(self) -> None:
+        """加载模型（同步，在启动时调用）"""
+        self.state.status = WorkerStatus.LOADING
+        logger.info(f"[GPU {self.gpu_id}] Loading model from {self.model_path}...")
+
+        from core.processors.unified import UnifiedProcessor
+
+        self.processor = UnifiedProcessor(
+            model_path=self.model_path,
+            pt_path=self.pt_path,
+            ref_audio_path=self.ref_audio_path,
+            compile=self.compile,
+            chat_vocoder=self.chat_vocoder,
+            attn_implementation=self.attn_implementation,
+        )
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        self.state.status = WorkerStatus.IDLE
+        logger.info(f"[GPU {self.gpu_id}] Model loaded successfully")
+
+        # 检查模型各组件的 device 分布
+        self._log_device_map()
+
+    def _log_device_map(self) -> None:
+        """打印模型各关键组件的 device，用于确认是否全部在 GPU 上"""
+        if self.processor is None:
+            return
+        model = self.processor.model
+        checks: list[tuple[str, str]] = []
+
+        # LLM
+        try:
+            p = next(model.llm.parameters())
+            checks.append(("LLM", str(p.device)))
+        except Exception:
+            checks.append(("LLM", "N/A"))
+
+        # Vision encoder
+        try:
+            p = next(model.vpm.parameters())
+            checks.append(("Vision (vpm)", str(p.device)))
+        except Exception:
+            checks.append(("Vision (vpm)", "N/A"))
+
+        # Whisper / audio encoder
+        for name in ("apm", "audio_encoder", "whisper"):
+            if hasattr(model, name):
+                try:
+                    p = next(getattr(model, name).parameters())
+                    checks.append((f"Audio ({name})", str(p.device)))
+                except Exception:
+                    checks.append((f"Audio ({name})", "no params"))
+                break
+
+        # TTS 模块
+        if hasattr(model, "tts"):
+            tts = model.tts
+            # TTS 主体
+            try:
+                p = next(tts.parameters())
+                checks.append(("TTS (main)", str(p.device)))
+            except Exception:
+                checks.append(("TTS (main)", "N/A"))
+
+            # audio_tokenizer (Token2Wav 关键组件)
+            if hasattr(tts, "audio_tokenizer"):
+                tok = tts.audio_tokenizer
+                try:
+                    p = next(tok.parameters())
+                    checks.append(("TTS audio_tokenizer", str(p.device)))
+                except Exception:
+                    checks.append(("TTS audio_tokenizer", "no params"))
+
+                # hift (vocoder in Token2Wav)
+                if hasattr(tok, "hift"):
+                    try:
+                        p = next(tok.hift.parameters())
+                        checks.append(("TTS hift (vocoder)", str(p.device)))
+                    except Exception:
+                        checks.append(("TTS hift (vocoder)", "no params"))
+
+            # CosyVoice2 / flow model
+            for attr_name in ("cosyvoice", "cosyvoice2", "flow"):
+                if hasattr(tts, attr_name):
+                    try:
+                        p = next(getattr(tts, attr_name).parameters())
+                        checks.append((f"TTS {attr_name}", str(p.device)))
+                    except Exception:
+                        checks.append((f"TTS {attr_name}", "no params"))
+
+        # Duplex decoder
+        if hasattr(model, "duplex") and model.duplex is not None:
+            try:
+                p = next(model.duplex.decoder.parameters())
+                checks.append(("Duplex decoder", str(p.device)))
+            except Exception:
+                checks.append(("Duplex decoder", "N/A"))
+
+        logger.info(f"[GPU {self.gpu_id}] === Device Map ===")
+        for name, device in checks:
+            on_gpu = "cuda" in device
+            marker = "✓" if on_gpu else "⚠ CPU!"
+            logger.info(f"[GPU {self.gpu_id}]   {marker} {name}: {device}")
+
+    # ========== Chat ==========
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        """执行 Chat 推理（无状态）
+
+        Chat 模式下 cached_tokens 始终为 0（每次从头 prefill）。
+        token_stats 中的 input_tokens/generated_tokens 从模型输出精确获取：
+        - input_tokens: tokenizer 级别（含 audio/image 占位符，不含 embedding 展开）
+        - generated_tokens: LLM 实际生成的 token 数
+        """
+        if not self.state.is_idle:
+            raise RuntimeError(f"Worker not idle, status: {self.state.status}")
+
+        self.state.status = WorkerStatus.BUSY_CHAT
+        self.state.last_activity = datetime.now().isoformat()
+        start_time = time.perf_counter()
+
+        try:
+            chat_view = self.processor.set_chat_mode()
+            response = chat_view.chat(
+                request,
+                max_new_tokens=request.generation.max_new_tokens,
+                do_sample=request.generation.do_sample,
+                generate_audio=request.tts.enabled if request.tts else False,
+            )
+
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            self.state.total_requests += 1
+            self.state.total_inference_time_ms += elapsed_ms
+
+            # Chat token 统计已在 ChatView._chat_impl() 中从模型输出精确获取
+            # input_tokens: tokenizer 级别（含 audio/image 占位符）
+            # generated_tokens: LLM 实际生成的 token 数
+
+            ts = response.token_stats or {}
+            logger.info(
+                f"[GPU {self.gpu_id}] Chat completed: "
+                f"{len(response.text)} chars, {elapsed_ms:.0f}ms, "
+                f"tokens: in={ts.get('input_tokens', '?')} "
+                f"gen={ts.get('generated_tokens', '?')} "
+                f"total={ts.get('total_tokens', '?')}"
+            )
+            return response
+        finally:
+            # Chat 是无状态的，完成后清除 KV Cache 映射
+            self.state.status = WorkerStatus.IDLE
+            self.state.current_session_id = None
+
+    # ========== Streaming ==========
+
+    def streaming_prefill(self, request: StreamingRequest) -> str:
+        """Streaming 预填充"""
+        streaming_view = self.processor.set_streaming_mode()
+        prompt = streaming_view.prefill(request)
+        return prompt
+
+    def streaming_init_tts(self, ref_audio_data: Optional[np.ndarray] = None) -> None:
+        """初始化 Streaming TTS（在 generate 前调用，如需生成音频）
+        
+        Args:
+            ref_audio_data: 前端上传的 ref audio ndarray (16kHz mono float32)。
+                若提供则使用此数据，否则使用 worker 默认的 ref_audio_path。
+        """
+        streaming_view = self.processor.set_streaming_mode()
+        if ref_audio_data is not None:
+            streaming_view.init_ref_audio_from_data(ref_audio_data)
+        else:
+            streaming_view.init_ref_audio(self.ref_audio_path)
+
+    def streaming_generate(
+        self,
+        session_id: str,
+        generate_audio: bool = True,
+        max_new_tokens: int = 256,
+        length_penalty: float = 1.1,
+    ) -> Iterator[StreamingChunk]:
+        """Streaming 生成（yield StreamingChunk）"""
+        streaming_view = self.processor.set_streaming_mode()
+        yield from streaming_view.generate(
+            session_id=session_id,
+            generate_audio=generate_audio,
+            max_new_tokens=max_new_tokens,
+            length_penalty=length_penalty,
+        )
+
+    def streaming_complete_turn(
+        self,
+        session_id: str,
+        messages: List[Message],
+        generate_audio: bool = True,
+        max_new_tokens: int = 256,
+        output_audio_path: Optional[str] = None,
+        length_penalty: float = 1.1,
+    ) -> StreamingResponse:
+        """Streaming 完成一轮（便捷方法）"""
+        streaming_view = self.processor.set_streaming_mode()
+        return streaming_view.complete_turn(
+            session_id=session_id,
+            messages=messages,
+            generate_audio=generate_audio,
+            max_new_tokens=max_new_tokens,
+            output_audio_path=output_audio_path,
+            length_penalty=length_penalty,
+        )
+
+    def reset_streaming_session(self) -> None:
+        """重置 Streaming 模型 session（清除 KV cache）
+
+        Gateway 指示 clear_kv_cache=true 时调用。
+        """
+        streaming_view = self.processor.set_streaming_mode()
+        streaming_view._model.reset_session(reset_token2wav_cache=False)
+        logger.info(f"[GPU {self.gpu_id}] Streaming model session reset (KV cache cleared)")
+
+    # ========== Duplex ==========
+
+    def duplex_prepare(
+        self,
+        system_prompt_text: Optional[str] = None,
+        ref_audio_path: Optional[str] = None,
+        prompt_wav_path: Optional[str] = None,
+    ) -> str:
+        """Duplex 准备
+
+        Args:
+            system_prompt_text: 系统提示文本
+            ref_audio_path: LLM 参考音频路径（嵌入 system prompt）
+            prompt_wav_path: TTS 参考音频路径（初始化 vocoder）。
+                若不提供则 fallback 到 ref_audio_path。
+        """
+        duplex_view = self.processor.set_duplex_mode()
+        return duplex_view.prepare(
+            system_prompt_text=system_prompt_text,
+            ref_audio_path=ref_audio_path or self.ref_audio_path,
+            prompt_wav_path=prompt_wav_path,
+        )
+
+    def duplex_prefill(
+        self,
+        audio_waveform: Optional[np.ndarray] = None,
+        frame_list: Optional[list] = None,
+        max_slice_nums: int = 1,
+    ) -> Dict[str, Any]:
+        """Duplex 预填充"""
+        duplex_view = self.processor.set_duplex_mode()
+        return duplex_view.prefill(
+            audio_waveform=audio_waveform,
+            frame_list=frame_list,
+            max_slice_nums=max_slice_nums,
+        )
+
+    def duplex_generate(self, force_listen: bool = False) -> DuplexGenerateResult:
+        """Duplex 生成
+        
+        Args:
+            force_listen: 前端 Force Listen 开关，强制本次生成为 listen
+        """
+        duplex_view = self.processor.set_duplex_mode()
+        return duplex_view.generate(force_listen=force_listen)
+
+    def duplex_finalize(self) -> None:
+        """Duplex 延迟 finalize（feed 终止符 + 滑窗维护）
+        
+        必须在 duplex_generate 之后、下一次 duplex_prefill 之前调用。
+        """
+        duplex_view = self.processor.set_duplex_mode()
+        duplex_view.finalize()
+
+    def duplex_stop(self) -> None:
+        """Duplex 停止"""
+        duplex_view = self.processor.set_duplex_mode()
+        duplex_view.stop()
+
+    def duplex_cleanup(self) -> None:
+        """Duplex 会话结束后释放 GPU 资源，恢复到初始状态
+
+        调用 DuplexView.cleanup() 释放 KV cache、TTS caches 等，
+        然后触发 gc + empty_cache 确保显存真正归还。
+
+        诊断数据（40B 参数模型）：
+        - stop 后泄漏: ~1,591 MB
+        - cleanup 后残留: ~48 MB（忽略不计）
+        - 释放量: ~1,543 MB
+        """
+        if self.processor is None:
+            return
+
+        duplex_view = self.processor.set_duplex_mode()
+        duplex_view.cleanup()
+        gc.collect()
+        torch.cuda.empty_cache()
+        logger.info(f"[GPU {self.gpu_id}] Duplex cleanup done, GPU memory released")
+
+
+# ============ FastAPI 应用 ============
+
+worker: Optional[MiniCPMOWorker] = None
+
+# 启动参数（通过 main() 传入）
+WORKER_CONFIG: Dict[str, Any] = {}
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期：启动时加载模型"""
+    global worker
+    config = WORKER_CONFIG
+
+    worker = MiniCPMOWorker(
+        model_path=config["model_path"],
+        gpu_id=config["gpu_id"],
+        pt_path=config.get("pt_path"),
+        ref_audio_path=config.get("ref_audio_path"),
+        duplex_pause_timeout=config.get("duplex_pause_timeout", 60.0),
+        compile=config.get("compile", False),
+        chat_vocoder=config.get("chat_vocoder", "token2wav"),
+        attn_implementation=config.get("attn_implementation", "auto"),
+    )
+
+    # 模型加载是同步操作（~15s），在线程中执行避免阻塞
+    await asyncio.to_thread(worker.load_model)
+
+    yield
+
+    logger.info("Worker shutting down")
+
+
+app = FastAPI(title="MiniCPMO45 Worker", lifespan=lifespan)
+
+
+# ========== 健康检查 ==========
+
+@app.get("/health", response_model=WorkerHealthResponse)
+async def health():
+    """健康检查"""
+    if worker is None:
+        return WorkerHealthResponse(
+            status="initializing",
+            worker_status=WorkerStatus.LOADING,
+            gpu_id=0,
+            model_loaded=False,
+        )
+
+    avg_time = 0.0
+    if worker.state.total_requests > 0:
+        avg_time = worker.state.total_inference_time_ms / worker.state.total_requests
+
+    kv_len = worker.processor.kv_cache_length if worker.processor else 0
+    return WorkerHealthResponse(
+        status="healthy" if worker.processor is not None else "error",
+        worker_status=worker.state.status,
+        gpu_id=worker.gpu_id,
+        model_loaded=worker.processor is not None,
+        current_session_id=worker.state.current_session_id,
+        total_requests=worker.state.total_requests,
+        avg_inference_time_ms=avg_time,
+        kv_cache_length=kv_len,
+    )
+
+
+# ========== Chat API ==========
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """Chat 推理（无状态）"""
+    if worker is None or worker.processor is None:
+        raise HTTPException(status_code=503, detail="Worker not ready")
+
+    if not worker.state.is_idle:
+        # Gateway 排队机制已保证并发安全，但 Worker 可能还在 cleanup 上一个任务
+        # （如 Duplex WS close 后 GPU 资源释放），短暂等待而非立即拒绝
+        for _ in range(10):
+            await asyncio.sleep(0.5)
+            if worker.state.is_idle:
+                break
+        else:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Worker busy after waiting 5s, status: {worker.state.status.value}",
+            )
+
+    # 录制：创建 TurnBasedSessionRecorder
+    chat_recorder: Optional[TurnBasedSessionRecorder] = None
+    chat_session_id: Optional[str] = None
+    from config import get_config
+    chat_cfg = get_config()
+    if chat_cfg.recording.enabled:
+        chat_session_id = generate_session_id("chat")
+        sys_prompt = ""
+        for m in request.messages:
+            if m.role == "system":
+                c = m.content
+                sys_prompt = c if isinstance(c, str) else str(c)
+                break
+        chat_recorder = TurnBasedSessionRecorder(
+            session_id=chat_session_id,
+            app_type="chat",
+            worker_id=worker.gpu_id,
+            config_snapshot={
+                "system_prompt": sys_prompt,
+                "ref_audio": chat_cfg.ref_audio_path,
+            },
+            data_dir=chat_cfg.data_dir,
+        )
+
+    try:
+        response = await asyncio.to_thread(worker.chat, request)
+
+        # 录制：记录 chat turn
+        if chat_recorder and response.success:
+            input_summary: Dict[str, Any] = {}
+            for m in request.messages:
+                if m.role == "user":
+                    c = m.content
+                    if isinstance(c, str):
+                        input_summary["text"] = c
+                    elif isinstance(c, list):
+                        texts = [it.text for it in c if hasattr(it, "text") and it.text]
+                        if texts:
+                            input_summary["text"] = " ".join(texts)
+            output_audio: Optional[np.ndarray] = None
+            if response.audio_data:
+                try:
+                    audio_bytes = base64.b64decode(response.audio_data)
+                    output_audio = np.frombuffer(audio_bytes, dtype=np.float32)
+                except Exception:
+                    pass
+            chat_recorder.record_chat_turn(
+                turn_index=0,
+                request_ts_ms=0.0,
+                input_summary=input_summary,
+                output_text=response.text,
+                output_audio=output_audio,
+                timing={
+                    "elapsed_ms": round(response.duration_ms, 1) if response.duration_ms else 0,
+                    "tokens": response.tokens_generated or 0,
+                },
+            )
+
+        if chat_recorder:
+            chat_recorder.finalize()
+
+        if chat_session_id and response.success:
+            response.recording_session_id = chat_session_id
+
+        return response
+    except Exception as e:
+        if chat_recorder:
+            try:
+                chat_recorder.finalize()
+            except Exception:
+                pass
+        logger.error(f"Chat failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========== Streaming Stop 信号（每连接独立） ==========
+# 每个 WS 连接创建独立的 threading.Event()，按 session_id 索引。
+# HTTP POST /streaming/stop 广播到所有活跃 session。
+# 安全性：
+#   - dict 操作在 asyncio 单线程事件循环中，无并发写入
+#   - threading.Event 本身线程安全（asyncio 线程 ↔ generate 工作线程）
+_SESSION_ID_RE = re.compile(r'^[a-zA-Z0-9_\-]+$')
+
+
+def _sanitize_session_id(session_id: str) -> str:
+    """校验 session_id 只含安全字符，防止 path traversal"""
+    if not _SESSION_ID_RE.match(session_id):
+        safe = re.sub(r'[^a-zA-Z0-9_\-]', '_', session_id)
+        return safe
+    return session_id
+
+
+_streaming_stop_events: Dict[str, threading.Event] = {}
+
+# ========== Streaming Ref Audio 缓存 ==========
+# session_id → ref_audio ndarray（前端上传的 ref audio，用于 generate 阶段 TTS init）
+# 生命周期：prefill 时写入，generate 时消费并清除
+_streaming_ref_audio_cache: Dict[str, np.ndarray] = {}
+
+
+@app.post("/streaming/stop")
+async def streaming_stop():
+    """停止所有正在进行的 Streaming 生成"""
+    if not _streaming_stop_events:
+        return {"success": False, "message": "No active streaming session"}
+    for sid, evt in _streaming_stop_events.items():
+        evt.set()
+        logger.info(f"Streaming stop signal sent to session {sid}")
+    return {"success": True, "message": f"Stop signal sent to {len(_streaming_stop_events)} session(s)"}
+
+
+# ========== Streaming WebSocket ==========
+
+@app.websocket("/ws/streaming")
+async def streaming_ws(ws: WebSocket):
+    """Streaming WebSocket
+
+    协议：
+    1. Client → {"type": "prefill", "session_id": "...", "messages": [...]}
+    2. Client → {"type": "generate", "generate_audio": true}
+    3. Server → {"type": "chunk", ...}（逐块）
+    4. Client → {"type": "stop"}（可选，中断生成）
+    5. Server → {"type": "done", "stopped": true/false, ...}
+    6. Client → {"type": "close"}
+    """
+    if worker is None or worker.processor is None:
+        await ws.close(code=1013, reason="Worker not ready")
+        return
+
+    await ws.accept()
+    conn_id = uuid.uuid4().hex[:8]
+    logger.info(f"Streaming WebSocket connected (conn={conn_id})")
+
+    stop_event = threading.Event()
+    _streaming_stop_events[conn_id] = stop_event
+
+    # Token 统计（跨 prefill/generate 保持）
+    _cached_tokens: int = 0   # prefill 前 KV cache 长度（缓存命中的 token 数）
+    _input_tokens: int = 0    # prefill 后 KV cache 长度（总输入 token 数）
+
+    # Session 录制器
+    stm_recorder: Optional[TurnBasedSessionRecorder] = None
+    stm_turn_index: int = 0
+    stm_session_start_perf: float = time.perf_counter()
+    stm_session_id: Optional[str] = None
+
+    from config import get_config
+    stm_cfg = get_config()
+    if stm_cfg.recording.enabled:
+        stm_session_id = generate_session_id("stm")
+        stm_recorder = TurnBasedSessionRecorder(
+            session_id=stm_session_id,
+            app_type="streaming",
+            worker_id=worker.gpu_id,
+            config_snapshot={},
+            data_dir=stm_cfg.data_dir,
+        )
+
+    try:
+        while True:
+            raw = await ws.receive_text()
+            msg = json.loads(raw)
+            msg_type = msg.get("type", "")
+
+            if msg_type == "prefill":
+                if not worker.state.is_idle and worker.state.status != WorkerStatus.BUSY_STREAMING:
+                    # Gateway 排队保证并发安全，Worker 可能还在 cleanup，等待
+                    waited = False
+                    for _ in range(10):
+                        await asyncio.sleep(0.5)
+                        if worker.state.is_idle or worker.state.status == WorkerStatus.BUSY_STREAMING:
+                            waited = True
+                            break
+                    if not waited:
+                        await ws.send_json({"type": "error", "error": f"Worker busy after waiting 5s: {worker.state.status.value}"})
+                        continue
+
+                worker.state.status = WorkerStatus.BUSY_STREAMING
+                session_id = "streaming"  # 固定值，is_first 由 clear_kv_cache 控制
+                worker.state.current_session_id = session_id
+
+                # Gateway 指示是否需要清除 KV cache（缓存未命中时为 true）
+                if msg.get("clear_kv_cache", False):
+                    worker.reset_streaming_session()
+                    logger.info("clear_kv_cache=true: KV cache cleared")
+
+                # --- TTS ref audio 解码（前端上传的 base64 PCM float32 16kHz mono）---
+                # tts_ref_audio_base64 优先，fallback 到 ref_audio_base64（向后兼容）
+                _has_tts_field = "tts_ref_audio_base64" in msg and msg["tts_ref_audio_base64"]
+                _has_ref_field = "ref_audio_base64" in msg and msg["ref_audio_base64"]
+                ref_audio_b64 = msg.get("tts_ref_audio_base64") or msg.get("ref_audio_base64")
+                ref_audio_ndarray: Optional[np.ndarray] = None
+                if ref_audio_b64:
+                    ref_audio_bytes = base64.b64decode(ref_audio_b64)
+                    ref_audio_ndarray = np.frombuffer(ref_audio_bytes, dtype=np.float32)
+                    _src = "tts_ref_audio_base64" if _has_tts_field else "ref_audio_base64(fallback)"
+                    logger.info(f"[TTS RefAudio] source={_src}, {len(ref_audio_ndarray)} samples ({len(ref_audio_ndarray)/16000:.1f}s)")
+                else:
+                    logger.info(f"[TTS RefAudio] NOT provided in prefill (tts_ref_audio_base64={_has_tts_field}, ref_audio_base64={_has_ref_field})")
+
+                # --- 构建消息列表 ---
+                raw_messages = msg.get("messages", [])
+                messages: List[Message] = []
+
+                for m in raw_messages:
+                    role = Role(m["role"])
+                    content = m["content"]
+
+                    if isinstance(content, list):
+                        # content list 格式（所有 role 通用）
+                        # 格式：[{type:"text", text:...}, {type:"audio", data:...}, {type:"image", data:...}, ...]
+                        content_items: List[ContentItem] = []
+                        for item in content:
+                            if isinstance(item, dict):
+                                if item.get("type") == "text" and item.get("text"):
+                                    content_items.append(TextContent(text=item["text"]))
+                                elif item.get("type") == "audio" and item.get("data"):
+                                    content_items.append(AudioContent(data=item["data"]))
+                                elif item.get("type") == "image" and item.get("data"):
+                                    content_items.append(ImageContent(data=item["data"]))
+                        if content_items:
+                            messages.append(Message(role=role, content=content_items))
+                            logger.info(f"[{role.value}] content list: {len(content_items)} items "
+                                        f"({sum(1 for i in content_items if isinstance(i, TextContent))} text, "
+                                        f"{sum(1 for i in content_items if isinstance(i, AudioContent))} audio, "
+                                        f"{sum(1 for i in content_items if isinstance(i, ImageContent))} image)")
+                        else:
+                            # content list 为空（所有 item 都无效），跳过
+                            logger.warning(f"[{role.value}] content list is empty after parsing, skipped")
+                    else:
+                        messages.append(Message(role=role, content=content))
+
+                # 缓存 ref audio ndarray，供 generate 阶段 TTS init 使用
+                if ref_audio_ndarray is not None:
+                    _streaming_ref_audio_cache[session_id] = ref_audio_ndarray
+
+                # 图像 HD 配置：前端可通过 max_slice_nums 控制（默认 None → 用 preprocessor_config 的值）
+                image_config = {}
+                msn = msg.get("max_slice_nums")
+                if msn is not None:
+                    image_config["max_slice_nums"] = int(msn)
+
+                request = StreamingRequest(
+                    session_id=session_id,
+                    messages=messages,
+                    is_last_chunk=msg.get("is_last_chunk", True),
+                    **({"image": image_config} if image_config else {}),
+                )
+
+                try:
+                    def _do_prefill():
+                        """在线程中执行 prefill 并捕获前后 KV cache 长度"""
+                        pre_kv = worker.processor.kv_cache_length
+                        prompt = worker.streaming_prefill(request)
+                        post_kv = worker.processor.kv_cache_length
+                        return prompt, pre_kv, post_kv
+
+                    prompt, _cached_tokens, _input_tokens = await asyncio.to_thread(_do_prefill)
+                    logger.info(
+                        f"[Streaming prefill] cached_tokens={_cached_tokens}, "
+                        f"input_tokens={_input_tokens}, "
+                        f"new_tokens={_input_tokens - _cached_tokens}"
+                    )
+
+                    # 录制：start_turn + 首轮补全 config_snapshot
+                    if stm_recorder:
+                        if stm_turn_index == 0:
+                            sys_prompt = ""
+                            for m_msg in raw_messages:
+                                if m_msg.get("role") == "system":
+                                    c = m_msg.get("content", "")
+                                    sys_prompt = c if isinstance(c, str) else str(c)
+                                    break
+                            stm_recorder.update_config({
+                                "system_prompt": sys_prompt,
+                                "ref_audio": stm_cfg.ref_audio_path,
+                                **({"max_slice_nums": int(msn)} if msn is not None else {}),
+                            })
+
+                        input_summary: Dict[str, Any] = {}
+                        for m_msg in raw_messages:
+                            if m_msg.get("role") == "user":
+                                c = m_msg.get("content", "")
+                                if isinstance(c, str):
+                                    input_summary["text"] = c
+                                elif isinstance(c, list):
+                                    texts = [it["text"] for it in c if it.get("type") == "text" and it.get("text")]
+                                    if texts:
+                                        input_summary["text"] = " ".join(texts)
+                                    imgs = [it for it in c if it.get("type") == "image"]
+                                    if imgs:
+                                        saved_imgs = []
+                                        for img_item in imgs:
+                                            try:
+                                                img_data = base64.b64decode(img_item["data"])
+                                                idx = stm_recorder.next_image_index()
+                                                rel = stm_recorder.save_user_image(idx, img_data)
+                                                saved_imgs.append(rel)
+                                            except Exception:
+                                                pass
+                                        if saved_imgs:
+                                            input_summary["images"] = saved_imgs
+                        request_ts_ms = (time.perf_counter() - stm_session_start_perf) * 1000
+                        stm_recorder.start_turn(stm_turn_index, request_ts_ms, input_summary)
+
+                    await ws.send_json({
+                        "type": "prefill_done",
+                        "prompt_length": len(prompt),
+                        "message_count": len(messages),
+                        "cached_tokens": _cached_tokens,
+                        "input_tokens": _input_tokens,
+                        **({"recording_session_id": stm_session_id} if stm_session_id else {}),
+                    })
+                except Exception as e:
+                    logger.error(f"Streaming prefill failed: {e}", exc_info=True)
+                    await ws.send_json({"type": "error", "error": str(e)})
+
+            elif msg_type == "generate":
+                session_id = msg.get("session_id", worker.state.current_session_id or "default")
+                generate_audio = msg.get("generate_audio", True)
+                max_new_tokens = msg.get("max_new_tokens", 256)
+                length_penalty = msg.get("length_penalty", 1.1)
+
+                start_time = time.perf_counter()
+                stop_event.clear()  # 重置 stop 信号
+
+                logger.info(f"[Streaming generate] session={session_id} generate_audio={generate_audio} length_penalty={length_penalty}")
+
+                try:
+                    # TTS 初始化：使用前端发送的 ref audio（默认或用户自定义）
+                    # 注意：prefill 用固定 key "streaming" 缓存，generate 的 session_id 可能是前端的 req_xxx
+                    # 因此这里用 "streaming"（与 prefill 一致）作为 cache key
+                    _cache_key = "streaming"
+                    cached_ref = _streaming_ref_audio_cache.pop(_cache_key, None)
+                    if generate_audio and cached_ref is not None:
+                        logger.info(f"[TTS Init] Using client ref_audio: {len(cached_ref)} samples ({len(cached_ref)/16000:.1f}s)")
+                        await asyncio.to_thread(worker.streaming_init_tts, cached_ref)
+                    elif generate_audio and worker.ref_audio_path:
+                        # fallback: 前端未发送 ref audio 时使用 worker 默认（兼容旧客户端）
+                        logger.info(f"[TTS Init] FALLBACK to worker default: {worker.ref_audio_path}")
+                        await asyncio.to_thread(worker.streaming_init_tts)
+                    elif generate_audio:
+                        logger.warning(f"[TTS Init] No ref_audio available! cached_ref=None, worker.ref_audio_path={worker.ref_audio_path}")
+                    else:
+                        logger.info(f"[TTS Init] Skipped (generate_audio=False)")
+
+                    # chunk queue：generate 线程 → async handler
+                    chunk_queue: asyncio.Queue = asyncio.Queue()
+                    loop = asyncio.get_event_loop()
+
+                    def _run_generate():
+                        """在线程中运行 generator，检查 stop_event"""
+                        stopped = False
+                        try:
+                            for chunk in worker.streaming_generate(
+                                session_id=session_id,
+                                generate_audio=generate_audio,
+                                max_new_tokens=max_new_tokens,
+                                length_penalty=length_penalty,
+                            ):
+                                # 先把在途的 chunk 发出去，再检查 stop
+                                loop.call_soon_threadsafe(chunk_queue.put_nowait, ("chunk", chunk))
+                                if stop_event.is_set():
+                                    stopped = True
+                                    logger.info("Streaming generate stopped by client")
+                                    break
+                            # generate 结束后在同一线程捕获最终 KV cache 长度
+                            final_kv = worker.processor.kv_cache_length
+                            loop.call_soon_threadsafe(
+                                chunk_queue.put_nowait, ("done", (stopped, final_kv))
+                            )
+                        except Exception as e:
+                            loop.call_soon_threadsafe(chunk_queue.put_nowait, ("error", e))
+
+                    gen_task = asyncio.get_event_loop().run_in_executor(None, _run_generate)
+
+                    # 并行：消费 chunks + 监听 WS 消息（stop）
+                    async def _consume_chunks():
+                        """消费 chunk queue，发送到 WS"""
+                        was_stopped = False
+                        final_kv = 0
+                        while True:
+                            item_type, payload = await chunk_queue.get()
+                            if item_type == "chunk":
+                                await ws.send_json({
+                                    "type": "chunk",
+                                    **payload.model_dump(),
+                                })
+                                # 录制：累积 streaming chunk
+                                if stm_recorder:
+                                    stm_recorder.add_streaming_chunk(
+                                        text_delta=payload.text_delta,
+                                        audio_base64=payload.audio_data,
+                                    )
+                            elif item_type == "done":
+                                was_stopped, final_kv = payload
+                                break
+                            elif item_type == "error":
+                                raise payload
+                        return was_stopped, final_kv
+
+                    # 只运行 chunk 消费
+                    was_stopped, _total_tokens = await _consume_chunks()
+
+                    await gen_task
+
+                    elapsed_ms = (time.perf_counter() - start_time) * 1000
+                    worker.state.total_requests += 1
+                    worker.state.total_inference_time_ms += elapsed_ms
+
+                    worker.state.status = WorkerStatus.IDLE
+                    worker.state.current_session_id = None
+                    worker.state.last_activity = datetime.now().isoformat()
+
+                    _generated_tokens = _total_tokens - _input_tokens
+
+                    # 录制：end_turn
+                    if stm_recorder:
+                        stm_recorder.end_turn(timing={
+                            "elapsed_ms": round(elapsed_ms, 1),
+                            "tokens": _generated_tokens,
+                            "cached_tokens": _cached_tokens,
+                            "input_tokens": _input_tokens,
+                            "total_tokens": _total_tokens,
+                        })
+                        stm_turn_index += 1
+
+                    await ws.send_json({
+                        "type": "done",
+                        "elapsed_ms": elapsed_ms,
+                        "session_id": session_id,
+                        "stopped": was_stopped,
+                        "token_stats": {
+                            "cached_tokens": _cached_tokens,
+                            "input_tokens": _input_tokens,
+                            "generated_tokens": _generated_tokens,
+                            "total_tokens": _total_tokens,
+                        },
+                        **({"recording_session_id": stm_session_id} if stm_session_id else {}),
+                    })
+
+                    logger.info(
+                        f"Streaming generate {'stopped' if was_stopped else 'done'}: "
+                        f"{elapsed_ms:.0f}ms, tokens: cached={_cached_tokens} "
+                        f"input={_input_tokens} gen={_generated_tokens} total={_total_tokens}"
+                    )
+
+                except Exception as e:
+                    logger.error(f"Streaming generate failed: {e}", exc_info=True)
+                    worker.state.status = WorkerStatus.IDLE
+                    worker.state.current_session_id = None
+                    await ws.send_json({"type": "error", "error": str(e)})
+
+            elif msg_type == "stop":
+                # generate 未在进行时收到 stop，忽略
+                stop_event.set()
+
+            elif msg_type == "close":
+                logger.info("Streaming WebSocket close requested")
+                break
+
+            else:
+                await ws.send_json({"type": "error", "error": f"Unknown message type: {msg_type}"})
+
+    except WebSocketDisconnect:
+        logger.info(f"Streaming WebSocket disconnected (conn={conn_id})")
+        stop_event.set()
+    except Exception as e:
+        logger.error(f"Streaming WebSocket error (conn={conn_id}): {e}", exc_info=True)
+        stop_event.set()
+    finally:
+        # 录制：finalize
+        if stm_recorder:
+            try:
+                stm_recorder.finalize()
+            except Exception as e:
+                logger.error(f"[SessionRecorder] streaming finalize failed: {e}", exc_info=True)
+
+        stop_event.set()
+        _streaming_stop_events.pop(conn_id, None)
+        # 只有当没有其他活跃 streaming 连接时才重置为 IDLE
+        # 避免：旧连接断开时把正在服务新请求的 Worker 错误地标记为空闲
+        if not _streaming_stop_events and worker.state.status == WorkerStatus.BUSY_STREAMING:
+            worker.state.status = WorkerStatus.IDLE
+            worker.state.current_session_id = None
+            logger.info(f"Worker reset to IDLE (conn={conn_id}, no other active streaming)")
+        elif _streaming_stop_events:
+            logger.info(
+                f"Streaming conn {conn_id} cleaned up, "
+                f"{len(_streaming_stop_events)} other connection(s) still active, keeping BUSY"
+            )
+
+
+# ========== Duplex WebSocket ==========
+
+@app.websocket("/ws/duplex")
+async def duplex_ws(ws: WebSocket):
+    """Duplex WebSocket
+
+    协议流程：
+    1. Client 发送 {"type": "prepare", "system_prompt": "...", "ref_audio_path": "..."}
+    2. 循环：
+       a. Client 发送 {"type": "audio_chunk", "audio_base64": "..."}
+       b. Server 执行 prefill + generate
+       c. Server 返回 DuplexGenerateResult JSON
+    3. Client 发送 {"type": "pause"} → 暂停循环
+    4. Client 发送 {"type": "resume"} → 恢复循环
+    5. Client 在 audio_chunk 中携带 force_listen: true → 强制模型持续监听（替代旧 interrupt）
+    6. Client 发送 {"type": "stop"} → 结束会话
+    """
+    if worker is None or worker.processor is None:
+        await ws.close(code=1013, reason="Worker not ready")
+        return
+
+    if not worker.state.is_idle:
+        # Gateway 排队保证并发安全，Worker 可能还在 cleanup，等待
+        for _ in range(10):
+            await asyncio.sleep(0.5)
+            if worker.state.is_idle:
+                break
+        else:
+            await ws.close(code=1013, reason=f"Worker busy after waiting 5s: {worker.state.status.value}")
+            return
+
+    await ws.accept()
+    client_session_id = _sanitize_session_id(ws.query_params.get("session_id", ""))
+    logger.info(f"Duplex WebSocket connected (client_session_id={client_session_id})")
+
+    # Duplex 独占 Worker
+    worker.state.status = WorkerStatus.DUPLEX_ACTIVE
+    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+    worker.state.current_session_id = f"{ts}_{client_session_id}" if client_session_id else f"{ts}_duplex"
+    # Duplex 会重置模型状态（prepare 会调用），Gateway 侧已清除 cached_hash
+
+    pause_timeout_task: Optional[asyncio.Task] = None
+
+    # finalize 异步栅栏：保证 finalize 完成后才能进入下一轮 prefill
+    finalize_done = asyncio.Event()
+    finalize_done.set()  # 初始状态：无需等待
+
+    session_max_slice_nums: int = 1
+
+    # Session 录制器（prepare 时初始化）
+    session_recorder: Optional[DuplexSessionRecorder] = None
+    chunk_idx: int = 0
+    session_start_perf: float = time.perf_counter()
+
+    async def pause_timeout_watchdog(timeout: float):
+        """暂停超时看门狗"""
+        await asyncio.sleep(timeout)
+        logger.warning(f"Duplex pause timeout ({timeout}s), releasing Worker")
+        worker.state.status = WorkerStatus.IDLE
+        worker.state.current_session_id = None
+        try:
+            await ws.send_json({"type": "timeout", "reason": f"Pause timeout ({timeout}s)"})
+            await ws.close(code=1000, reason="Pause timeout")
+        except Exception:
+            pass
+
+    try:
+        while True:
+            raw = await ws.receive_text()
+            msg = json.loads(raw)
+            msg_type = msg.get("type", "")
+
+            if msg_type == "prepare":
+                system_prompt = msg.get("system_prompt", "You are a helpful assistant.")
+                ref_audio_path = msg.get("ref_audio_path")
+                ref_audio_b64 = msg.get("ref_audio_base64")
+                # TTS ref audio: 独立字段，fallback 到 ref_audio_base64（向后兼容）
+                tts_ref_audio_b64 = msg.get("tts_ref_audio_base64") or ref_audio_b64
+                config_dict = msg.get("config")
+                # Deferred Finalize 策略（默认开启，性能更优）：
+                #   True  (模式 A): generate → 返回结果 → 异步 finalize
+                #     finalize（feed 终止符 + 滑窗维护，~37ms）与网络传输重叠，
+                #     LISTEN 省 ~37ms wall_clock，SPEAK 省 ~37ms wall_clock。
+                #     通过 asyncio.Event 栅栏保证 finalize 在下一轮 prefill 前完成。
+                #   False (模式 B): generate → 同步 finalize → 返回结果
+                #     仍享受合并 feed 优化（终止符 + </unit> 一次 forward），
+                #     但 finalize 耗时计入 wall_clock。
+                # 实测：模式 A 比 B LISTEN wall_clock 低 ~30ms，SPEAK 低 ~50ms。
+                use_deferred_finalize = msg.get("deferred_finalize", True)
+                session_max_slice_nums = msg.get("max_slice_nums") or (config_dict.get("max_slice_nums") if config_dict else None) or 1
+
+                if config_dict:
+                    duplex_view = worker.processor.set_duplex_mode()
+                    duplex_view.config = DuplexConfig(**config_dict)
+
+                # LLM ref audio → ref_audio_path（嵌入 system prompt）
+                # TTS ref audio → prompt_wav_path（初始化 vocoder）
+                # 两者可以不同，也可以相同（向后兼容：不提供 tts_ref_audio_base64 时复用 ref_audio_base64）
+                import tempfile
+                import soundfile as sf
+                actual_ref_audio_path = ref_audio_path
+                actual_tts_audio_path = None
+                temp_files: list = []
+
+                # LLM ref audio: base64 → 临时文件
+                if ref_audio_b64 and not ref_audio_path:
+                    ref_bytes = base64.b64decode(ref_audio_b64)
+                    ref_ndarray = np.frombuffer(ref_bytes, dtype=np.float32)
+                    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False, prefix="duplex_llm_ref_")
+                    sf.write(tmp.name, ref_ndarray, 16000)
+                    actual_ref_audio_path = tmp.name
+                    temp_files.append(tmp.name)
+                    logger.info(f"Duplex LLM ref_audio: {len(ref_ndarray)} samples → {tmp.name}")
+
+                # TTS ref audio: 与 LLM 相同则复用，不同则另存
+                if tts_ref_audio_b64 and tts_ref_audio_b64 != ref_audio_b64:
+                    tts_bytes = base64.b64decode(tts_ref_audio_b64)
+                    tts_ndarray = np.frombuffer(tts_bytes, dtype=np.float32)
+                    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False, prefix="duplex_tts_ref_")
+                    sf.write(tmp.name, tts_ndarray, 16000)
+                    actual_tts_audio_path = tmp.name
+                    temp_files.append(tmp.name)
+                    logger.info(f"Duplex TTS ref_audio (independent): {len(tts_ndarray)} samples → {tmp.name}")
+                elif actual_ref_audio_path:
+                    # TTS 和 LLM 使用同一个文件
+                    actual_tts_audio_path = actual_ref_audio_path
+
+                _has_tts_field_d = bool(msg.get("tts_ref_audio_base64"))
+                _tts_same_as_llm = (tts_ref_audio_b64 == ref_audio_b64) if tts_ref_audio_b64 else True
+                logger.info(
+                    f"[Duplex RefAudio] LLM={actual_ref_audio_path}, TTS={actual_tts_audio_path}, "
+                    f"tts_field_present={_has_tts_field_d}, tts_same_as_llm={_tts_same_as_llm}"
+                )
+
+                try:
+                    prompt = await asyncio.to_thread(
+                        worker.duplex_prepare,
+                        system_prompt_text=system_prompt,
+                        ref_audio_path=actual_ref_audio_path,
+                        prompt_wav_path=actual_tts_audio_path,
+                    )
+                    logger.info(f"Duplex prepared (deferred_finalize={use_deferred_finalize})")
+
+                    duplex_type = "omni_duplex" if client_session_id.startswith("omni") else "audio_duplex"
+                    from config import get_config
+                    cfg = get_config()
+                    if cfg.recording.enabled:
+                        config_snap = {
+                            "system_prompt": system_prompt,
+                            "ref_audio": actual_ref_audio_path or cfg.ref_audio_path,
+                            "deferred_finalize": use_deferred_finalize,
+                            "max_slice_nums": session_max_slice_nums,
+                        }
+                        if config_dict:
+                            config_snap.update({k: v for k, v in config_dict.items() if k != "max_slice_nums"})
+                        session_recorder = DuplexSessionRecorder(
+                            session_id=worker.state.current_session_id or client_session_id,
+                            app_type=duplex_type,
+                            worker_id=worker.gpu_id,
+                            config_snapshot=config_snap,
+                            data_dir=cfg.data_dir,
+                        )
+                    session_start_perf = time.perf_counter()
+                    chunk_idx = 0
+
+                    rec_sid = session_recorder.session_id if session_recorder else None
+                    await ws.send_json({
+                        "type": "prepared",
+                        "prompt_length": len(prompt),
+                        **({"recording_session_id": rec_sid} if rec_sid else {}),
+                    })
+                except Exception as e:
+                    logger.error(f"Duplex prepare failed: {e}", exc_info=True)
+                    await ws.send_json({"type": "error", "error": str(e)})
+                finally:
+                    # 清理临时文件
+                    import os
+                    for tmp_path in temp_files:
+                        try:
+                            os.unlink(tmp_path)
+                        except OSError:
+                            pass
+
+            elif msg_type == "audio_chunk":
+                if worker.state.status == WorkerStatus.DUPLEX_PAUSED:
+                    await ws.send_json({"type": "error", "error": "Worker is paused"})
+                    continue
+
+                audio_b64 = msg.get("audio_base64")
+                if not audio_b64:
+                    await ws.send_json({"type": "error", "error": "Missing audio_base64"})
+                    continue
+
+                t_chunk_start = time.perf_counter()
+
+                # 解码音频
+                audio_bytes = base64.b64decode(audio_b64)
+                audio_waveform = np.frombuffer(audio_bytes, dtype=np.float32)
+
+                # 录制：保存用户音频 chunk
+                user_audio_rel: Optional[str] = None
+                if session_recorder:
+                    user_audio_rel = session_recorder.save_user_audio(chunk_idx, audio_waveform)
+
+                # 解码图像帧（可选）
+                frame_list = None
+                user_frame_rel: Optional[str] = None
+                frame_b64_list = msg.get("frame_base64_list")
+                if frame_b64_list:
+                    from PIL import Image
+                    import io
+                    frame_list = []
+                    for fb64 in frame_b64_list:
+                        frame_bytes = base64.b64decode(fb64)
+                        # 录制：保存原始 JPEG 帧（在 PIL 解码之前）
+                        if session_recorder and user_frame_rel is None:
+                            user_frame_rel = session_recorder.save_user_frame(chunk_idx, frame_bytes)
+                        frame_list.append(Image.open(io.BytesIO(frame_bytes)))
+
+                # per-chunk Force Listen 标记
+                chunk_force_listen = bool(msg.get("force_listen", False))
+                # per-chunk HD vision override（fallback 到 session 默认值）
+                chunk_max_slice_nums: int = msg.get("max_slice_nums", session_max_slice_nums)
+
+                try:
+                    # 等待上一轮 finalize 完成（保证 KV cache 状态一致）
+                    await finalize_done.wait()
+
+                    # prefill + generate（不含 finalize，延迟执行）
+                    def _duplex_step():
+                        t0 = time.perf_counter()
+                        prefill_result = worker.duplex_prefill(
+                            audio_waveform=audio_waveform,
+                            frame_list=frame_list,
+                            max_slice_nums=chunk_max_slice_nums,
+                        )
+                        t_prefill = time.perf_counter()
+                        gen_result = worker.duplex_generate(force_listen=chunk_force_listen)
+                        t_gen = time.perf_counter()
+
+                        prefill_ms = (t_prefill - t0) * 1000
+                        # 在同一线程捕获 KV cache 长度（generate 后、finalize 前）
+                        kv_len = worker.processor.kv_cache_length
+                        return gen_result, prefill_ms, prefill_result, kv_len
+
+                    result, prefill_ms, prefill_cost, kv_cache_len = await asyncio.to_thread(_duplex_step)
+                    result.server_send_ts = time.time()
+
+                    wall_clock_ms = (time.perf_counter() - t_chunk_start) * 1000
+                    status = "LISTEN" if result.is_listen else "SPEAK"
+
+                    # vision token 从 prefill 返回的实际 slice 数量计算（不再硬编码分辨率假设）
+                    n_vision_images = prefill_cost.get("n_vision_images", 0) if isinstance(prefill_cost, dict) else 0
+                    vision_tok = n_vision_images * 64
+                    if not result.is_listen:
+                        llm = result.cost_llm_ms or 0
+                        tts_prep = result.cost_tts_prep_ms or 0
+                        tts = result.cost_tts_ms or 0
+                        t2w = result.cost_token2wav_ms or 0
+                        total = result.cost_all_ms or 0
+                        n_tok = result.n_tokens or 0
+                        n_tts_tok = result.n_tts_tokens or 0
+                        logger.info(
+                            f"[GPU {worker.gpu_id}] SPEAK t={result.current_time} wall={wall_clock_ms:.0f}ms | "
+                            f"prefill={prefill_ms:.0f} llm={llm:.0f} tts_prep={tts_prep:.0f} "
+                            f"tts={tts:.0f} t2w={t2w:.0f} total={total:.0f}ms | "
+                            f"tokens={n_tok} tts_tokens={n_tts_tok} kv={kv_cache_len} | "
+                            f"vimg={n_vision_images} vtok={vision_tok} | "
+                            f"text='{(result.text or '')[:20]}'"
+                        )
+                    else:
+                        total = result.cost_all_ms or 0
+                        logger.info(
+                            f"[GPU {worker.gpu_id}] LISTEN t={result.current_time} wall={wall_clock_ms:.0f}ms | "
+                            f"prefill={prefill_ms:.0f} generate={total:.0f}ms kv={kv_cache_len} | "
+                            f"vimg={n_vision_images} vtok={vision_tok}"
+                        )
+
+                    result_dict = result.model_dump()
+                    result_dict["wall_clock_ms"] = round(wall_clock_ms, 1)
+                    result_dict["kv_cache_length"] = kv_cache_len
+                    result_dict["vision_slices"] = n_vision_images
+                    result_dict["vision_tokens"] = vision_tok
+
+                    # 录制：保存 AI 音频并记录 chunk timeline
+                    ai_audio_rel: Optional[str] = None
+                    ai_audio_n_samples: int = 0
+                    if session_recorder:
+                        if not result.is_listen and result.audio_data:
+                            try:
+                                ai_bytes = base64.b64decode(result.audio_data)
+                                ai_ndarray = np.frombuffer(ai_bytes, dtype=np.float32)
+                                ai_audio_rel = session_recorder.save_ai_audio(
+                                    session_recorder.turn_index,
+                                    chunk_idx,
+                                    ai_ndarray,
+                                )
+                                ai_audio_n_samples = len(ai_ndarray)
+                            except Exception as e:
+                                logger.warning(f"[SessionRecorder] failed to save AI audio: {e}")
+
+                        receive_ts_ms = (t_chunk_start - session_start_perf) * 1000
+                        session_recorder.record_chunk(
+                            index=chunk_idx,
+                            receive_ts_ms=receive_ts_ms,
+                            result_dict=result_dict,
+                            prefill_ms=prefill_ms,
+                            user_audio_rel=user_audio_rel,
+                            user_frame_rel=user_frame_rel,
+                            ai_audio_rel=ai_audio_rel,
+                            ai_audio_samples=ai_audio_n_samples,
+                        )
+                        chunk_idx += 1
+
+                    if use_deferred_finalize:
+                        # 模式 A：先发送结果，再异步 finalize（省 ~37ms wall_clock）
+                        await ws.send_json({"type": "result", **result_dict})
+
+                        finalize_done.clear()
+
+                        async def _do_finalize():
+                            try:
+                                await asyncio.to_thread(worker.duplex_finalize)
+                            except Exception as e:
+                                logger.error(f"Duplex finalize failed: {e}", exc_info=True)
+                            finally:
+                                finalize_done.set()
+
+                        asyncio.create_task(_do_finalize())
+                    else:
+                        # 模式 B：同步 finalize 后再发送（仍享受合并 feed 优化）
+                        await asyncio.to_thread(worker.duplex_finalize)
+                        await ws.send_json({"type": "result", **result_dict})
+                except Exception as e:
+                    logger.error(f"Duplex prefill/generate failed: {e}", exc_info=True)
+                    await ws.send_json({"type": "error", "error": str(e)})
+
+            elif msg_type == "pause":
+                logger.info("Duplex paused")
+                worker.state.status = WorkerStatus.DUPLEX_PAUSED
+                worker.state.duplex_pause_time = time.time()
+
+                # 启动暂停超时看门狗
+                timeout = msg.get("timeout", worker.duplex_pause_timeout)
+                if pause_timeout_task and not pause_timeout_task.done():
+                    pause_timeout_task.cancel()
+                pause_timeout_task = asyncio.create_task(pause_timeout_watchdog(timeout))
+
+                await ws.send_json({"type": "paused", "timeout": timeout})
+
+            elif msg_type == "resume":
+                logger.info("Duplex resumed")
+                worker.state.status = WorkerStatus.DUPLEX_ACTIVE
+                worker.state.duplex_pause_time = None
+
+                # 取消暂停超时看门狗
+                if pause_timeout_task and not pause_timeout_task.done():
+                    pause_timeout_task.cancel()
+                    pause_timeout_task = None
+
+                await ws.send_json({"type": "resumed"})
+
+            elif msg_type == "interrupt":
+                # 已弃用：interrupt 被 per-chunk force_listen 替代
+                logger.warning("Duplex interrupt message received (deprecated, use force_listen in audio_chunk)")
+                await ws.send_json({"type": "interrupted"})
+
+            elif msg_type == "stop":
+                logger.info("Duplex stopped by client")
+                worker.duplex_stop()
+                await ws.send_json({"type": "stopped"})
+                break
+
+            else:
+                await ws.send_json({"type": "error", "error": f"Unknown message type: {msg_type}"})
+
+    except WebSocketDisconnect:
+        logger.info("Duplex WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"Duplex WebSocket error: {e}", exc_info=True)
+    finally:
+        # 录制：finalize（flush recording.json + 更新 meta.json）
+        if session_recorder:
+            try:
+                session_recorder.finalize()
+            except Exception as e:
+                logger.error(f"[SessionRecorder] finalize failed: {e}", exc_info=True)
+
+        # 清理
+        if pause_timeout_task and not pause_timeout_task.done():
+            pause_timeout_task.cancel()
+
+        try:
+            worker.duplex_stop()
+        except Exception:
+            pass
+
+        # 释放 GPU 显存（KV cache、TTS caches 等，约 1.5 GB）
+        try:
+            await asyncio.to_thread(worker.duplex_cleanup)
+        except Exception as e:
+            logger.error(f"Duplex cleanup failed: {e}", exc_info=True)
+
+        worker.state.status = WorkerStatus.IDLE
+        worker.state.current_session_id = None
+        worker.state.duplex_pause_time = None
+        logger.info("Duplex session ended, Worker back to IDLE")
+
+
+# ============ 缓存状态查询 ==========
+
+@app.get("/cache_info")
+async def cache_info():
+    """查询当前 Worker 的 KV Cache 状态"""
+    if worker is None:
+        raise HTTPException(status_code=503, detail="Worker not ready")
+
+    return {
+        "status": worker.state.status.value,
+        "note": "KV cache state is now tracked by Gateway (cached_hash on WorkerConnection)",
+    }
+
+
+@app.post("/clear_cache")
+async def clear_cache():
+    """手动清除 KV Cache（重置 Streaming 模型 session）"""
+    if worker is None:
+        raise HTTPException(status_code=503, detail="Worker not ready")
+
+    worker.reset_streaming_session()
+    return {"success": True, "message": "Cache cleared"}
+
+
+# ============ 入口 ============
+
+def main():
+    from config import get_config
+    cfg = get_config()
+
+    parser = argparse.ArgumentParser(description="MiniCPMO45 Worker")
+    parser.add_argument("--port", type=int, default=None, help=f"Worker port (default: from config, base={cfg.worker_base_port})")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host")
+    parser.add_argument("--model-path", type=str, default=None, help="Base model path")
+    parser.add_argument("--pt-path", type=str, default=None, help="Custom weights path (.pt)")
+    parser.add_argument("--ref-audio-path", type=str, default=None, help="Default ref audio path")
+    parser.add_argument("--gpu-id", type=int, default=None, help="GPU ID (inferred from port if not set)")
+    parser.add_argument("--worker-index", type=int, default=0, help="Worker index (0, 1, 2, ...)")
+    parser.add_argument("--duplex-pause-timeout", type=float, default=None, help="Duplex pause timeout (s)")
+    parser.add_argument("--compile", action="store_true", help="Enable torch.compile on core sub-modules for acceleration")
+    args = parser.parse_args()
+
+    port = args.port or cfg.worker_port(args.worker_index)
+    gpu_id = args.gpu_id if args.gpu_id is not None else args.worker_index
+
+    WORKER_CONFIG.update({
+        "model_path": args.model_path or cfg.model.model_path,
+        "gpu_id": gpu_id,
+        "pt_path": args.pt_path or cfg.model.pt_path,
+        "ref_audio_path": args.ref_audio_path or cfg.ref_audio_path,
+        "duplex_pause_timeout": args.duplex_pause_timeout or cfg.duplex_pause_timeout,
+        "compile": args.compile or cfg.compile,
+        "chat_vocoder": cfg.chat_vocoder,
+        "attn_implementation": cfg.attn_implementation,
+    })
+
+    logger.info(f"Starting Worker on port {port}, GPU {gpu_id}")
+    uvicorn.run(app, host=args.host, port=port)
+
+
+if __name__ == "__main__":
+    main()

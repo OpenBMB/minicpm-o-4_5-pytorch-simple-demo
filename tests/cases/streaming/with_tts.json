@@ -1,0 +1,17 @@
+{
+  "description": "测试流式TTS（文本+音频）：自我介绍，期望返回文本和音频",
+  "input": {
+    "session_id": "test_with_tts",
+    "messages": [
+      {"role": "user", "content": "你好，请用一句话介绍你自己。"}
+    ],
+    "generate_audio": true,
+    "ref_audio_path": "${REF_AUDIO_PATH}"
+  },
+  "expected": {
+    "success": true,
+    "text_min_length": 5,
+    "has_audio": true,
+    "has_chunks": true
+  }
+}

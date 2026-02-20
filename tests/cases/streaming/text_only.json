@@ -1,0 +1,15 @@
+{
+  "description": "测试流式文本生成（无音频）：简单介绍北京，期望流式返回文本",
+  "input": {
+    "session_id": "test_text_only",
+    "messages": [
+      {"role": "user", "content": "简单介绍一下北京。"}
+    ],
+    "generate_audio": false
+  },
+  "expected": {
+    "success": true,
+    "text_min_length": 10,
+    "has_chunks": true
+  }
+}

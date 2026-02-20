@@ -1,0 +1,19 @@
+{
+  "description": "测试 Streaming 纯音频输入：仅传入音频，无文本提示",
+  "input": {
+    "session_id": "test_audio_only",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "audio", "path": "${INPUT_DIR}/user_audio/000_user_audio0.wav"}
+        ]
+      }
+    ],
+    "generate_audio": false
+  },
+  "expected": {
+    "success": true,
+    "text_min_length": 1
+  }
+}

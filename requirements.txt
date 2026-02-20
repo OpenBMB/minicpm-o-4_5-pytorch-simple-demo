@@ -1,0 +1,55 @@
+# MiniCPMO45 Service 依赖
+# Python 3.10
+#
+# 安装方式：
+#   .venv/base/bin/pip install -r requirements.txt
+#
+# 注意：
+#   - torch 需要 CUDA 12.x，建议从 PyTorch 官方源安装
+#   - flash-attn 需要 CUDA 编译环境，建议预编译 wheel
+#   - token2wav-cosyvoice* 是 MiniCPMO 定制 TTS 包
+
+# ============ Core ML ============
+torch==2.8.0
+torchaudio==2.8.0
+transformers==4.51.0
+accelerate==1.12.0
+# flash-attn 单独安装（见 install.sh），版本需匹配 PyTorch+CUDA
+# 模型官方推荐范围：flash-attn>=2.7.1,<=2.8.2
+safetensors>=0.7.0
+
+# ============ TTS (MiniCPMO 定制包) ============
+# Token2wav — 默认 vocoder，覆盖 Streaming/Duplex/Chat 全模式
+token2wav-cosyvoice-stepaudio2==0.1.3
+# CosyVoice2 — 可选，仅当 config.json 中 audio.chat_vocoder="cosyvoice2" 时需要
+# 安装：.venv/base/bin/pip install token2wav-cosyvoice==0.1.0
+# token2wav-cosyvoice==0.1.0
+
+# ============ Audio ============
+librosa>=0.11.0
+soundfile>=0.13.0
+
+# ============ Image/Video ============
+Pillow>=11.0.0
+
+# ============ Web Service ============
+fastapi>=0.128.0
+uvicorn>=0.40.0
+httpx>=0.28.0
+websockets>=16.0
+python-multipart>=0.0.20
+
+# ============ Data / Schema ============
+pydantic>=2.11.0
+numpy>=2.2.0
+
+# ============ Utilities ============
+tqdm>=4.67.0
+
+# ============ Dev / Test ============
+pytest>=9.0.0
+pytest-asyncio>=1.3.0
+
+# ============ System Dependencies (apt install) ============
+# ffmpeg                  — 后端视频拼接 (merged_replay.mp4)
+# fonts-noto-cjk-extra    — 中文字幕渲染 (ASS subtitle + Noto Sans CJK SC)

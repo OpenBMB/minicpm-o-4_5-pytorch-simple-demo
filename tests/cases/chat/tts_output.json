@@ -1,0 +1,19 @@
+{
+  "description": "测试TTS输出：使用参考音频生成语音，期望产生音频文件",
+  "input": {
+    "messages": [
+      {"role": "user", "content": "请说：你好世界"}
+    ],
+    "generation": {"max_new_tokens": 50},
+    "tts": {
+      "enabled": true,
+      "mode": "audio_assistant",
+      "ref_audio_path": "${REF_AUDIO_PATH}",
+      "output_path": "${OUTPUT_PATH}"
+    }
+  },
+  "expected": {
+    "success": true,
+    "has_audio": true
+  }
+}

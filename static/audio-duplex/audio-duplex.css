@@ -1,0 +1,258 @@
+/* ================================================================
+   audio-duplex.css — Audio Duplex page-specific styles
+   ================================================================ */
+
+/* ========== Override main grid: 4:5 instead of shared 1:2 ========== */
+.main {
+    grid-template-columns: 4fr 5fr;
+}
+
+/* ========== Left Column: two rows, each row splits left/right ========== */
+.col-left .row-top {
+    display: flex;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+    background: #fff;
+    border-radius: 10px;
+    padding: 8px;
+}
+.col-left .row-top .panel-media {
+    flex: 3;
+    min-width: 0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.col-left .row-top .panel-mode {
+    flex: 2;
+    min-width: 160px;
+    overflow-y: auto;
+}
+.col-left .row-bottom {
+    display: flex;
+    gap: 8px;
+    flex: none;
+}
+.col-left .row-bottom .panel-config {
+    flex: 1;
+}
+.col-left .row-bottom .panel-status {
+    flex: 1;
+}
+
+/* ========== Waveform Panel ========== */
+.panel-media.waveform-panel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+#waveformCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.waveform-overlay {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    z-index: 10;
+}
+.waveform-overlay.visible { display: flex; }
+.waveform-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ef4444;
+    animation: mic-pulse 1.2s infinite;
+}
+@keyframes mic-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+.waveform-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #666;
+    font-size: 14px;
+}
+.waveform-placeholder .icon { font-size: 32px; opacity: 0.5; }
+
+/* ========== Mode Selector ========== */
+.mode-selector {
+    display: flex; background: #f0f0eb; border-radius: 6px; padding: 2px;
+}
+.mode-btn {
+    font-size: 12px; padding: 5px 12px; border: none; background: transparent;
+    color: #666; border-radius: 5px; cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.mode-btn.active { background: #fff; color: #2d2d2d; font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+/* ========== Panel Mode (inside row-top card) ========== */
+.panel-mode {
+    background: transparent;
+    padding: 4px 2px;
+    border-radius: 0;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* File chooser */
+.file-chooser {
+    display: none;
+    align-items: center;
+    gap: 4px 6px;
+    flex-wrap: wrap;
+    font-size: 12px;
+}
+.file-chooser.visible { display: flex; }
+.file-chooser input[type="file"] { display: none; }
+
+/* ========== File Options ========== */
+.file-options {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 6px;
+    margin-top: 4px;
+    border-top: 1px solid #f0f0eb;
+}
+.file-options.visible { display: flex; }
+.file-options .cg-input-sm {
+    width: 50px;
+    padding: 2px 5px;
+    font-size: 11px;
+    border: 1px solid #333;
+    border-radius: 6px;
+    background: #2d2d2d;
+    color: #fff;
+    text-align: center;
+}
+.file-options .cg-input-sm:focus { outline: none; border-color: #666; }
+.fo-cal-btn {
+    font-size: 10px; padding: 2px 6px;
+    border: 1px solid #e5e5e0; border-radius: 4px;
+    background: #f0f0eb; cursor: pointer; color: #666;
+    margin-left: 4px; font-family: inherit;
+}
+.fo-cal-btn:hover { background: #e5e5e0; color: #2d2d2d; }
+.fo-cal-btn.recording { background: #e85d04; color: #fff; border-color: #e85d04; }
+.fo-cal-result {
+    font-size: 10px; color: #888; margin-left: 2px; white-space: nowrap;
+}
+.fo-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.fo-group + .fo-group {
+    margin-top: 2px;
+    padding-top: 4px;
+    border-top: 1px solid #f0f0eb;
+}
+.fo-group-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.fo-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+.fo-row-wrap { flex-wrap: wrap; row-gap: 4px; }
+.fo-label {
+    font-size: 11px;
+    color: #888;
+    flex-shrink: 0;
+    min-width: 44px;
+}
+.fo-file-btn {
+    font-size: 11px; padding: 3px 10px;
+    background: #f0f0eb; border-radius: 5px;
+    cursor: pointer; color: #666; transition: all 0.15s;
+}
+.fo-file-btn:hover { background: #e5e5e0; color: #2d2d2d; }
+.fo-duration {
+    font-size: 10px; color: #aaa;
+    margin-left: 2px;
+}
+.file-name {
+    font-size: 11px; color: #999; max-width: 140px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fo-radio-group {
+    display: flex; gap: 10px;
+}
+.fo-radio {
+    font-size: 11px; color: #555; cursor: pointer;
+    display: flex; align-items: center; gap: 3px;
+}
+.fo-radio input[type="radio"] { margin: 0; }
+
+/* ========== Status Lamp (queue countdown overlay on waveform) ========== */
+.panel-media { position: relative; }
+.status-lamp {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(12px);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    z-index: 10;
+}
+.status-lamp.visible { display: flex; }
+.status-lamp .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.status-lamp .timer {
+    font-size: 11px; font-weight: 500; opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}
+.status-lamp.live .dot { background: #ef4444; animation: pulse-dot 1.5s ease-in-out infinite; }
+.status-lamp.preparing .dot { background: #eab308; animation: pulse-dot 1s ease-in-out infinite; }
+.status-lamp.stopped .dot { background: #888; }
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* ========== Mobile responsive ========== */
+@media (max-width: 768px) {
+    .col-left .row-top,
+    .col-left .row-bottom {
+        flex-direction: column;
+    }
+    .col-left .row-top .panel-mode {
+        overflow-y: visible;
+        min-width: 0;
+    }
+    .status-lamp {
+        font-size: 11px;
+        padding: 4px 10px;
+    }
+}

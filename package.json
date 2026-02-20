@@ -1,0 +1,20 @@
+{
+  "name": "minicpmo45_service",
+  "version": "1.0.0",
+  "description": "基于 MiniCPM-o 4.5 的多模态推理服务。支持文本/图像/音频输入，提供 Chat、Streaming、Duplex 三种对话模式。",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  }
+}

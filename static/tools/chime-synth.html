@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Chime Synthesizer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+  .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 22px; text-align: center; margin-bottom: 4px; color: #fff; }
+  .subtitle { text-align: center; color: #888; font-size: 13px; margin-bottom: 16px; }
+
+  .master-bar { display: flex; align-items: center; gap: 12px; justify-content: center; background: #0d1117; padding: 10px 20px; border-radius: 10px; margin-bottom: 16px; border: 1px solid #2a2a4a; }
+  .master-bar label { font-size: 13px; color: #e67e22; font-weight: 600; }
+  .master-bar input[type=range] { width: 200px; accent-color: #e67e22; }
+  .master-bar .val { font-size: 14px; color: #e67e22; font-weight: 600; min-width: 40px; }
+
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .panel { background: #16213e; border-radius: 12px; padding: 16px; border: 1px solid #2a2a4a; }
+  .panel h2 { font-size: 15px; margin-bottom: 12px; color: #7ec8e3; display: flex; align-items: center; gap: 8px; }
+  .panel h2 .badge { font-size: 11px; background: #2a2a4a; padding: 2px 8px; border-radius: 10px; color: #aaa; }
+
+  .note-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .note-row label { font-size: 12px; color: #aaa; min-width: 44px; text-align: right; }
+  .note-row select { flex: 1; background: #0d1117; border: 1px solid #2a2a4a; color: #e0e0e0; padding: 4px; border-radius: 4px; font-size: 13px; }
+  .note-row .del-btn { padding: 2px 6px; font-size: 11px; background: #e74c3c22; color: #e74c3c; border: none; border-radius: 4px; cursor: pointer; }
+
+  .param-section { margin-top: 10px; }
+  .param-section h3 { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; border-bottom: 1px solid #2a2a4a; padding-bottom: 3px; }
+  .param-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+  .param { display: flex; flex-direction: column; gap: 1px; }
+  .param label { font-size: 11px; color: #aaa; }
+  .param input[type=range] { width: 100%; accent-color: #7ec8e3; height: 16px; }
+  .param select { background: #0d1117; border: 1px solid #2a2a4a; color: #e0e0e0; padding: 3px 6px; border-radius: 4px; font-size: 12px; }
+  .param .val { font-size: 12px; color: #7ec8e3; font-variant-numeric: tabular-nums; }
+
+  .row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+  .row label { font-size: 12px; color: #aaa; }
+  .row select, .row input[type=number] { background: #0d1117; border: 1px solid #2a2a4a; color: #e0e0e0; padding: 4px 8px; border-radius: 4px; font-size: 13px; }
+
+  .controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .btn { padding: 10px 28px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 500; transition: all 0.15s; }
+  .btn-alarm { background: #e67e22; color: white; }
+  .btn-alarm:hover { background: #d35400; }
+  .btn-chime { background: #27ae60; color: white; }
+  .btn-chime:hover { background: #219a52; }
+  .btn-seq { background: #7ec8e3; color: #1a1a2e; }
+  .btn-seq:hover { background: #5bb8d8; }
+  .btn-save { background: #8e44ad; color: white; }
+  .btn-save:hover { background: #7d3c98; }
+  .btn-copy { background: #2a2a4a; color: #aaa; border: 1px solid #444; }
+  .btn-copy:hover { background: #333; color: #fff; }
+
+  .saved-list { background: #16213e; border-radius: 12px; padding: 16px; border: 1px solid #2a2a4a; margin-bottom: 16px; }
+  .saved-list h2 { font-size: 15px; margin-bottom: 10px; color: #7ec8e3; }
+  .saved-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #2a2a4a; }
+  .saved-item:last-child { border-bottom: none; }
+  .saved-item .name { flex: 1; font-size: 13px; }
+  .saved-item button { padding: 4px 12px; font-size: 12px; }
+  .saved-item .del { color: #e74c3c; background: none; border: 1px solid #e74c3c33; border-radius: 4px; cursor: pointer; }
+  .saved-item .use { color: #7ec8e3; background: none; border: 1px solid #7ec8e333; border-radius: 4px; cursor: pointer; }
+
+  .json-output { background: #0d1117; border-radius: 8px; padding: 12px; font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: #7ec8e3; white-space: pre-wrap; word-break: break-all; max-height: 260px; overflow-y: auto; margin-top: 12px; border: 1px solid #2a2a4a; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #27ae60; color: white; padding: 8px 24px; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 99; }
+  .toast.show { opacity: 1; }
+  .add-btn { margin-top: 6px; padding: 4px 12px; font-size: 12px; background: #2a2a4a; color: #7ec8e3; border: none; border-radius: 4px; cursor: pointer; }
+  .add-btn:hover { background: #3a3a5a; }
+</style>
+</head><body>
+<div class="container">
+<h1>Chime Synthesizer</h1>
+<p class="subtitle">Alarm (快开始) + Session Chime (真开始) — 调参 → 试听 → 保存 → Export</p>
+
+<!-- Master Volume -->
+<div class="master-bar">
+  <label>🔊 Master Volume</label>
+  <input type="range" id="masterVol" min="0" max="100" value="80">
+  <span class="val" id="masterVolVal">80%</span>
+</div>
+
+<div class="panels">
+  <!-- ALARM -->
+  <div class="panel">
+    <h2>Alarm <span class="badge">快开始</span></h2>
+    <div id="alarmNotes"></div>
+
+    <div class="param-section">
+      <h3>Waveform</h3>
+      <div class="param">
+        <select data-p="alarm.wave">
+          <option value="sine">sine (柔和)</option>
+          <option value="triangle" selected>triangle (温暖)</option>
+          <option value="square">square (明亮/响)</option>
+          <option value="sawtooth">sawtooth (锐利/最响)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="param-section">
+      <h3>ADSR Envelope</h3>
+      <div class="param-grid">
+        <div class="param">
+          <label>Attack (ms)</label>
+          <input type="range" min="1" max="80" value="5" data-p="alarm.attack">
+          <span class="val">5</span>
+        </div>
+        <div class="param">
+          <label>Sustain level</label>
+          <input type="range" min="10" max="100" value="70" data-p="alarm.sustain">
+          <span class="val">0.70</span>
+        </div>
+        <div class="param">
+          <label>Decay (ms)</label>
+          <input type="range" min="10" max="300" value="30" data-p="alarm.decay">
+          <span class="val">30</span>
+        </div>
+        <div class="param">
+          <label>Release (ms)</label>
+          <input type="range" min="20" max="500" value="120" data-p="alarm.release">
+          <span class="val">120</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="param-section">
+      <h3>Note & Mix</h3>
+      <div class="param-grid">
+        <div class="param">
+          <label>Note duration (ms)</label>
+          <input type="range" min="40" max="300" value="100" data-p="alarm.noteMs">
+          <span class="val">100</span>
+        </div>
+        <div class="param">
+          <label>Gain</label>
+          <input type="range" min="10" max="100" value="60" data-p="alarm.gain">
+          <span class="val">0.60</span>
+        </div>
+        <div class="param">
+          <label>Overtone (2nd harmonic)</label>
+          <input type="range" min="0" max="50" value="10" data-p="alarm.overtone">
+          <span class="val">0.10</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>Repeats</label>
+      <select data-p="alarm.repeats">
+        <option value="1">1</option>
+        <option value="2" selected>2</option>
+        <option value="3">3</option>
+      </select>
+      <label>Gap (ms)</label>
+      <input type="number" value="120" min="30" max="500" style="width:60px" data-p="alarm.gapMs">
+    </div>
+  </div>
+
+  <!-- CHIME -->
+  <div class="panel">
+    <h2>Session Chime <span class="badge">真开始</span></h2>
+    <div id="chimeNotes"></div>
+
+    <div class="param-section">
+      <h3>Waveform</h3>
+      <div class="param">
+        <select data-p="chime.wave">
+          <option value="sine">sine (柔和)</option>
+          <option value="triangle" selected>triangle (温暖)</option>
+          <option value="square">square (明亮/响)</option>
+          <option value="sawtooth">sawtooth (锐利/最响)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="param-section">
+      <h3>ADSR Envelope</h3>
+      <div class="param-grid">
+        <div class="param">
+          <label>Attack (ms)</label>
+          <input type="range" min="1" max="80" value="5" data-p="chime.attack">
+          <span class="val">5</span>
+        </div>
+        <div class="param">
+          <label>Sustain level</label>
+          <input type="range" min="10" max="100" value="80" data-p="chime.sustain">
+          <span class="val">0.80</span>
+        </div>
+        <div class="param">
+          <label>Decay (ms)</label>
+          <input type="range" min="10" max="300" value="40" data-p="chime.decay">
+          <span class="val">40</span>
+        </div>
+        <div class="param">
+          <label>Release (ms)</label>
+          <input type="range" min="20" max="800" value="250" data-p="chime.release">
+          <span class="val">250</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="param-section">
+      <h3>Note & Mix</h3>
+      <div class="param-grid">
+        <div class="param">
+          <label>Note duration (ms)</label>
+          <input type="range" min="60" max="500" value="200" data-p="chime.noteMs">
+          <span class="val">200</span>
+        </div>
+        <div class="param">
+          <label>Gain</label>
+          <input type="range" min="10" max="100" value="70" data-p="chime.gain">
+          <span class="val">0.70</span>
+        </div>
+        <div class="param">
+          <label>Overlap (ms)</label>
+          <input type="range" min="0" max="200" value="40" data-p="chime.overlapMs">
+          <span class="val">40</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn btn-alarm" onclick="playAlarm()">▶ Alarm</button>
+  <button class="btn btn-chime" onclick="playChime()">▶ Chime</button>
+  <button class="btn btn-seq" onclick="playSequence()">▶ Alarm → Chime</button>
+  <button class="btn btn-save" onclick="savePreset()">💾 Save</button>
+  <button class="btn btn-copy" onclick="exportCode()">📋 Export Code</button>
+</div>
+
+<div class="saved-list" id="savedList" style="display:none">
+  <h2>Saved Presets</h2>
+  <div id="presetItems"></div>
+</div>
+
+<div class="json-output" id="codeOutput" style="display:none"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const NAMED_FREQS = {
+  'C4':261.63,'D4':293.66,'E4':329.63,'F4':349.23,'G4':392.00,'A4':440.00,'B4':493.88,
+  'C5':523.25,'D5':587.33,'E5':659.25,'F5':698.46,'G5':783.99,'A5':880.00,'B5':987.77,
+  'C6':1046.50,'D6':1174.66,'E6':1318.51,'F6':1396.91,'G6':1567.98,'A6':1760.00,'B6':1975.53,
+  'C7':2093.00,
+};
+const FREQ_OPTIONS = Object.entries(NAMED_FREQS).map(([n,f]) => ({name:n, freq:f}));
+
+let alarmNotes = [
+  {freq:523.25, name:'C5'}, {freq:659.25, name:'E5'},
+  {freq:783.99, name:'G5'}, {freq:1046.50, name:'C6'},
+];
+let chimeNotes = [
+  {freq:1046.50, name:'C6'}, {freq:1318.51, name:'E6'},
+];
+
+let _ctx = null;
+function getCtx() {
+    if (!_ctx || _ctx.state === 'closed') _ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_ctx.state === 'suspended') _ctx.resume();
+    return _ctx;
+}
+
+function getMaster() { return Number(document.getElementById('masterVol').value) / 100; }
+
+function getP(key) {
+    const el = document.querySelector(`[data-p="${key}"]`);
+    if (!el) return 0;
+    return el.tagName === 'SELECT' ? el.value : Number(el.value);
+}
+
+/**
+ * Play a single note with full ADSR envelope, optional overtone, through a compressor.
+ * Returns the total duration in seconds (attack+decay+sustain+release).
+ */
+function playNote(ctx, dest, freq, startTime, params) {
+    const { wave, attack, decay, sustain, noteMs, release, gain, overtone } = params;
+    const master = getMaster();
+    const atkS = attack / 1000;
+    const decS = decay / 1000;
+    const noteS = noteMs / 1000;
+    const relS = release / 1000;
+    const susLevel = (gain / 100) * (sustain / 100) * master;
+    const peakLevel = (gain / 100) * master;
+    const sustainDur = Math.max(0, noteS - atkS - decS);
+    const totalDur = atkS + decS + sustainDur + relS;
+
+    function makeOsc(f, g) {
+        const gainNode = ctx.createGain();
+        gainNode.connect(dest);
+        // ADSR
+        const t0 = startTime;
+        gainNode.gain.setValueAtTime(0.001, t0);
+        // Attack
+        gainNode.gain.linearRampToValueAtTime(g, t0 + atkS);
+        // Decay to sustain
+        gainNode.gain.linearRampToValueAtTime(g * (sustain / 100), t0 + atkS + decS);
+        // Sustain hold
+        gainNode.gain.setValueAtTime(g * (sustain / 100), t0 + atkS + decS + sustainDur);
+        // Release
+        gainNode.gain.linearRampToValueAtTime(0.001, t0 + totalDur);
+
+        const osc = ctx.createOscillator();
+        osc.type = wave;
+        osc.frequency.value = f;
+        osc.connect(gainNode);
+        osc.start(t0);
+        osc.stop(t0 + totalDur + 0.05);
+    }
+
+    makeOsc(freq, peakLevel);
+    if (overtone > 0) {
+        makeOsc(freq * 2, peakLevel * (overtone / 100));
+    }
+    return totalDur;
+}
+
+function buildDest(ctx) {
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -20;
+    comp.knee.value = 12;
+    comp.ratio.value = 4;
+    comp.attack.value = 0.003;
+    comp.release.value = 0.1;
+    comp.connect(ctx.destination);
+    return comp;
+}
+
+function getAlarmParams() {
+    return {
+        wave: getP('alarm.wave'),
+        attack: getP('alarm.attack'),
+        decay: getP('alarm.decay'),
+        sustain: getP('alarm.sustain'),
+        noteMs: getP('alarm.noteMs'),
+        release: getP('alarm.release'),
+        gain: getP('alarm.gain'),
+        overtone: getP('alarm.overtone'),
+    };
+}
+
+function getChimeParams() {
+    return {
+        wave: getP('chime.wave'),
+        attack: getP('chime.attack'),
+        decay: getP('chime.decay'),
+        sustain: getP('chime.sustain'),
+        noteMs: getP('chime.noteMs'),
+        release: getP('chime.release'),
+        gain: getP('chime.gain'),
+        overtone: 0,
+    };
+}
+
+function playAlarm() {
+    const ctx = getCtx();
+    const dest = buildDest(ctx);
+    const p = getAlarmParams();
+    const repeats = Number(getP('alarm.repeats'));
+    const gapMs = Number(getP('alarm.gapMs'));
+    const noteS = p.noteMs / 1000;
+    const onePass = alarmNotes.length * noteS;
+    let now = ctx.currentTime;
+
+    for (let r = 0; r < repeats; r++) {
+        const base = now + r * (onePass + gapMs / 1000);
+        alarmNotes.forEach((n, i) => {
+            playNote(ctx, dest, n.freq, base + i * noteS, p);
+        });
+    }
+    return repeats * (onePass + gapMs / 1000);
+}
+
+function playChime() {
+    const ctx = getCtx();
+    const dest = buildDest(ctx);
+    _playChimeAt(ctx, dest, ctx.currentTime);
+}
+
+function _playChimeAt(ctx, dest, t) {
+    const p = getChimeParams();
+    const noteS = p.noteMs / 1000;
+    const overlapS = getP('chime.overlapMs') / 1000;
+    const step = Math.max(0.01, noteS - overlapS);
+    chimeNotes.forEach((n, i) => {
+        playNote(ctx, dest, n.freq, t + i * step, p);
+    });
+}
+
+function playSequence() {
+    const ctx = getCtx();
+    const dest = buildDest(ctx);
+    // Alarm
+    const p = getAlarmParams();
+    const repeats = Number(getP('alarm.repeats'));
+    const gapMs = Number(getP('alarm.gapMs'));
+    const noteS = p.noteMs / 1000;
+    const onePass = alarmNotes.length * noteS;
+    let now = ctx.currentTime;
+    for (let r = 0; r < repeats; r++) {
+        const base = now + r * (onePass + gapMs / 1000);
+        alarmNotes.forEach((n, i) => {
+            playNote(ctx, dest, n.freq, base + i * noteS, p);
+        });
+    }
+    const alarmDur = repeats * (onePass + gapMs / 1000);
+    // Chime after a brief pause
+    _playChimeAt(ctx, dest, now + alarmDur + 0.15);
+}
+
+// --- Note editor ---
+function renderNotes(containerId, notes) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = '';
+    notes.forEach((n, i) => {
+        const row = document.createElement('div');
+        row.className = 'note-row';
+        const label = document.createElement('label');
+        label.textContent = `Note ${i+1}`;
+        const sel = document.createElement('select');
+        FREQ_OPTIONS.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt.freq;
+            o.textContent = `${opt.name} (${Math.round(opt.freq)}Hz)`;
+            if (Math.abs(opt.freq - n.freq) < 1) o.selected = true;
+            sel.appendChild(o);
+        });
+        sel.onchange = () => { n.freq = Number(sel.value); n.name = sel.options[sel.selectedIndex].text.split(' ')[0]; };
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '✕'; delBtn.className = 'del-btn';
+        delBtn.onclick = () => { notes.splice(i,1); renderNotes(containerId, notes); };
+        row.appendChild(label); row.appendChild(sel); row.appendChild(delBtn);
+        el.appendChild(row);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.textContent = '+ Add note'; addBtn.className = 'add-btn';
+    addBtn.onclick = () => { notes.push({freq:523.25, name:'C5'}); renderNotes(containerId, notes); };
+    el.appendChild(addBtn);
+}
+
+// --- Param display sync ---
+function syncDisplays() {
+    document.querySelectorAll('input[type=range][data-p]').forEach(el => {
+        const valEl = el.parentElement.querySelector('.val');
+        if (!valEl) return;
+        const p = el.dataset.p;
+        if (p.endsWith('.gain') || p.endsWith('.overtone') || p.endsWith('.sustain'))
+            valEl.textContent = (Number(el.value) / 100).toFixed(2);
+        else
+            valEl.textContent = el.value;
+    });
+}
+document.addEventListener('input', (e) => {
+    if (e.target.id === 'masterVol') {
+        document.getElementById('masterVolVal').textContent = e.target.value + '%';
+    }
+    syncDisplays();
+});
+syncDisplays();
+
+// --- Save / Load ---
+function getSaved() { try { return JSON.parse(localStorage.getItem('chime_presets_v2') || '[]'); } catch { return []; } }
+function setSaved(list) { localStorage.setItem('chime_presets_v2', JSON.stringify(list)); renderSavedList(); }
+
+function getCurrentConfig() {
+    const cfg = { alarmNotes: alarmNotes.map(n=>({...n})), chimeNotes: chimeNotes.map(n=>({...n})), params: {}, masterVol: Number(document.getElementById('masterVol').value) };
+    document.querySelectorAll('[data-p]').forEach(el => { cfg.params[el.dataset.p] = el.tagName === 'SELECT' ? el.value : Number(el.value); });
+    return cfg;
+}
+
+function applyConfig(cfg) {
+    alarmNotes = (cfg.alarmNotes || []).map(n=>({...n}));
+    chimeNotes = (cfg.chimeNotes || []).map(n=>({...n}));
+    renderNotes('alarmNotes', alarmNotes);
+    renderNotes('chimeNotes', chimeNotes);
+    if (cfg.masterVol !== undefined) { document.getElementById('masterVol').value = cfg.masterVol; document.getElementById('masterVolVal').textContent = cfg.masterVol + '%'; }
+    if (cfg.params) {
+        Object.entries(cfg.params).forEach(([k,v]) => {
+            const el = document.querySelector(`[data-p="${k}"]`);
+            if (el) { el.value = v; }
+        });
+    }
+    syncDisplays();
+}
+
+function savePreset() {
+    const name = prompt('Preset name:', `Preset ${getSaved().length + 1}`);
+    if (!name) return;
+    const list = getSaved();
+    list.push({ name, config: getCurrentConfig(), time: new Date().toLocaleString() });
+    setSaved(list);
+    toast('Saved: ' + name);
+}
+
+function renderSavedList() {
+    const list = getSaved();
+    const container = document.getElementById('savedList');
+    const items = document.getElementById('presetItems');
+    if (list.length === 0) { container.style.display = 'none'; return; }
+    container.style.display = 'block';
+    items.innerHTML = '';
+    list.forEach((p,i) => {
+        const row = document.createElement('div');
+        row.className = 'saved-item';
+        row.innerHTML = `<span class="name">${p.name} <span style="color:#666;font-size:11px">${p.time||''}</span></span>`;
+        const playBtn = document.createElement('button');
+        playBtn.className = 'use'; playBtn.textContent = '▶ Play';
+        playBtn.onclick = () => { applyConfig(p.config); setTimeout(playSequence, 80); };
+        const useBtn = document.createElement('button');
+        useBtn.className = 'use'; useBtn.textContent = 'Load';
+        useBtn.onclick = () => { applyConfig(p.config); toast('Loaded: ' + p.name); };
+        const delBtn = document.createElement('button');
+        delBtn.className = 'del'; delBtn.textContent = 'Del';
+        delBtn.onclick = () => { list.splice(i,1); setSaved(list); };
+        row.appendChild(playBtn); row.appendChild(useBtn); row.appendChild(delBtn);
+        items.appendChild(row);
+    });
+}
+
+function exportCode() {
+    const cfg = getCurrentConfig();
+    const out = document.getElementById('codeOutput');
+    out.style.display = 'block';
+    const p = cfg.params;
+    const aN = cfg.alarmNotes.map(n=>`  { freq: ${n.freq}, name: '${n.name}' }`).join(',\n');
+    const cN = cfg.chimeNotes.map(n=>`  { freq: ${n.freq}, name: '${n.name}' }`).join(',\n');
+    out.textContent = `// ==========================================
+// Generated by Chime Synthesizer
+// Master volume: ${cfg.masterVol}%
+// ==========================================
+
+// --- Alarm (快开始) ---
+// Notes: ${cfg.alarmNotes.map(n=>n.name).join(' → ')}  × ${p['alarm.repeats']} repeats, gap ${p['alarm.gapMs']}ms
+const ALARM_NOTES = [
+${aN}
+];
+const ALARM_CFG = {
+  wave: '${p['alarm.wave']}',
+  noteMs: ${p['alarm.noteMs']},
+  gain: ${(p['alarm.gain']/100).toFixed(2)},
+  attack: ${p['alarm.attack']},     // ms
+  decay: ${p['alarm.decay']},      // ms
+  sustain: ${(p['alarm.sustain']/100).toFixed(2)},   // level (0-1)
+  release: ${p['alarm.release']},    // ms
+  overtone: ${(p['alarm.overtone']/100).toFixed(2)},  // 2nd harmonic mix
+  repeats: ${p['alarm.repeats']},
+  gapMs: ${p['alarm.gapMs']},
+};
+
+// --- Session Chime (真开始) ---
+// Notes: ${cfg.chimeNotes.map(n=>n.name).join(' → ')}
+const CHIME_NOTES = [
+${cN}
+];
+const CHIME_CFG = {
+  wave: '${p['chime.wave']}',
+  noteMs: ${p['chime.noteMs']},
+  gain: ${(p['chime.gain']/100).toFixed(2)},
+  attack: ${p['chime.attack']},     // ms
+  decay: ${p['chime.decay']},      // ms
+  sustain: ${(p['chime.sustain']/100).toFixed(2)},   // level (0-1)
+  release: ${p['chime.release']},    // ms
+  overlapMs: ${p['chime.overlapMs']},
+};`;
+    toast('Code exported — scroll down');
+}
+
+function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+// Init
+renderNotes('alarmNotes', alarmNotes);
+renderNotes('chimeNotes', chimeNotes);
+renderSavedList();
+</script>
+</body></html>

@@ -1,0 +1,19 @@
+{
+  "description": "测试音频理解：从路径加载音频并复述，期望有响应",
+  "input": {
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "audio", "path": "${INPUT_DIR}/user_audio/000_user_audio0.wav"},
+          {"type": "text", "text": "请复述用户说的话。"}
+        ]
+      }
+    ],
+    "generation": {"max_new_tokens": 200}
+  },
+  "expected": {
+    "success": true,
+    "text_min_length": 1
+  }
+}

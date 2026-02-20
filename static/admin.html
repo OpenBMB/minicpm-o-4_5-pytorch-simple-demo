@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiniCPMO45 Admin</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            padding: 24px;
+        }
+        h1 { color: #e94560; margin-bottom: 24px; }
+        h2 { color: #4ecca3; margin: 24px 0 12px; font-size: 18px; }
+
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            border: 1px solid #2a2a4a;
+        }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+
+        .worker-card {
+            background: #0f3460;
+            border-radius: 8px;
+            padding: 12px 16px;
+            border: 1px solid #2a2a4a;
+        }
+        .worker-card .name { font-weight: 600; font-size: 14px; }
+        .worker-card .detail { font-size: 12px; color: #888; margin-top: 4px; }
+        .worker-card .wstatus {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            margin-top: 6px;
+        }
+        .wstatus.idle { background: #1b4332; color: #4ecca3; }
+        .wstatus.busy { background: #4a1942; color: #e94560; }
+        .wstatus.offline { background: #333; color: #888; }
+        .wstatus.loading { background: #3d3200; color: #ffd700; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #2a2a4a; font-size: 13px; }
+        th { color: #888; font-weight: 500; }
+
+        .btn {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: #e94560; color: white; }
+        .btn-primary:hover { background: #c73550; }
+        .btn-danger { background: #600; color: #f88; }
+        .btn-danger:hover { background: #800; }
+
+        .form-row { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+        .form-row input, .form-row select {
+            background: #0f3460;
+            border: 1px solid #2a2a4a;
+            border-radius: 6px;
+            padding: 6px 10px;
+            color: #e0e0e0;
+            font-size: 13px;
+        }
+        .form-row input { flex: 1; }
+
+        .stats { display: flex; gap: 24px; margin-bottom: 16px; }
+        .stat { text-align: center; }
+        .stat .value { font-size: 28px; font-weight: 700; color: #e94560; }
+        .stat .label { font-size: 12px; color: #888; }
+
+        .refresh-note { font-size: 11px; color: #555; margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <h1>MiniCPMO45 Admin Dashboard</h1>
+
+    <!-- 服务概览 -->
+    <div class="card">
+        <div class="stats" id="stats">
+            <div class="stat"><div class="value" id="totalWorkers">-</div><div class="label">Workers</div></div>
+            <div class="stat"><div class="value" id="idleWorkers">-</div><div class="label">Idle</div></div>
+            <div class="stat"><div class="value" id="busyWorkers">-</div><div class="label">Busy</div></div>
+            <div class="stat"><div class="value" id="queueLength">-</div><div class="label">Queue</div></div>
+        </div>
+        <div class="refresh-note">每 5 秒自动刷新</div>
+    </div>
+
+    <!-- Worker 状态 -->
+    <h2>Workers</h2>
+    <div class="grid" id="workerGrid"></div>
+
+    <!-- 参考音频管理 -->
+    <h2>参考音频</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>名称</th><th>类型</th><th>时长</th><th>创建时间</th><th>操作</th></tr>
+            </thead>
+            <tbody id="refAudioTable"></tbody>
+        </table>
+
+        <div class="form-row">
+            <input type="text" id="refAudioName" placeholder="名称">
+            <input type="text" id="refAudioPath" placeholder="服务端绝对路径">
+            <button class="btn btn-primary" onclick="registerExternalRefAudio()">注册外部音频</button>
+        </div>
+    </div>
+
+    <!-- ETA 配置 -->
+    <h2>ETA 配置</h2>
+    <div class="card">
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
+            <div>
+                <label style="font-size:12px;color:#888">Chat (s)</label><br>
+                <input type="number" id="etaChat" style="width:80px;background:#0f3460;border:1px solid #2a2a4a;border-radius:6px;padding:6px;color:#e0e0e0" step="1">
+            </div>
+            <div>
+                <label style="font-size:12px;color:#888">Streaming (s)</label><br>
+                <input type="number" id="etaStreaming" style="width:80px;background:#0f3460;border:1px solid #2a2a4a;border-radius:6px;padding:6px;color:#e0e0e0" step="1">
+            </div>
+            <div>
+                <label style="font-size:12px;color:#888">Audio Duplex (s)</label><br>
+                <input type="number" id="etaAudioDuplex" style="width:80px;background:#0f3460;border:1px solid #2a2a4a;border-radius:6px;padding:6px;color:#e0e0e0" step="1">
+            </div>
+            <div>
+                <label style="font-size:12px;color:#888">Omni Duplex (s)</label><br>
+                <input type="number" id="etaOmniDuplex" style="width:80px;background:#0f3460;border:1px solid #2a2a4a;border-radius:6px;padding:6px;color:#e0e0e0" step="1">
+            </div>
+            <div>
+                <label style="font-size:12px;color:#888">EMA α</label><br>
+                <input type="number" id="etaEmaAlpha" style="width:80px;background:#0f3460;border:1px solid #2a2a4a;border-radius:6px;padding:6px;color:#e0e0e0" step="0.05" min="0" max="1">
+            </div>
+            <button class="btn btn-primary" onclick="saveEtaConfig()">Save</button>
+        </div>
+        <div id="etaEmaInfo" style="margin-top:8px;font-size:12px;color:#888"></div>
+    </div>
+
+    <!-- 排队中的请求 -->
+    <h2>Queue</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>Position</th><th>Type</th><th>Session</th><th>ETA</th><th>Waiting</th><th>Enqueued</th><th>操作</th></tr>
+            </thead>
+            <tbody id="queueTable"></tbody>
+        </table>
+    </div>
+
+    <!-- 运行中的任务 -->
+    <h2>Running Tasks</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>Worker</th><th>Type</th><th>Elapsed</th><th>Est. Remaining</th></tr>
+            </thead>
+            <tbody id="runningTable"></tbody>
+        </table>
+    </div>
+
+    <!-- 会话映射 -->
+    <h2>会话映射</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>Session ID</th><th>Worker</th><th>Hash (前16位)</th><th>最后活跃</th><th>操作</th></tr>
+            </thead>
+            <tbody id="sessionsTable"></tbody>
+        </table>
+    </div>
+
+<script>
+const API_BASE = window.location.origin;
+
+// ============ 数据加载 ============
+async function loadStatus() {
+    try {
+        const resp = await fetch(`${API_BASE}/status`);
+        const data = await resp.json();
+        document.getElementById('totalWorkers').textContent = data.total_workers;
+        document.getElementById('idleWorkers').textContent = data.idle_workers;
+        document.getElementById('busyWorkers').textContent = data.busy_workers + data.duplex_workers;
+        document.getElementById('queueLength').textContent = data.queue_length;
+    } catch (e) {
+        console.error('Load status failed:', e);
+    }
+}
+
+async function loadWorkers() {
+    try {
+        const resp = await fetch(`${API_BASE}/workers`);
+        const data = await resp.json();
+        const grid = document.getElementById('workerGrid');
+        grid.innerHTML = data.workers.map(w => {
+            const statusClass = w.status.includes('idle') ? 'idle' :
+                                w.status.includes('offline') ? 'offline' :
+                                w.status.includes('loading') ? 'loading' : 'busy';
+            return `
+                <div class="worker-card">
+                    <div class="name">${w.worker_id}</div>
+                    <div class="detail">GPU ${w.gpu_id} | :${w.port}</div>
+                    <div class="detail">Requests: ${w.total_requests}</div>
+                    ${w.current_session_id ? `<div class="detail">Session: ${w.current_session_id}</div>` : ''}
+                    <div class="wstatus ${statusClass}">${w.status}</div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('Load workers failed:', e);
+    }
+}
+
+async function loadRefAudios() {
+    try {
+        const resp = await fetch(`${API_BASE}/api/assets/ref_audio`);
+        const data = await resp.json();
+        const tbody = document.getElementById('refAudioTable');
+        if (data.ref_audios.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="color:#555">暂无参考音频</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.ref_audios.map(r => `
+            <tr>
+                <td>${r.name}</td>
+                <td>${r.source_type}</td>
+                <td>${r.duration_ms ? (r.duration_ms / 1000).toFixed(1) + 's' : '-'}</td>
+                <td>${new Date(r.created_at).toLocaleString()}</td>
+                <td><button class="btn btn-danger" onclick="deleteRefAudio('${r.id}')">删除</button></td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.error('Load ref audios failed:', e);
+    }
+}
+
+async function loadSessions() {
+    try {
+        const resp = await fetch(`${API_BASE}/sessions`);
+        const data = await resp.json();
+        const tbody = document.getElementById('sessionsTable');
+        if (data.sessions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="color:#555">暂无活跃会话</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.sessions.map(s => `
+            <tr>
+                <td>${s.session_id}</td>
+                <td>${s.worker_id}</td>
+                <td>${s.messages_hash}</td>
+                <td>${new Date(s.last_active).toLocaleString()}</td>
+                <td><button class="btn btn-danger" onclick="deleteSession('${s.session_id}')">删除</button></td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.error('Load sessions failed:', e);
+    }
+}
+
+async function loadEtaConfig() {
+    try {
+        const resp = await fetch(`${API_BASE}/api/config/eta`);
+        const data = await resp.json();
+        document.getElementById('etaChat').value = data.config.eta_chat_s;
+        document.getElementById('etaStreaming').value = data.config.eta_streaming_s;
+        document.getElementById('etaAudioDuplex').value = data.config.eta_audio_duplex_s;
+        document.getElementById('etaOmniDuplex').value = data.config.eta_omni_duplex_s;
+        document.getElementById('etaEmaAlpha').value = data.ema_alpha;
+
+        const parts = [];
+        if (data.ema_chat_samples > 0) parts.push(`Chat EMA: ${data.ema_chat_s?.toFixed(1)}s (${data.ema_chat_samples} samples)`);
+        if (data.ema_streaming_samples > 0) parts.push(`Streaming EMA: ${data.ema_streaming_s?.toFixed(1)}s (${data.ema_streaming_samples} samples)`);
+        if (data.ema_audio_duplex_samples > 0) parts.push(`Audio Duplex EMA: ${data.ema_audio_duplex_s?.toFixed(1)}s (${data.ema_audio_duplex_samples} samples)`);
+        if (data.ema_omni_duplex_samples > 0) parts.push(`Omni Duplex EMA: ${data.ema_omni_duplex_s?.toFixed(1)}s (${data.ema_omni_duplex_samples} samples)`);
+        document.getElementById('etaEmaInfo').textContent = parts.length ? parts.join(' | ') : 'No EMA data yet';
+    } catch (e) {
+        console.error('Load ETA config failed:', e);
+    }
+}
+
+async function saveEtaConfig() {
+    try {
+        const resp = await fetch(`${API_BASE}/api/config/eta`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                eta_chat_s: parseFloat(document.getElementById('etaChat').value),
+                eta_streaming_s: parseFloat(document.getElementById('etaStreaming').value),
+                eta_audio_duplex_s: parseFloat(document.getElementById('etaAudioDuplex').value),
+                eta_omni_duplex_s: parseFloat(document.getElementById('etaOmniDuplex').value),
+                ema_alpha: parseFloat(document.getElementById('etaEmaAlpha').value),
+            }),
+        });
+        if (resp.ok) {
+            loadEtaConfig();
+        } else {
+            alert('Save failed');
+        }
+    } catch (e) {
+        alert('Save failed: ' + e.message);
+    }
+}
+
+async function loadQueue() {
+    try {
+        const resp = await fetch(`${API_BASE}/api/queue`);
+        const data = await resp.json();
+
+        // Queue items
+        const tbody = document.getElementById('queueTable');
+        if (data.items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="color:#555">Queue empty</td></tr>';
+        } else {
+            tbody.innerHTML = data.items.map(item => `
+                <tr>
+                    <td>#${item.position}</td>
+                    <td>${item.request_type}</td>
+                    <td>${item.session_id || '-'}</td>
+                    <td>~${Math.round(item.estimated_wait_s)}s</td>
+                    <td>${Math.round(item.wait_elapsed_s)}s</td>
+                    <td>${new Date(item.enqueued_at).toLocaleTimeString()}</td>
+                    <td><button class="btn btn-danger" onclick="cancelQueueItem('${item.ticket_id}')">Cancel</button></td>
+                </tr>
+            `).join('');
+        }
+
+        // Running tasks
+        const rtbody = document.getElementById('runningTable');
+        if (data.running_tasks.length === 0) {
+            rtbody.innerHTML = '<tr><td colspan="4" style="color:#555">No running tasks</td></tr>';
+        } else {
+            rtbody.innerHTML = data.running_tasks.map(t => `
+                <tr>
+                    <td>${t.worker_id}</td>
+                    <td>${t.request_type}</td>
+                    <td>${Math.round(t.elapsed_s)}s</td>
+                    <td>~${Math.round(t.estimated_remaining_s)}s</td>
+                </tr>
+            `).join('');
+        }
+    } catch (e) {
+        console.error('Load queue failed:', e);
+    }
+}
+
+async function cancelQueueItem(ticketId) {
+    try {
+        await fetch(`${API_BASE}/api/queue/${ticketId}`, { method: 'DELETE' });
+        loadQueue();
+    } catch (e) {
+        alert('Cancel failed: ' + e.message);
+    }
+}
+
+// ============ 操作 ============
+async function registerExternalRefAudio() {
+    const name = document.getElementById('refAudioName').value.trim();
+    const path = document.getElementById('refAudioPath').value.trim();
+    if (!name || !path) { alert('请填写名称和路径'); return; }
+
+    try {
+        const resp = await fetch(`${API_BASE}/api/assets/ref_audio/external`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, path }),
+        });
+        const data = await resp.json();
+        if (data.success) {
+            document.getElementById('refAudioName').value = '';
+            document.getElementById('refAudioPath').value = '';
+            loadRefAudios();
+        } else {
+            alert('注册失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+}
+
+async function deleteRefAudio(id) {
+    if (!confirm('确定删除？')) return;
+    try {
+        await fetch(`${API_BASE}/api/assets/ref_audio/${id}`, { method: 'DELETE' });
+        loadRefAudios();
+    } catch (e) {
+        alert('删除失败: ' + e.message);
+    }
+}
+
+async function deleteSession(sessionId) {
+    try {
+        await fetch(`${API_BASE}/sessions/${sessionId}`, { method: 'DELETE' });
+        loadSessions();
+    } catch (e) {
+        alert('删除失败: ' + e.message);
+    }
+}
+
+// ============ 初始化 ============
+function refresh() {
+    loadStatus();
+    loadWorkers();
+    loadQueue();
+    loadRefAudios();
+    loadSessions();
+}
+
+refresh();
+loadEtaConfig();
+setInterval(refresh, 5000);
+setInterval(loadEtaConfig, 30000); // ETA config 每30秒刷新
+</script>
+</body>
+</html>

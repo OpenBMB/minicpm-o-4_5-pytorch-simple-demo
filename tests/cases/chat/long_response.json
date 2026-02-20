@@ -1,0 +1,13 @@
+{
+  "description": "测试较长响应：请介绍一下你自己，期望响应长度>50字符",
+  "input": {
+    "messages": [
+      {"role": "user", "content": "请介绍一下你自己"}
+    ],
+    "generation": {"max_new_tokens": 100}
+  },
+  "expected": {
+    "success": true,
+    "text_min_length": 50
+  }
+}

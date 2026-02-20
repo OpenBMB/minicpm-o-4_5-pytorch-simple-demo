@@ -1,0 +1,464 @@
+/* ================================================================
+   omni.css — Omni Duplex page-specific styles
+   Extracted from omni.html inline <style>
+   ================================================================ */
+
+/* ========== Override main grid: 4:5 instead of shared 1:2 ========== */
+.main {
+    grid-template-columns: 4fr 5fr;
+}
+
+/* ========== Left Column: two rows, each row splits left/right ========== */
+.col-left .row-top {
+    display: flex;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+    background: #fff;
+    border-radius: 10px;
+    padding: 8px;
+}
+.col-left .row-top .panel-media {
+    flex: 3;
+    min-width: 0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.col-left .row-top .panel-mode {
+    flex: 2;
+    min-width: 160px;
+    overflow-y: auto;
+}
+.col-left .row-bottom {
+    display: flex;
+    gap: 8px;
+    flex: none;
+}
+.col-left .row-bottom .panel-config {
+    flex: 1;
+}
+.col-left .row-bottom .panel-status {
+    flex: 1;
+}
+
+/* ========== Video Container ========== */
+.video-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+.video-container video, .video-container canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+.video-container .video-overlay {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    display: flex;
+    gap: 6px;
+}
+.video-container .video-badge {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+}
+.video-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    font-size: 14px;
+    flex-direction: column;
+    gap: 8px;
+}
+.video-placeholder .icon { font-size: 32px; opacity: 0.5; }
+
+/* Green border overlay */
+.video-border-overlay {
+    position: absolute;
+    pointer-events: none;
+    border: 1.5px solid transparent;
+    border-radius: 4px;
+    transition: border-color 0.4s ease, box-shadow 0.4s ease;
+    z-index: 5;
+    display: none;
+}
+.video-border-overlay.active {
+    border-color: rgba(34,197,94,0.7);
+    box-shadow: inset 0 0 12px rgba(34,197,94,0.08), 0 0 16px rgba(34,197,94,0.15);
+}
+
+/* ========== Status Lamp ========== */
+.status-lamp {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    z-index: 10;
+    letter-spacing: 0.5px;
+}
+.status-lamp.visible { display: flex; }
+.status-lamp .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.status-lamp .timer {
+    font-size: 11px; font-weight: 500; opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}
+.status-lamp.live .dot { background: #ef4444; animation: pulse-dot 1.5s ease-in-out infinite; }
+.status-lamp.preparing .dot { background: #eab308; animation: pulse-dot 1s ease-in-out infinite; }
+.status-lamp.stopped .dot { background: #888; }
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* ========== Camera / Mirror Buttons ========== */
+.cam-flip-btn {
+    position: absolute; top: 10px; right: 10px;
+    width: 44px; height: 44px; border-radius: 12px; border: none;
+    background: rgba(255,255,255,0.25); backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); color: #fff; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; transition: all 0.2s ease; touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(255,255,255,0.3); pointer-events: auto;
+}
+.cam-flip-btn:hover { background: rgba(255,255,255,0.3); }
+.cam-flip-btn:active { transform: scale(0.9); background: rgba(255,255,255,0.5); }
+.cam-flip-btn.visible { display: flex; }
+.mirror-btn {
+    position: absolute; top: 10px; right: 62px;
+    width: 44px; height: 44px; border-radius: 12px; border: none;
+    background: rgba(255,255,255,0.25); backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); color: #fff; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; touch-action: manipulation; pointer-events: auto;
+    opacity: 0.6; transition: all 0.2s ease;
+}
+.mirror-btn.visible { display: flex; }
+.mirror-btn.active { opacity: 1; background: rgba(255,255,255,0.35); }
+.mirror-btn:hover { background: rgba(255,255,255,0.3); }
+.mirror-btn:active { transform: scale(0.9); }
+
+/* ========== Fullscreen Button ========== */
+.fullscreen-btn {
+    position: absolute; bottom: 10px; right: 10px;
+    width: 36px; height: 36px; border-radius: 10px; border: none;
+    background: rgba(255,255,255,0.2); backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); color: #fff; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; touch-action: manipulation; pointer-events: auto;
+}
+.fullscreen-btn.visible { display: flex; }
+.fullscreen-btn:active { transform: scale(0.9); }
+
+/* ========== Fullscreen Mode ========== */
+body.video-fullscreen .header { display: none !important; }
+body.video-fullscreen .main { display: block; }
+body.video-fullscreen .col-left,
+body.video-fullscreen .col-right { display: contents; }
+body.video-fullscreen .panel-media {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 56px;
+    z-index: 9999; border: none; border-radius: 0;
+    height: auto; /* override mobile 180px */
+}
+body.video-fullscreen .main { background: none; border: none; box-shadow: none; }
+body.video-fullscreen .panel-sysconfig,
+body.video-fullscreen .panel-mode,
+body.video-fullscreen .panel-config,
+body.video-fullscreen .panel-dialog,
+body.video-fullscreen .panel-status,
+body.video-fullscreen .panel-controls { display: none !important; }
+
+/* ========== Fullscreen Chat Overlay ========== */
+.fs-chat-overlay {
+    display: none;
+    position: absolute; bottom: 8px; left: 0; right: 0;
+    height: var(--fs-chat-height, 20vh);
+    overflow: hidden; pointer-events: none; z-index: 150;
+    -webkit-mask-image: var(--fs-chat-mask);
+    mask-image: var(--fs-chat-mask);
+}
+body.video-fullscreen .fs-chat-overlay.subtitle-on { display: flex; }
+.fs-chat-overlay .fs-chat-inner {
+    display: flex; flex-direction: column; justify-content: flex-end;
+    width: 100%; height: 100%; padding: 0 20px 8px; gap: 6px;
+}
+.fs-chat-msg {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 14px; border-radius: 12px;
+    background: rgba(0,0,0,0.5); backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); color: rgba(255,255,255,0.92);
+    font-size: 14px; line-height: 1.5; max-width: 92%;
+    word-break: break-word; animation: fs-msg-pop 0.25s ease-out;
+    align-self: flex-start; border-bottom-left-radius: 4px;
+}
+.fs-chat-msg .fs-msg-icon { flex-shrink: 0; font-size: 15px; line-height: 1.5; opacity: 0.8; }
+.fs-chat-msg .fs-msg-text { flex: 1; min-width: 0; }
+@keyframes fs-msg-pop {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========== Subtitle Toggle ========== */
+.subtitle-toggle-btn {
+    position: absolute; bottom: 10px; left: 10px;
+    width: 36px; height: 36px; border-radius: 10px; border: none;
+    background: rgba(255,255,255,0.2); backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px); color: #fff; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; touch-action: manipulation; pointer-events: auto;
+    opacity: 0.5; transition: opacity 0.15s;
+}
+.subtitle-toggle-btn.visible { display: flex; }
+.subtitle-toggle-btn.active { opacity: 1; }
+.subtitle-toggle-btn:active { transform: scale(0.9); }
+
+/* ========== Fullscreen Controls ========== */
+.fullscreen-controls {
+    display: none;
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 56px;
+    background: #111;
+    align-items: center; justify-content: center;
+    gap: 12px; z-index: 10000; pointer-events: auto;
+}
+body.video-fullscreen .fullscreen-controls { display: flex; }
+/* Mirror .ctrl-btn shape, dark-adapted colors */
+.fs-ctrl-btn {
+    padding: 10px 24px; min-width: 100px;
+    font-size: 14px; font-weight: 500; font-family: inherit;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: transparent; color: rgba(255,255,255,0.7);
+    border-radius: 10px; cursor: pointer;
+    transition: all 0.15s; touch-action: manipulation;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.fs-ctrl-btn:active { transform: scale(0.95); }
+.fs-ctrl-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+.fs-ctrl-btn.fs-start { background: #fff; color: #2d2d2d; border-color: #fff; }
+.fs-ctrl-btn.fs-start:hover:not(:disabled) { background: #e0e0e0; }
+.fs-ctrl-btn.fs-start:disabled { background: #666; border-color: #666; color: #999; }
+.fs-ctrl-btn.fs-stop { color: #f87171; border-color: #f87171; }
+.fs-ctrl-btn.fs-stop:hover:not(:disabled) { background: rgba(239,68,68,0.15); }
+.fs-ctrl-btn:hover:not(:disabled):not(.fs-start):not(.fs-stop) { background: rgba(255,255,255,0.1); }
+.fs-ctrl-btn.force-listen-active { background: #e85d04; color: #fff; border-color: #e85d04; }
+.fs-ctrl-btn.force-listen-active:hover { background: #d45203; }
+
+/* ========== Mode Selector ========== */
+.mode-selector {
+    display: flex; background: #f0f0eb; border-radius: 6px; padding: 2px;
+}
+.mode-btn {
+    font-size: 12px; padding: 5px 12px; border: none; background: transparent;
+    color: #666; border-radius: 5px; cursor: pointer; transition: all 0.15s; font-family: inherit;
+}
+.mode-btn.active { background: #fff; color: #2d2d2d; font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+/* ========== Panel Mode (inside row-top card) ========== */
+.panel-mode {
+    background: transparent;
+    padding: 4px 2px;
+    border-radius: 0;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* File chooser: below mode selector, hidden in live mode */
+.file-chooser {
+    display: none;
+    align-items: center;
+    gap: 4px 6px;
+    flex-wrap: wrap;
+    font-size: 12px;
+}
+.file-chooser.visible { display: flex; }
+
+/* ========== File Options ========== */
+.file-options {
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 6px;
+    margin-top: 4px;
+    border-top: 1px solid #f0f0eb;
+}
+.file-options.visible { display: flex; }
+.file-options .cg-input-sm {
+    width: 50px;
+    padding: 2px 5px;
+    font-size: 11px;
+    border: 1px solid #333;
+    border-radius: 6px;
+    background: #2d2d2d;
+    color: #fff;
+    text-align: center;
+}
+.file-options .cg-input-sm:focus { outline: none; border-color: #666; }
+.fo-cal-btn {
+    font-size: 10px; padding: 2px 6px;
+    border: 1px solid #e5e5e0; border-radius: 4px;
+    background: #f0f0eb; cursor: pointer; color: #666;
+    margin-left: 4px; font-family: inherit;
+}
+.fo-cal-btn:hover { background: #e5e5e0; color: #2d2d2d; }
+.fo-cal-btn.recording { background: #e85d04; color: #fff; border-color: #e85d04; }
+.fo-cal-result {
+    font-size: 10px; color: #888; margin-left: 2px; white-space: nowrap;
+}
+.fo-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.fo-group + .fo-group {
+    margin-top: 2px;
+    padding-top: 4px;
+    border-top: 1px solid #f0f0eb;
+}
+.fo-group-title {
+    font-size: 10px;
+    font-weight: 600;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.fo-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+.fo-row-wrap { flex-wrap: wrap; row-gap: 4px; }
+.fo-sep {
+    width: 1px; height: 14px;
+    background: #e5e5e0;
+    flex-shrink: 0;
+}
+.fo-label {
+    font-size: 11px;
+    color: #888;
+    flex-shrink: 0;
+    min-width: 44px;
+}
+.fo-file-btn {
+    font-size: 11px; padding: 3px 10px;
+    background: #f0f0eb; border-radius: 5px;
+    cursor: pointer; color: #666; transition: all 0.15s;
+}
+.fo-file-btn:hover { background: #e5e5e0; color: #2d2d2d; }
+.fo-duration {
+    font-size: 10px; color: #aaa;
+    margin-left: 2px;
+}
+.file-name {
+    font-size: 11px; color: #999; max-width: 140px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.file-chooser input[type="file"] { display: none; }
+.fo-radio-group {
+    display: flex; gap: 10px;
+}
+.fo-radio {
+    font-size: 11px; color: #555; cursor: pointer;
+    display: flex; align-items: center; gap: 3px;
+}
+.fo-radio input[type="radio"] { margin: 0; }
+.fo-range {
+    width: 100px; height: 4px;
+    accent-color: #2d2d2d;
+}
+.fo-val {
+    font-size: 11px; color: #888;
+    font-variant-numeric: tabular-nums;
+    min-width: 28px;
+}
+
+/* ========== Fullscreen Mobile Responsive ========== */
+@media (max-width: 768px) {
+    /* Smaller bottom bar on mobile */
+    body.video-fullscreen .panel-media {
+        bottom: 48px;
+    }
+    .fullscreen-controls {
+        height: 48px;
+        gap: 8px;
+        padding: 0 8px;
+    }
+    .fs-ctrl-btn {
+        padding: 8px 16px;
+        font-size: 12px;
+        min-width: 80px;
+    }
+
+    /* Subtitle overlay adjustments */
+    .fs-chat-msg {
+        font-size: 13px;
+        padding: 6px 10px;
+        max-width: 96%;
+    }
+
+    /* Video overlay buttons: larger touch targets */
+    .cam-flip-btn, .mirror-btn {
+        width: 40px; height: 40px;
+    }
+    .fullscreen-btn, .subtitle-toggle-btn {
+        width: 34px; height: 34px;
+    }
+
+    /* Status lamp: smaller on mobile */
+    .status-lamp {
+        font-size: 11px;
+        padding: 4px 10px;
+    }
+
+    /* Left column: stack vertically on mobile */
+    .col-left .row-top,
+    .col-left .row-bottom {
+        flex-direction: column;
+    }
+    .col-left .row-top .panel-mode {
+        overflow-y: visible;
+        min-width: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    body.video-fullscreen .panel-media {
+        bottom: 44px;
+    }
+    .fullscreen-controls {
+        height: 44px;
+        gap: 6px;
+    }
+    .fs-ctrl-btn {
+        padding: 6px 12px;
+        font-size: 11px;
+        min-width: 64px;
+        gap: 4px;
+    }
+    .fs-chat-msg {
+        font-size: 12px;
+        padding: 5px 8px;
+    }
+}

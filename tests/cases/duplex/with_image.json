@@ -1,0 +1,17 @@
+{
+  "description": "测试双工对话+图像：每帧同一张图，期望模型响应",
+  "input": {
+    "system_prompt": "Streaming Duplex Conversation with Image! You are a helpful assistant.",
+    "user_audio_path": "${INPUT_DIR}/user_audio/000_user_audio0.wav",
+    "ref_audio_path": "${REF_AUDIO_PATH}",
+    "image_paths": ["${INPUT_DIR}/images/image.png"],
+    "config": {
+      "force_listen_count": 3
+    }
+  },
+  "expected": {
+    "success": true,
+    "text_min_length": 1,
+    "has_audio": true
+  }
+}

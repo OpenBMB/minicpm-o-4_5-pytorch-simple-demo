@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiniCPMO45 Audio Duplex</title>
+    <link rel="stylesheet" href="/static/duplex/duplex-shared.css">
+    <link rel="stylesheet" href="/static/audio-duplex/audio-duplex.css">
+</head>
+<body>
+
+<!-- ========== Header ========== -->
+<div class="header">
+    <div class="header-left">
+        <h1>MiniCPMO45</h1>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/turnbased">Turn-based Chat</a>
+            <a href="/omni">Omni Full-Duplex</a>
+            <a href="/audio_duplex" class="active">Audio Full-Duplex</a>
+        </div>
+    </div>
+    <div class="header-right">
+        <button class="header-reset-btn" id="btnResetSettings" data-tip="Clear all saved settings and restore defaults">Reset Settings</button>
+        <span class="status-badge" id="serviceStatus">Connecting...</span>
+    </div>
+</div>
+
+<!-- ========== Two-Column Layout ========== -->
+<div class="main">
+
+    <!-- ===== Left Column ===== -->
+    <div class="col-left">
+
+    <div class="row-top">
+    <!-- Waveform -->
+    <div class="panel-media waveform-panel" id="panelMedia">
+        <div class="status-lamp" id="statusLamp">
+            <span class="dot"></span><span class="label">LIVE</span><span class="timer" id="lampTimer"></span>
+        </div>
+        <audio id="fileAudioEl" style="display:none;"></audio>
+        <canvas id="waveformCanvas"></canvas>
+        <div class="waveform-overlay" id="waveformOverlay">
+            <div class="waveform-dot"></div>
+            <span>Listening...</span>
+        </div>
+        <div class="waveform-placeholder" id="waveformPlaceholder">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.5">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+            <span>Microphone waveform</span>
+        </div>
+    </div>
+    <!-- Mode Selector (sidebar next to waveform) -->
+    <div class="panel-mode" id="panelMode">
+        <div class="fo-row fo-row-wrap">
+            <div class="mode-selector">
+                <button class="mode-btn active" data-mode="live" data-tip="Use microphone for real-time audio input">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>Live
+                </button>
+                <button class="mode-btn" data-mode="file" data-tip="Use a pre-recorded audio file as input">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>File
+                </button>
+            </div>
+            <div class="file-chooser" id="fileChooser">
+                <label for="audioFileInput" class="fo-file-btn" data-tip="Select an audio file to send to the model">Choose audio</label>
+                <input type="file" id="audioFileInput" accept="audio/*">
+                <span class="file-name" id="fileName" data-tip="Current audio file name">No file</span>
+                <span class="fo-duration" id="fileDuration" data-tip="Audio file duration"></span>
+            </div>
+        </div>
+        <div class="file-options" id="fileOptions">
+            <div class="fo-group">
+                <span class="fo-group-title">Audio</span>
+                <div class="fo-row fo-row-wrap">
+                    <span class="fo-label" data-tip="Audio source sent to the model">Source</span>
+                    <div class="fo-radio-group">
+                        <label class="fo-radio" data-tip="Send only the audio file to the model (no microphone)"><input type="radio" name="fileAudioMode" value="file" checked> File-only</label>
+                        <label class="fo-radio" data-tip="Mix audio file with microphone and send to the model"><input type="radio" name="fileAudioMode" value="mixed"> File+Mic</label>
+                    </div>
+                </div>
+                <button class="fo-mixer-btn" id="btnMixerToggle" style="display:none;" data-tip="Open draggable mixer panel">Mixer</button>
+            </div>
+            <div class="fo-group">
+                <span class="fo-group-title">Padding</span>
+                <div class="fo-row">
+                    <span class="fo-label" data-tip="Seconds of silence added before/after the audio file">Pad s</span>
+                    <span style="font-size:10px;color:#888;" data-tip="Silence before audio (seconds)">L</span>
+                    <input type="number" class="cg-input-sm" id="padBeforeSec" value="0" min="0" max="30" step="1" data-tip="Silence before audio (seconds)">
+                    <span style="font-size:10px;color:#888;" data-tip="Silence after audio (seconds)">R</span>
+                    <input type="number" class="cg-input-sm" id="padAfterSec" value="2" min="0" max="30" step="1" data-tip="Silence after audio (seconds)">
+                </div>
+            </div>
+        </div>
+    </div>
+    </div><!-- /row-top -->
+
+    <div class="row-bottom">
+    <!-- Other Config -->
+    <div class="panel-config">
+        <details class="config-group" open>
+            <summary>Session</summary>
+            <div class="cg-body">
+                <div class="cg-row inline" data-tip="Buffer before playback starts, higher = more stable but more latency">
+                    <span class="cg-label" style="flex:none;">Delay</span>
+                    <input type="number" class="cg-input-sm" id="playbackDelay" value="200" min="0" max="2000" step="50">
+                    <span style="font-size:10px;color:#888;">ms</span>
+                </div>
+                <div class="cg-row inline" data-tip="Max KV cache size, limits conversation context length">
+                    <span class="cg-label" style="flex:none;">MaxKV</span>
+                    <input type="number" class="cg-input-sm" id="maxKvTokens" value="8192" min="512" max="131072" step="512">
+                    <span style="font-size:10px;color:#888;">tok</span>
+                </div>
+                <div class="cg-row inline" data-tip="Controls AI response length, >1 = longer responses">
+                    <span class="cg-label" style="flex:none;">Length Penalty</span>
+                    <input type="number" class="cg-input-sm" id="duplexLengthPenalty" value="1.05" min="0.1" max="5.0" step="0.05">
+                    <span style="font-size:10px;color:#888;">&gt;1 = longer</span>
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- Status -->
+    <div class="panel-status" id="panelStatus"></div>
+    </div><!-- /row-bottom -->
+
+    </div><!-- /col-left -->
+
+    <!-- ===== Right Column ===== -->
+    <div class="col-right">
+
+    <!-- System Prompt -->
+    <div class="panel-sysconfig">
+        <div class="sysconfig-columns">
+            <div class="sysconfig-col">
+                <details class="config-group" open>
+                    <summary>System Prompt</summary>
+                    <div class="cg-body">
+                        <div class="cg-row">
+                            <textarea class="cg-input" id="systemPrompt" rows="3" placeholder="System prompt">扮演一个具有以上声音特征的助手。请认真、高质量地回复用户的问题。请用高自然度的方式和用户聊天。你处于双工模式，可以一边听、一边说。你是由面壁智能开发的人工智能助手：面壁小钢炮。</textarea>
+                        </div>
+                        <div class="cg-row">
+                            <span class="cg-label">LLM Ref Audio (system prompt)</span>
+                            <div id="refAudioPlayerDuplex"></div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+            <div class="sysconfig-col">
+                <details class="config-group" open>
+                    <summary>TTS Ref Audio</summary>
+                    <div class="cg-body">
+                        <div class="cg-row">
+                            <span class="cg-label">Voice cloning</span>
+                            <div style="font-size:12px;">
+                                <div style="display:flex;gap:12px;align-items:center;margin-bottom:4px;">
+                                    <label style="cursor:pointer;color:#555;"><input type="radio" name="duplexTtsRefMode" value="extract" checked> Same as LLM</label>
+                                    <label style="cursor:pointer;color:#555;"><input type="radio" name="duplexTtsRefMode" value="independent"> Independent</label>
+                                </div>
+                                <div id="duplexTtsRefHint" style="font-size:11px;color:#aaa;"></div>
+                                <div id="duplexTtsRefUpload" style="display:none;margin-top:6px;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dialog -->
+    <div class="panel-dialog">
+        <div class="conv-header">
+            <span>Conversation</span>
+            <span id="chatSessionInfo" style="font-size:11px;color:#999;font-weight:400;">—</span>
+        </div>
+        <div class="conv-log" id="chatLog">
+            <div class="conv-empty" id="chatEmpty">Start a session to begin real-time voice conversation</div>
+        </div>
+    </div>
+
+    </div><!-- /col-right -->
+
+    <!-- Controls (spans full width) -->
+    <div class="panel-controls">
+        <button class="ctrl-btn" id="btnForceListen" disabled data-tip="Force model into listening mode, interrupt speaking">Force Listen</button>
+        <button class="ctrl-btn" id="btnPause" disabled data-tip="Pause/resume the duplex session without disconnecting">Pause</button>
+        <button class="ctrl-btn danger" id="btnStop" disabled data-tip="Stop the session and disconnect">Stop</button>
+        <button class="ctrl-btn primary" id="btnStart" data-tip="Start a new duplex session with microphone">Start</button>
+        <span class="ctrl-divider"></span>
+        <label class="rec-label" data-tip="Record session as stereo WAV (L=input mix, R=AI response)"><input type="checkbox" id="recCheckbox" checked> Rec</label>
+        <button class="ctrl-btn" id="btnDownloadRec" style="display:none;" disabled data-tip="Download session recording">Download Rec</button>
+    </div>
+
+</div>
+
+<!-- Draggable Mixer Panel (LUFS) — content injected by getMixerPanelHTML() -->
+<div class="mixer-panel" id="mixerPanel"></div>
+
+<!-- Save & Share -->
+<div id="save-share-container" style="position:fixed;bottom:16px;right:16px;z-index:100;max-width:300px;"></div>
+
+<script src="/static/ref-audio-player.js"></script>
+<script src="/static/shared/save-share.js"></script>
+<script type="module" src="/static/audio-duplex/audio-duplex-app.js"></script>
+</body>
+</html>

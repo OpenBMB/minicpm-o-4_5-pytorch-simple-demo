@@ -1,0 +1,13 @@
+{
+  "description": "测试简单对话：1+1等于几？期望回答包含'2'",
+  "input": {
+    "messages": [
+      {"role": "user", "content": "1+1等于几？"}
+    ],
+    "generation": {"max_new_tokens": 50}
+  },
+  "expected": {
+    "success": true,
+    "text_contains": ["2"]
+  }
+}
