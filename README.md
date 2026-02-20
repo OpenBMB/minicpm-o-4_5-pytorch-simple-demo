@@ -14,6 +14,13 @@ This demo system supports text/image/audio input with real-time voice output. It
 
 The 3 currently supported modes share a single model instance with millisecond-level hot-switching (< 0.1ms). More modes will be supported soon.
 
+**Additional features:**
+
+- Customizable system prompts
+- Customizable reference audio
+- Simple and readable codebase for continual development
+- Serve as API backend for third-party applications
+
 ## Architecture
 
 ```

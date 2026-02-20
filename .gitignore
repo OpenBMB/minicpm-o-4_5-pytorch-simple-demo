@@ -1,5 +1,6 @@
 # Python
 .venv/
+.venv
 __pycache__/
 .pytest_cache/
 .mypy_cache/
@@ -14,7 +15,7 @@ node_modules/
 
 # 本地配置与运行时（用户从 config.example.json 复制）
 config.json
-certs/
+# certs/
 
 # 运行时数据
 data/
