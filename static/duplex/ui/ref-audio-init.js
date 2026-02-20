@@ -56,5 +56,11 @@ export function initRefAudio(containerId, callbacks = {}) {
         getName: () => name,
         isDefault: () => isDefault,
         rap,
+        setAudio(b64, n, dur) {
+            base64 = b64;
+            name = n || '';
+            isDefault = false;
+            rap.setAudio(b64, n, dur);
+        },
     };
 }

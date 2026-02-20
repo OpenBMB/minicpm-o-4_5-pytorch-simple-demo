@@ -1,4 +1,4 @@
-id: english_call_omni
+id: english_call
 name: "English Call"
 description: "English voice assistant (Omni)"
 system_prompt: "Streaming Omni Conversation."

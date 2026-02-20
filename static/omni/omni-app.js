@@ -145,7 +145,7 @@ const _omniPreset = new PresetSelector({
             settingsPersistence.save();
         }
         if (preset && preset.ref_audio && preset.ref_audio.data) {
-            refAudio.rap.setAudio(preset.ref_audio.data, preset.ref_audio.name, preset.ref_audio.duration);
+            refAudio.setAudio(preset.ref_audio.data, preset.ref_audio.name, preset.ref_audio.duration);
         }
     },
     storageKey: 'omni_preset',
