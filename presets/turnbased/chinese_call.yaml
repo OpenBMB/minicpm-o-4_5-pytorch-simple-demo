@@ -1,4 +1,5 @@
 id: chinese_call
+order: 1
 name: "中文通话"
 description: "中文语音助手，面壁小钢炮"
 system_content:

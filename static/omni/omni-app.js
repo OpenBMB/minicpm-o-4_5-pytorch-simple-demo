@@ -113,12 +113,16 @@ const settingsPersistence = new SettingsPersistence('omni_settings', [
     { id: 'mxMonitor', type: 'range' },
 ]);
 
-// Priority: HTML defaults → server defaults → localStorage (highest)
-loadFrontendDefaults().then(() => settingsPersistence.restore());
+// Priority: HTML defaults → server defaults → localStorage → preset (highest)
+loadFrontendDefaults().then(() => {
+    settingsPersistence.restore();
+    _omniPreset.init();
+});
 window._settingsPersistence = settingsPersistence;
 document.getElementById('btnResetSettings')?.addEventListener('click', () => {
     if (confirm('Reset all settings to defaults?')) {
         if (recordingSettings) recordingSettings.clearStorage();
+        localStorage.removeItem('omni_preset');
         settingsPersistence.clear();
     }
 });
@@ -150,7 +154,6 @@ const _omniPreset = new PresetSelector({
     },
     storageKey: 'omni_preset',
 });
-_omniPreset.init();
 
 // ============================================================================
 // MediaProvider Classes (Omni-specific)

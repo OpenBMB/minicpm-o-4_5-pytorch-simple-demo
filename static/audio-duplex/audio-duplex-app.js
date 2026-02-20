@@ -125,11 +125,17 @@ const settingsPersistence = new SettingsPersistence('audio_duplex_settings', [
     { id: 'mxMonitor', type: 'range' },
 ]);
 
-// Priority: HTML defaults → server defaults → localStorage (highest)
-loadFrontendDefaults().then(() => settingsPersistence.restore());
+// Priority: HTML defaults → server defaults → localStorage → preset (highest)
+loadFrontendDefaults().then(() => {
+    settingsPersistence.restore();
+    _duplexPreset.init();
+});
 window._settingsPersistence = settingsPersistence;
 document.getElementById('btnResetSettings')?.addEventListener('click', () => {
-    if (confirm('Reset all settings to defaults?')) settingsPersistence.clear();
+    if (confirm('Reset all settings to defaults?')) {
+        localStorage.removeItem('audio_duplex_preset');
+        settingsPersistence.clear();
+    }
 });
 
 // ============================================================================
@@ -162,7 +168,6 @@ const _duplexPreset = new PresetSelector({
     },
     storageKey: 'audio_duplex_preset',
 });
-_duplexPreset.init();
 
 // ============================================================================
 // Waveform Drawing

@@ -826,6 +826,7 @@ def _load_presets_from_dir(project_root: str) -> Dict[str, List[Dict[str, Any]]]
                 logger.error(f"Failed to load preset {fpath}: {e}")
 
         if mode_presets:
+            mode_presets.sort(key=lambda p: p.get("order", 999))
             result[mode_dir] = mode_presets
 
     total = sum(len(v) for v in result.values())
