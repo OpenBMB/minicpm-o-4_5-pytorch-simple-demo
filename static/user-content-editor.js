@@ -333,10 +333,11 @@ var _uceActiveRecordingSession = null;
 var _uceLastActiveEditor = null;
 
 // ── Space key: tap = toggle, hold = push-to-talk; ESC = cancel ──
+var _uceSpaceHeld = false;
+var _uceSpaceDownTime = 0;
+const _UCE_HOLD_THRESHOLD_MS = 300;
+
 (function _uceInitRecordingShortcuts() {
-    const HOLD_THRESHOLD_MS = 300;
-    let spaceDownTime = 0;
-    let spaceHeld = false;
 
     function isInputFocused() {
         const tag = document.activeElement?.tagName;
@@ -348,34 +349,35 @@ var _uceLastActiveEditor = null;
         if (e.key === 'Escape' && _uceGlobalRecordingActive && _uceActiveRecordingSession) {
             e.preventDefault();
             _uceActiveRecordingSession.cancel();
-            spaceHeld = false;
+            _uceSpaceHeld = false;
             return;
         }
 
-        // Space: only when not in text input, not repeat
+        // Space: only when not in any text input, not repeat
+        // (empty UCE textarea is handled directly by the textarea's own keydown)
         if (e.code !== 'Space' || isInputFocused() || e.repeat) return;
         if (!_uceLastActiveEditor) return;
-        if (!_uceLastActiveEditor.wrap.offsetParent) return; // not visible
+        if (!_uceLastActiveEditor.wrap.offsetParent) return;
         e.preventDefault();
 
         if (!_uceGlobalRecordingActive) {
-            spaceHeld = true;
-            spaceDownTime = Date.now();
+            _uceSpaceHeld = true;
+            _uceSpaceDownTime = Date.now();
             _uceLastActiveEditor._startRecording();
-        } else if (!spaceHeld && _uceActiveRecordingSession) {
+        } else if (!_uceSpaceHeld && _uceActiveRecordingSession) {
             _uceActiveRecordingSession.stop();
         }
     });
 
     document.addEventListener('keyup', (e) => {
-        if (e.code !== 'Space' || !spaceHeld) return;
+        if (e.code !== 'Space' || !_uceSpaceHeld) return;
         e.preventDefault();
-        spaceHeld = false;
+        _uceSpaceHeld = false;
 
         if (!_uceGlobalRecordingActive || !_uceActiveRecordingSession) return;
 
-        const holdMs = Date.now() - spaceDownTime;
-        if (holdMs >= HOLD_THRESHOLD_MS) {
+        const holdMs = Date.now() - _uceSpaceDownTime;
+        if (holdMs >= _UCE_HOLD_THRESHOLD_MS) {
             _uceActiveRecordingSession.stop();
         }
     });
@@ -803,12 +805,24 @@ class UserContentEditor {
                 this._promoteText(ta);
             }
         });
-        // Enter 提交（空状态直接走 onSubmit，不 promote）
         ta.addEventListener('keydown', (e) => {
+            // Space on empty textarea → start recording
+            if (e.code === 'Space' && ta.value === '' && !composing && !e.repeat) {
+                e.preventDefault();
+                _uceLastActiveEditor = this;
+                if (!_uceGlobalRecordingActive) {
+                    _uceSpaceHeld = true;
+                    _uceSpaceDownTime = Date.now();
+                    this._startRecording();
+                } else if (!_uceSpaceHeld && _uceActiveRecordingSession) {
+                    _uceActiveRecordingSession.stop();
+                }
+                return;
+            }
+            // Enter 提交
             if (e.key === 'Enter' && !e.shiftKey && !composing && this.onSubmit) {
                 e.preventDefault();
                 if (ta.value.trim()) {
-                    // 有文本：先 promote 到 items，再触发 submit
                     this._promoteText(ta);
                 }
                 this.onSubmit();

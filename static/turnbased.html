@@ -851,7 +851,7 @@
             <div id="composeEditorInit"></div>
             <div class="input-bottom">
                 <div class="input-options">
-                    <div class="opt-group">
+                    <div class="opt-group" style="display:none;">
                         <select id="modeSelectInit">
                             <option value="chat">Chat</option>
                             <option value="streaming" selected>Streaming</option>
@@ -869,7 +869,7 @@
                         <input type="checkbox" id="enableTtsInit" checked>
                         <label for="enableTtsInit">TTS</label>
                     </div>
-                    <div class="opt-group">
+                    <div class="opt-group" style="display:none;">
                         <input type="checkbox" id="enableHDInit" checked>
                         <label for="enableHDInit" data-tooltip="HD vision: 1 source + 2 slices = 192 tok/image. Better for text/details in images.">HD</label>
                     </div>
@@ -930,7 +930,7 @@
                 <div id="composeEditorChat"></div>
                 <div class="input-bottom">
                     <div class="input-options">
-                        <div class="opt-group">
+                        <div class="opt-group" style="display:none;">
                             <select id="modeSelect">
                                 <option value="chat">Chat</option>
                                 <option value="streaming" selected>Streaming</option>
@@ -948,7 +948,7 @@
                             <input type="checkbox" id="enableTts" checked>
                             <label for="enableTts">TTS</label>
                         </div>
-                        <div class="opt-group">
+                        <div class="opt-group" style="display:none;">
                             <input type="checkbox" id="enableHD" checked>
                             <label for="enableHD" data-tooltip="HD vision: 1 source + 2 slices = 192 tok/image. Better for text/details in images.">HD</label>
                         </div>
@@ -1084,7 +1084,7 @@ function initInputEnhancements() {
 function _createAttachFileInput(getEditor) {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*,audio/*';
+    input.accept = 'audio/*';
     input.multiple = true;
     input.style.display = 'none';
     document.body.appendChild(input);
@@ -1098,8 +1098,7 @@ function _createAttachFileInput(getEditor) {
 
 function _addFileToEditor(editor, file) {
     if (file.type.startsWith('image/')) {
-        const objectUrl = URL.createObjectURL(file);
-        editor.addItem({ type: 'image', file, name: file.name, objectUrl, data: null });
+        return; // image upload disabled
     } else if (file.type.startsWith('audio/')) {
         const objectUrl = URL.createObjectURL(file);
         const audio = new Audio(objectUrl);
