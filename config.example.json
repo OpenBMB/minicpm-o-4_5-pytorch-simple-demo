@@ -1,6 +1,6 @@
 {
     "model": {
-        "model_path": "/path/to/your/model",
+        "model_path": "openbmb/MiniCPM-o-4_5",
         "pt_path": null,
         "attn_implementation": "auto"
     },
@@ -10,7 +10,7 @@
         "chat_vocoder": "token2wav"
     },
     "service": {
-        "gateway_port": 10024,
+        "gateway_port": 8006,
         "worker_base_port": 22400,
         "max_queue_size": 1000,
         "request_timeout": 300.0,

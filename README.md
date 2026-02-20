@@ -18,14 +18,19 @@ The 3 currently supported modes share a single model instance with millisecond-l
 
 ```
 Frontend (HTML/JS)
-    │ HTTPS / WSS
-Gateway (:8006, HTTPS)          ← Routing, queuing, WS proxy
-    │ HTTP / WS (internal)
-Worker Pool (:22400+)            ← Each Worker occupies one GPU
-    ├── Worker 0 (GPU 0)
-    ├── Worker 1 (GPU 1)
-    └── ...
+    |  HTTPS / WSS
+Gateway (:8006, HTTPS)
+    |  HTTP / WS (internal)
+Worker Pool (:22400+)
+    +-- Worker 0 (GPU 0)
+    +-- Worker 1 (GPU 1)
+    +-- ...
 ```
+
+- **Frontend** — Mode selection homepage, Turn-based Chat, Omni / Audio Duplex full-duplex interaction, Admin Dashboard
+- **Gateway** — Request routing and dispatching, WebSocket proxy, request queuing and session affinity
+- **Worker** — Each Worker occupies one GPU exclusively, supports Turn-based Chat / Duplex protocols, Duplex supports pause/resume (auto-release on timeout)
+
 
 ## Quick Start
 
@@ -170,10 +175,10 @@ pkill -f "gateway.py|worker.py"
 
 ## Known Issues and Improvement Plans
 
-- [] In Turn-based Chat mode, image input is temporarily unavailable — only audio and text input are supported. An image Q&A mode will be split out soon.
-- [] Half-duplex voice call (no button required to trigger responses) is under development and will be merged soon.
-- [] In Audio Full-Duplex mode, echo cancellation currently has issues affecting interruption success rate. Using headphones is recommended. A fix is coming soon.
-- [] In voice mode, Chinese and English calls require corresponding language system prompts.
+- In Turn-based Chat mode, image input is temporarily unavailable — only audio and text input are supported. An image Q&A mode will be split out soon.
+- Half-duplex voice call (no button required to trigger responses) is under development and will be merged soon.
+- In Audio Full-Duplex mode, echo cancellation currently has issues affecting interruption success rate. Using headphones is recommended. A fix is coming soon.
+- In voice mode, due to the model's training strategy, Chinese and English calls require corresponding language system prompts.
 
 <br/>
 

@@ -19,14 +19,19 @@
 
 ```
 Frontend (HTML/JS)
-    │ HTTPS / WSS
-Gateway (:8006, HTTPS)          ← 路由、排队、WS 代理
-    │ HTTP / WS (internal)
-Worker Pool (:22400+)            ← 每 Worker 独占一张 GPU
-    ├── Worker 0 (GPU 0)
-    ├── Worker 1 (GPU 1)
-    └── ...
+    |  HTTPS / WSS
+Gateway (:8006, HTTPS)
+    |  HTTP / WS (internal)
+Worker Pool (:22400+)
+    +-- Worker 0 (GPU 0)
+    +-- Worker 1 (GPU 1)
+    +-- ...
 ```
+
+- **Frontend** — 模式选择首页、Turn-based Chat 轮次对话、Omni / Audio Duplex 全双工交互、Admin Dashboard 监控面板
+- **Gateway** — 请求路由与分发、WebSocket 代理、请求排队与会话亲和
+- **Worker** — 每 Worker 独占一张 GPU，支持 Turn-based Chat / Duplex 协议，Duplex 支持暂停/恢复（超时自动释放）
+
 
 ## 快速开始
 
@@ -171,10 +176,10 @@ pkill -f "gateway.py|worker.py"
 
 ## 已知问题和改进计划
 
-- [] 轮次对话模式下，图片输入暂时不可用，仅支持音频和文本输入，近期会拆分出图片问答模式。
-- [] 半双工的语音通话（无需按钮触发回复）正在开发中，近期合入。
-- [] 语音全双工模式下，回声消除目前存在问题，影响到打断成功率，推荐使用耳机进行交互，近期将修复。
-- [] 语音模式下，中文和英文通话，需要使用对应语言的系统提示词。
+- 轮次对话模式下，图片输入暂时不可用，仅支持音频和文本输入，近期会拆分出图片问答模式。
+- 半双工的语音通话（无需按钮触发回复）正在开发中，近期合入。
+- 语音全双工模式下，回声消除目前存在问题，影响到打断成功率，推荐使用耳机进行交互，近期将修复。
+- 语音模式下，由于模型的训练策略，中文和英文通话下，需要使用对应语言的系统提示词。
 
 <br/>
 

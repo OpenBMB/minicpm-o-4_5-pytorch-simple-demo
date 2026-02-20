@@ -88,7 +88,7 @@ class ServiceSectionConfig(BaseModel):
     """服务部署配置"""
 
     gateway_port: int = Field(
-        default=10024,
+        default=8006,
         description="Gateway 端口",
     )
     worker_base_port: int = Field(
