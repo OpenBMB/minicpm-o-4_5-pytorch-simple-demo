@@ -820,27 +820,30 @@
         <div class="initial-title">MiniCPM-o 4.5</div>
         <div class="initial-subtitle">Text · Image · Audio — Multimodal Chat</div>
 
-        <!-- System 配置 -->
-        <details class="system-config-card" id="systemConfigCard">
-            <summary>System Settings (optional)</summary>
-            <div class="sc-body">
-                <div class="sc-field">
-                    <label>System Content (text + audio, reorderable)</label>
-                    <div id="sysContentEditorInit"></div>
-                </div>
-                <div class="sc-field">
-                    <div class="tts-ref-wrap" id="ttsRefWrapInit">
-                        <div class="tts-ref-header">TTS Ref Audio (voice cloning)</div>
-                        <div class="tts-ref-options">
-                            <label><input type="radio" name="ttsRefModeInit" value="extract" checked onchange="onTtsRefModeChange()"> Extract from System</label>
-                            <label><input type="radio" name="ttsRefModeInit" value="independent" onchange="onTtsRefModeChange()"> Independent</label>
+        <!-- Preset + System 配置 -->
+        <div class="system-config-card" style="padding:16px 20px;">
+            <div id="presetSelectorInit"></div>
+            <details id="systemConfigCard" style="margin-top:8px;">
+                <summary style="cursor:pointer;font-size:12px;color:#999;user-select:none;list-style:none;display:none;">Advanced System Settings</summary>
+                <div class="sc-body" style="margin-top:10px;">
+                    <div class="sc-field">
+                        <label>System Content (text + audio, reorderable)</label>
+                        <div id="sysContentEditorInit"></div>
+                    </div>
+                    <div class="sc-field">
+                        <div class="tts-ref-wrap" id="ttsRefWrapInit">
+                            <div class="tts-ref-header">TTS Ref Audio (voice cloning)</div>
+                            <div class="tts-ref-options">
+                                <label><input type="radio" name="ttsRefModeInit" value="extract" checked onchange="onTtsRefModeChange()"> Extract from System</label>
+                                <label><input type="radio" name="ttsRefModeInit" value="independent" onchange="onTtsRefModeChange()"> Independent</label>
+                            </div>
+                            <div class="tts-ref-hint" id="ttsRefHintInit"></div>
+                            <div class="tts-ref-upload" id="ttsRefUploadInit" style="display:none;"></div>
                         </div>
-                        <div class="tts-ref-hint" id="ttsRefHintInit"></div>
-                        <div class="tts-ref-upload" id="ttsRefUploadInit" style="display:none;"></div>
                     </div>
                 </div>
-            </div>
-        </details>
+            </details>
+        </div>
 
         <!-- 首轮输入（UserContentEditor） -->
         <div class="initial-input-wrap">
@@ -882,9 +885,12 @@
 
     <!-- ========== 对话视图 ========== -->
     <div class="chat-view hidden" id="chatView">
-        <!-- System 配置折叠条 -->
-        <details class="sys-config-bar" id="sysConfigBar">
-            <summary id="sysConfigBarSummary">System Settings</summary>
+        <!-- Preset + System 配置 -->
+        <div class="sys-config-bar" style="padding:8px 12px;">
+            <div id="presetSelectorChat"></div>
+        </div>
+        <details class="sys-config-bar" id="sysConfigBar" style="margin-top:4px;">
+            <summary id="sysConfigBarSummary" style="display:none;">System Settings</summary>
             <div class="sc-inline-body">
                 <div class="sc-field">
                     <label>System Content</label>
@@ -963,6 +969,7 @@
     </div>
 
 <script src="/static/ref-audio-player.js"></script>
+<script src="/static/shared/preset-selector.js"></script>
 <script src="/static/system-content-editor.js"></script>
 <script src="/static/user-content-editor.js"></script>
 <script>
@@ -1173,6 +1180,57 @@ function initSystemContentEditors() {
 
     // 加载默认 ref audio 并填充到 audio items
     fetchDefaultRefAudio();
+
+    // 初始化 Preset Selector（两个视图共享同一个回调）
+    initPresetSelectors();
+}
+
+function _applyTurnbasedPreset(preset) {
+    if (!preset || !preset.system_content) return;
+    const items = preset.system_content.map(item => {
+        if (item.type === 'audio') {
+            return {
+                type: 'audio',
+                data: item.data || null,
+                name: item.name || '',
+                duration: item.duration || 0,
+            };
+        }
+        return { type: 'text', text: item.text || '' };
+    });
+    state.systemContentList = items;
+    if (_sceInit) _sceInit.setItems(items);
+    if (_sceChat) _sceChat.setItems(items);
+    state.requestId = 'req_' + Date.now();
+    updateSysConfigBarSummary();
+    updateTtsRefHints();
+}
+
+let _presetInit = null, _presetChat = null;
+
+function initPresetSelectors() {
+    _presetInit = new PresetSelector({
+        container: document.getElementById('presetSelectorInit'),
+        page: 'turnbased',
+        detailsEl: document.getElementById('systemConfigCard'),
+        onSelect: (preset) => {
+            _applyTurnbasedPreset(preset);
+            if (_presetChat) _presetChat.select(preset.id, false);
+        },
+        storageKey: 'turnbased_preset',
+    });
+    _presetChat = new PresetSelector({
+        container: document.getElementById('presetSelectorChat'),
+        page: 'turnbased',
+        detailsEl: document.getElementById('sysConfigBar'),
+        onSelect: (preset) => {
+            _applyTurnbasedPreset(preset);
+            if (_presetInit) _presetInit.select(preset.id, false);
+        },
+        storageKey: 'turnbased_preset',
+    });
+    _presetInit.init();
+    _presetChat.init();
 }
 
 async function fetchDefaultRefAudio() {

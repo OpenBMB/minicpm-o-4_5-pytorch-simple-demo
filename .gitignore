@@ -36,3 +36,4 @@ resources/
 .vscode/
 *.swp
 *.swo
+playbook/

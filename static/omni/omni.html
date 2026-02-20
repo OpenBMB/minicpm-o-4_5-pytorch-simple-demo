@@ -194,42 +194,34 @@
     <!-- ===== Right Column ===== -->
     <div class="col-right">
 
-    <!-- System Prompt -->
+    <!-- Preset + System Prompt -->
     <div class="panel-sysconfig">
-        <div class="sysconfig-columns">
-            <div class="sysconfig-col">
-                <details class="config-group" open>
-                    <summary>System Prompt</summary>
-                    <div class="cg-body">
-                        <div class="cg-row">
-                            <textarea class="cg-input" id="systemPrompt" rows="2" placeholder="System prompt...">Streaming Omni Conversation.</textarea>
-                        </div>
-                        <div class="cg-row">
-                            <span class="cg-label">LLM Ref Audio (system prompt)</span>
-                            <div id="omniRefAudioPlayer"></div>
-                        </div>
-                    </div>
-                </details>
-            </div>
-            <div class="sysconfig-col">
-                <details class="config-group" open>
-                    <summary>TTS Ref Audio</summary>
-                    <div class="cg-body">
-                        <div class="cg-row">
-                            <span class="cg-label">Voice cloning</span>
-                            <div style="font-size:12px;">
-                                <div style="display:flex;gap:12px;align-items:center;margin-bottom:4px;">
-                                    <label style="cursor:pointer;color:#555;"><input type="radio" name="omniTtsRefMode" value="extract" checked> Same as LLM</label>
-                                    <label style="cursor:pointer;color:#555;"><input type="radio" name="omniTtsRefMode" value="independent"> Independent</label>
-                                </div>
-                                <div id="omniTtsRefHint" style="font-size:11px;color:#aaa;"></div>
-                                <div id="omniTtsRefUpload" style="display:none;margin-top:6px;"></div>
-                            </div>
-                        </div>
-                    </div>
-                </details>
-            </div>
+        <div style="padding:6px 0 8px 0;">
+            <div id="presetSelectorOmni"></div>
         </div>
+        <details class="config-group" id="omniSysPromptDetails">
+            <summary style="display:none;">System Prompt Details</summary>
+            <div class="cg-body">
+                <div class="cg-row">
+                    <textarea class="cg-input" id="systemPrompt" rows="2" placeholder="System prompt...">Streaming Omni Conversation.</textarea>
+                </div>
+                <div class="cg-row">
+                    <span class="cg-label">LLM Ref Audio (system prompt)</span>
+                    <div id="omniRefAudioPlayer"></div>
+                </div>
+                <div class="cg-row" style="margin-top:8px;padding-top:8px;border-top:1px solid #f0ede8;">
+                    <span class="cg-label">TTS Ref Audio (voice cloning)</span>
+                    <div style="font-size:12px;">
+                        <div style="display:flex;gap:12px;align-items:center;margin-bottom:4px;">
+                            <label style="cursor:pointer;color:#555;"><input type="radio" name="omniTtsRefMode" value="extract" checked> Same as LLM</label>
+                            <label style="cursor:pointer;color:#555;"><input type="radio" name="omniTtsRefMode" value="independent"> Independent</label>
+                        </div>
+                        <div id="omniTtsRefHint" style="font-size:11px;color:#aaa;"></div>
+                        <div id="omniTtsRefUpload" style="display:none;margin-top:6px;"></div>
+                    </div>
+                </div>
+            </div>
+        </details>
     </div>
 
     <!-- Dialog -->
@@ -271,6 +263,7 @@
 <div id="save-share-container" style="position:fixed;bottom:16px;right:16px;z-index:100;max-width:300px;"></div>
 
 <script src="/static/ref-audio-player.js"></script>
+<script src="/static/shared/preset-selector.js"></script>
 <script src="/static/shared/save-share.js"></script>
 <script type="module" src="/static/omni/omni-app.js"></script>
 </body>

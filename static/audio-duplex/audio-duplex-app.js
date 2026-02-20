@@ -133,13 +133,36 @@ document.getElementById('btnResetSettings')?.addEventListener('click', () => {
 });
 
 // ============================================================================
-// Ref Audio
+// Preset Selector
+// ============================================================================
+// ============================================================================
+// Ref Audio (init before preset so preset can update it)
 // ============================================================================
 const duplexTtsRef = createTtsRefController('duplex', () => refAudio.getBase64());
 const refAudio = initRefAudio('refAudioPlayerDuplex', {
     onTtsHintUpdate: () => duplexTtsRef.updateHint(),
 });
 duplexTtsRef.init();
+
+// ============================================================================
+// Preset Selector
+// ============================================================================
+const _duplexPreset = new PresetSelector({
+    container: document.getElementById('presetSelectorDuplex'),
+    page: 'audio_duplex',
+    detailsEl: document.getElementById('duplexSysPromptDetails'),
+    onSelect: (preset) => {
+        if (preset && preset.system_prompt) {
+            document.getElementById('systemPrompt').value = preset.system_prompt;
+            settingsPersistence.save();
+        }
+        if (preset && preset.ref_audio && preset.ref_audio.data) {
+            refAudio.rap.setAudio(preset.ref_audio.data, preset.ref_audio.name, preset.ref_audio.duration);
+        }
+    },
+    storageKey: 'audio_duplex_preset',
+});
+_duplexPreset.init();
 
 // ============================================================================
 // Waveform Drawing

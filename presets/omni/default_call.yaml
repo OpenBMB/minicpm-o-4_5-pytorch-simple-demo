@@ -1,0 +1,5 @@
+id: default_call
+name: "Default"
+description: "Default voice assistant"
+system_prompt: "Streaming Omni Conversation."
+ref_audio_path: "assets/ref_audio/ref_minicpm_signature.wav"

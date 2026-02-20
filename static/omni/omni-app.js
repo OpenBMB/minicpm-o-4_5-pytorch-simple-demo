@@ -124,13 +124,33 @@ document.getElementById('btnResetSettings')?.addEventListener('click', () => {
 });
 
 // ============================================================================
-// Ref Audio Management
+// Ref Audio Management (init before preset so preset can update it)
 // ============================================================================
 const omniTtsRef = createTtsRefController('omni', () => refAudio.getBase64());
 const refAudio = initRefAudio('omniRefAudioPlayer', {
     onTtsHintUpdate: () => omniTtsRef.updateHint(),
 });
 omniTtsRef.init();
+
+// ============================================================================
+// Preset Selector
+// ============================================================================
+const _omniPreset = new PresetSelector({
+    container: document.getElementById('presetSelectorOmni'),
+    page: 'omni',
+    detailsEl: document.getElementById('omniSysPromptDetails'),
+    onSelect: (preset) => {
+        if (preset && preset.system_prompt) {
+            document.getElementById('systemPrompt').value = preset.system_prompt;
+            settingsPersistence.save();
+        }
+        if (preset && preset.ref_audio && preset.ref_audio.data) {
+            refAudio.rap.setAudio(preset.ref_audio.data, preset.ref_audio.name, preset.ref_audio.duration);
+        }
+    },
+    storageKey: 'omni_preset',
+});
+_omniPreset.init();
 
 // ============================================================================
 // MediaProvider Classes (Omni-specific)
