@@ -176,6 +176,20 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
             "tts_repetition_penalty": 1.05,
         }
 
+    def _ensure_asset_dir(self, asset_subpath: str, model_dir: Optional[str] = None) -> str:
+        """Ensure asset directory exists, downloading from HF if needed."""
+        model_dir = model_dir or os.path.join(self.config._name_or_path, asset_subpath)
+        if not os.path.exists(model_dir):
+            from huggingface_hub import snapshot_download
+
+            repo_dir = snapshot_download(
+                repo_id="openbmb/MiniCPM-o-4_5",
+                allow_patterns=[f"{asset_subpath}/**"],
+            )
+            model_dir = os.path.join(repo_dir, asset_subpath)
+        assert os.path.exists(model_dir), f"Asset directory not found: {model_dir}"
+        return model_dir
+
     def init_streaming_processor(self):
         if not hasattr(self, "processor") or self.processor is None:
             self.processor = MiniCPMOProcessor.from_pretrained(self.config._name_or_path, trust_remote_code=True)
@@ -269,7 +283,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
             except ImportError:
                 raise ImportError(f"please install Token2wav via: pip install stepaudio2-minicpmo")
 
-            model_dir = model_dir or os.path.join(self.config._name_or_path, "assets/token2wav")
+            model_dir = self._ensure_asset_dir("assets/token2wav", model_dir)
             self.tts.audio_tokenizer = Token2wav(model_dir, float16=enable_float16, n_timesteps=n_timesteps)
             return self.tts.audio_tokenizer
         else:
@@ -282,7 +296,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
             except ImportError:
                 raise ImportError(f"please install cosyvoice via: pip install cosyvoice-minicpmo")
 
-            model_dir = model_dir or os.path.join(self.config._name_or_path, "assets/CosyVoice2-0.5B")
+            model_dir = self._ensure_asset_dir("assets/CosyVoice2-0.5B", model_dir)
             self.tts.audio_tokenizer = CosyVoice2(model_dir=model_dir, load_jit=False, load_trt=False, fp16=False)
             return self.tts.audio_tokenizer
 
@@ -362,24 +376,14 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
         # Token2wav (streaming TTS) - ~0.33 GB，始终加载
         try:
             from stepaudio2 import Token2wav
-            model_dir = os.path.join(self.config._name_or_path, "assets/token2wav")
+            model_dir = self._ensure_asset_dir("assets/token2wav")
             self._tts_streaming = Token2wav(model_dir)
             logger.info("Token2wav 加载完成")
         except ImportError:
             raise ImportError("请安装 Token2wav: pip install stepaudio2-minicpmo")
         
-        # CosyVoice2 (non-streaming TTS) - ~0.5 GB，仅 chat_vocoder="cosyvoice2" 时加载
-        if chat_vocoder == "cosyvoice2":
-            try:
-                from cosyvoice.cli.cosyvoice import CosyVoice2
-                model_dir = os.path.join(self.config._name_or_path, "assets/CosyVoice2-0.5B")
-                self._tts_non_streaming = CosyVoice2(model_dir=model_dir, load_jit=False, load_trt=False, fp16=False)
-                logger.info("CosyVoice2 加载完成（chat_vocoder=cosyvoice2）")
-            except ImportError:
-                raise ImportError("请安装 CosyVoice: pip install cosyvoice-minicpmo")
-        else:
-            self._tts_non_streaming = None
-            logger.info(f"CosyVoice2 未加载（chat_vocoder={chat_vocoder}，全部使用 Token2wav）")
+
+        self._tts_non_streaming = None
         
         # 默认使用 streaming TTS
         self.tts.audio_tokenizer = self._tts_streaming
@@ -3683,7 +3687,6 @@ class DuplexCapability:
         cost_audio_process = 0.0
         cost_audio_embed = 0.0
         cost_audio_feed = 0.0
-        n_vision_images = 0
 
         def _make_result(success, reasons=""):
             reason = reasons
@@ -3700,7 +3703,6 @@ class DuplexCapability:
                 "cost_audio_embed": cost_audio_embed,
                 "cost_audio_feed": cost_audio_feed,
                 "cost_all": time.time() - start_time,
-                "n_vision_images": n_vision_images,
             }
 
         if self.is_session_stop_set():
@@ -3815,8 +3817,6 @@ class DuplexCapability:
                             slice_counts.append(1)  # No slicing, only source image
                     else:
                         slice_counts.append(1)  # Default: single image, no slicing
-
-                n_vision_images = sum(slice_counts)
 
                 # Get the flattened embeddings tensor
                 # vision_hidden_states is a list with one element (the batch)

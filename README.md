@@ -1,204 +1,249 @@
-# MiniCPMO45 Web Service
+# MiniCPM-o 4.5 PyTorch Simple Demo System
 
-基于 MiniCPM-o 4.5 的多模态推理服务。支持文本/图像/音频输入，提供 Chat、Streaming、Duplex 三种对话模式。
+[中文文档 (Chinese Documentation)](README_zh.md)
 
-## 架构
+This demo system is officially provided by the `MiniCPM-o 4.5` model training team. It uses a PyTorch + CUDA inference backend, combined with a lightweight frontend-backend design, aiming to demonstrate the full audio-video omnimodal full-duplex capabilities of MiniCPM-o 4.5 in a transparent, concise, and lossless manner.
+
+This demo system supports text/image/audio input with real-time voice output. It supports non-streaming, half-duplex, and full-duplex interaction modes.
+
+| Mode | Features |
+|------|----------|
+| **Turn-based Chat** | Low-latency streaming interaction; requires button or VAD (Voice Activity Detection) to trigger responses; high response accuracy; strong basic capabilities |
+| **Omnimodal Full-Duplex** | Real-time omnimodal full-duplex interaction; visual and voice input with simultaneous voice output; model autonomously decides when to speak; powerful cutting-edge capabilities |
+| **Audio Full-Duplex** | Real-time audio full-duplex interaction; voice input and voice output happen simultaneously; model autonomously decides when to speak; powerful cutting-edge capabilities |
+
+The 3 currently supported modes share a single model instance with millisecond-level hot-switching (< 0.1ms). More modes will be supported soon.
+
+## Architecture
 
 ```
 Frontend (HTML/JS)
     │ HTTPS / WSS
-Gateway (:10024, HTTPS)          ← 路由、排队、WS 代理
+Gateway (:8006, HTTPS)          ← Routing, queuing, WS proxy
     │ HTTP / WS (internal)
-Worker Pool (:22400+)            ← 每 Worker 独占一张 GPU
+Worker Pool (:22400+)            ← Each Worker occupies one GPU
     ├── Worker 0 (GPU 0)
     ├── Worker 1 (GPU 1)
     └── ...
 ```
 
-## 快速开始
+## Quick Start
 
-**系统要求**：Linux + NVIDIA GPU (≥80GB 显存) + CUDA 12.x + Python 3.10
+### Check System Requirements
+1. Make sure you have an NVIDIA GPU with more than 28GB of VRAM.
+2. Make sure your machine is running a Linux operating system.
 
-从零到跑起来，4 步：
+### Deployment Steps
+**1. Install Python 3.10**
+
+We recommend using miniconda to install Python 3.10.
 
 ```bash
-# 1. Clone（含 submodule）
-git clone --recurse-submodules <repo_url>
-cd minicpmo45_service
+mkdir -p ./miniconda3_install_tmp
 
-# 2. 一键安装环境（自动安装 PyTorch + 依赖 + Flash Attention）
-bash install.sh
-#    Flash Attention 编译失败会自动跳过，不影响后续使用（降级 SDPA）
-#    可选参数：PYTHON=python3.11 bash install.sh    # 指定 Python 版本
-#              SKIP_FLASH_ATTN=1 bash install.sh     # 跳过 Flash Attention
+# Download the miniconda3 installation script
+wget https://repo.anaconda.com/miniconda/Miniconda3-py310_25.11.1-1-Linux-x86_64.sh -O ./miniconda3_install_tmp/miniconda.sh 
 
-# 3. 配置模型路径（唯一必填项）
+# Install miniconda3 into the project directory
+bash ./miniconda3_install_tmp/miniconda.sh -b -u -p ./miniconda3 
+```
+
+After installation, you will have an empty base environment. Activate this base environment, which uses Python 3.10 by default.
+
+```bash
+source ./miniconda3/bin/activate
+python --version # Should display 3.10.x
+```
+
+**2. Install Dependencies for MiniCPM-o 4.5**
+
+Using the `install.sh` script in the project directory is the fastest way. It creates a venv virtual environment named `base` under `.venv` in the project directory and installs all dependencies.
+
+```bash
+source ./miniconda3/bin/activate
+bash ./install.sh
+```
+
+If you have a good network connection, the entire installation process takes about 5 minutes. If you are in China, consider using a third-party PyPI mirror such as the Tsinghua mirror.
+
+You can also install dependencies manually in 2 steps:
+
+```bash
+# First, prepare an empty Python 3.10 environment
+
+# Install PyTorch
+pip install "torch==2.8.0" "torchaudio==2.8.0"
+
+# Install the remaining dependencies
+pip install -r requirements.txt
+```
+
+**3. Create Configuration File**
+
+Copy `config.example.json` to `config.json` in the project directory.
+
+```bash
 cp config.example.json config.json
-# 编辑 config.json，填入 model.model_path，其余用默认值即可
-# 最小配置：{"model": {"model_path": "/path/to/MiniCPM-o-4_5"}}
-
-# 4. 启动（自动检测 GPU，默认 HTTPS）
-bash start_all.sh
 ```
 
-服务启动后访问 https://localhost:10024 即可。自签名证书会触发浏览器警告，点"高级"→"继续访问"。
+The model path (`model_path`) defaults to `openbmb/MiniCPM-o-4_5`. If you have access to Hugging Face, no modification is needed — the model will be automatically pulled from Hugging Face.
 
-> **已有仓库但 submodule 为空？** 执行 `git submodule update --init`
+<details>
+<summary>Click to expand detailed instructions about model path</summary>
 
-默认配置下，所有模式（Chat / Streaming / Duplex）的语音合成均使用 **Token2Wav** vocoder，无需安装 CosyVoice2。模型目录只需包含 `assets/token2wav/` 即可。
+(Optional) If you prefer to download model weights to a fixed location, or cannot access Hugging Face, you can modify `model_path` to your local model path.
+```bash
+# Install huggingface cli
+pip install -U huggingface_hub
 
-### 高级配置：使用 CosyVoice2 作为 Chat vocoder（可选）
+# Download the model
+huggingface-cli download openbmb/MiniCPM-o-4_5 --local-dir /path/to/your/MiniCPM-o-4_5
 
-CosyVoice2 是另一个可用于 Chat（非流式）模式的 vocoder，音质风格略有不同。如需使用：
+```
+
+If you cannot access Hugging Face, you can use the following two methods to download the model in advance.
+
+- Download the model using hf-mirror
 
 ```bash
-# 1. 安装 CosyVoice2 包
-.venv/base/bin/pip install token2wav-cosyvoice==0.1.0
+pip install -U huggingface_hub
 
-# 2. 确保模型目录下存在 CosyVoice2 模型文件
-#    MiniCPM-o-4_5/assets/CosyVoice2-0.5B/
+export HF_ENDPOINT=https://hf-mirror.com
 
-# 3. 修改 config.json
-```
-```json
-{
-    "model": {"model_path": "/path/to/MiniCPM-o-4_5"},
-    "audio": {"chat_vocoder": "cosyvoice2"}
-}
+huggingface-cli download openbmb/MiniCPM-o-4_5 --local-dir /path/to/your/MiniCPM-o-4_5
 ```
 
-| 对比 | Token2Wav（默认） | CosyVoice2 |
-|------|-------------------|------------|
-| 适用模式 | Chat + Streaming + Duplex | 仅 Chat |
-| 额外依赖 | 无（已含在 requirements.txt） | `token2wav-cosyvoice==0.1.0` |
-| 额外模型 | 无 | `assets/CosyVoice2-0.5B/`（~0.5GB） |
-| 启动耗时 | ~16s | ~112s（需额外加载 CosyVoice2 Qwen2 模型） |
-| 额外显存 | 0 | ~0.5GB |
-
-### 启动选项
+- Download the model using ModelScope
 
 ```bash
-CUDA_VISIBLE_DEVICES=0,1 bash start_all.sh          # 指定 GPU
-bash start_all.sh --compile                          # torch.compile 加速（实验性）
-bash start_all.sh --http                             # 降级 HTTP（不推荐，麦克风/摄像头 API 需要 HTTPS）
+pip install modelscope
+
+modelscope download --model OpenBMB/MiniCPM-o-4_5 --local_dir /path/to/your/MiniCPM-o-4_5
 ```
 
-**手动启动（分步）**：
+
+</details>
+
+<br/>
+
+Modify `"gateway_port": 8006` to change the deployment port. The default is 8006.
+
+
+**4. Start the Service**
 ```bash
-# Worker（每张 GPU 一个）
+CUDA_VISIBLE_DEVICES=0,1,2,3 bash start_all.sh
+```
+
+After the service starts, visit https://localhost:8006. The self-signed certificate will trigger a browser warning — click "Advanced" → "Proceed" to continue.
+
+<details>
+<summary>Click to expand detailed instructions about startup options</summary>
+
+The following are advanced startup options, currently for developer reference.
+```bash
+CUDA_VISIBLE_DEVICES=0,1 bash start_all.sh          # Specify GPUs
+bash start_all.sh --compile                          # torch.compile acceleration (experimental, unstable)
+bash start_all.sh --http                             # Downgrade to HTTP (not recommended, mic/camera APIs require HTTPS)
+```
+
+**Manual Startup (step by step):**
+```bash
+# Worker (one per GPU)
 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/base/bin/python worker.py --worker-index 0 --gpu-id 0
 
 # Gateway
 PYTHONPATH=. .venv/base/bin/python gateway.py --port 10024 --workers localhost:22400
 ```
+</details>
 
-**停止**：
+**5. Stop the Service:**
 ```bash
 pkill -f "gateway.py|worker.py"
 ```
 
-### 访问页面
+<br/>
+<br/>
 
-| 页面 | URL |
+
+## Known Issues and Improvement Plans
+
+- [] In Turn-based Chat mode, image input is temporarily unavailable — only audio and text input are supported. An image Q&A mode will be split out soon.
+- [] Half-duplex voice call (no button required to trigger responses) is under development and will be merged soon.
+- [] In Audio Full-Duplex mode, echo cancellation currently has issues affecting interruption success rate. Using headphones is recommended. A fix is coming soon.
+- [] In voice mode, Chinese and English calls require corresponding language system prompts.
+
+<br/>
+
+## Project Structure
+
+**Project Code Structure**
+```
+minicpmo45_service/
+├── config.json               # Service config (copied from config.example.json, gitignored)
+├── config.example.json       # Config example (full fields + defaults)
+├── config.py                 # Config loading logic (Pydantic definition + JSON loading)
+├── requirements.txt          # Python dependencies
+├── start_all.sh              # One-click startup script
+│
+├── gateway.py                # Gateway (routing, queuing, WS proxy)
+├── worker.py                 # Worker (inference service)
+├── gateway_modules/          # Gateway business modules
+│
+├── core/                     # Core encapsulation
+│   ├── schemas/              # Pydantic schemas (request/response)
+│   └── processors/           # Inference processors (UnifiedProcessor)
+│
+├── MiniCPMO45/               # Model core inference code
+├── static/                   # Frontend pages
+├── resources/                # Resource files (reference audio, etc.)
+├── tests/                    # Tests
+└── tmp/                      # Runtime logs and PID files
+```
+
+**Frontend Routes**
+
+| Page | URL |
 |------|-----|
-| Chat Demo | https://localhost:10024 |
-| Omni Duplex | https://localhost:10024/omni |
-| Audio Duplex | https://localhost:10024/audio_duplex |
-| Admin Dashboard | https://localhost:10024/admin |
-| API Docs | https://localhost:10024/docs |
+| Non-streaming | https://localhost:8006 |
+| Omnimodal Full-Duplex | https://localhost:8006/omni |
+| Audio Full-Duplex | https://localhost:8006/audio_duplex |
+| Dashboard | https://localhost:8006/admin |
+| API Docs | https://localhost:8006/docs |
 
-### 配置
+<br/>
+<br/>
 
-`config.json`（从 `config.example.json` 复制，已 gitignore）。完整字段见下方"配置说明"章节。
+## Configuration
 
-**最小配置**：
-```json
-{"model": {"model_path": "/path/to/MiniCPM-o-4_5"}}
-```
+### config.json — Unified Configuration File
 
-**常用配置**（模型 + 微调权重 + 调整播放延迟）：
-```json
-{
-    "model": {
-        "model_path": "/path/to/MiniCPM-o-4_5",
-        "pt_path": "/path/to/finetuned.pt"
-    },
-    "audio": {
-        "playback_delay_ms": 300
-    }
-}
-```
+All configurations are centralized in `config.json` (copied from `config.example.json`).
+`config.json` is gitignored and will not be committed.
 
-**模型目录结构要求**：
-```
-MiniCPM-o-4_5/
-├── config.json
-├── model*.safetensors
-├── tokenizer.json
-└── assets/
-    ├── token2wav/          # Token2Wav vocoder（必需）
-    └── CosyVoice2-0.5B/   # CosyVoice2 vocoder（可选，仅 chat_vocoder=cosyvoice2 时需要）
-```
+**Configuration Priority**: CLI arguments > config.json > Pydantic defaults
 
-## 配置说明
+| Group | Field | Default | Description |
+|-------|-------|---------|-------------|
+| **model** | `model_path` | _(required)_ | HuggingFace format model directory |
+| model | `pt_path` | null | Additional .pt weight override |
+| model | `attn_implementation` | `"auto"` | Attention implementation: `"auto"`/`"flash_attention_2"`/`"sdpa"`/`"eager"` |
+| **audio** | `ref_audio_path` | `assets/ref_audio/ref_minicpm_signature.wav` | Default TTS reference audio |
+| audio | `playback_delay_ms` | 200 | Frontend audio playback delay (ms); higher = smoother but more latency |
+| audio | `chat_vocoder` | `"token2wav"` | Chat mode vocoder: `"token2wav"` (default) or `"cosyvoice2"` |
+| **service** | `gateway_port` | 8006 | Gateway port |
+| service | `worker_base_port` | 22400 | Worker base port |
+| service | `max_queue_size` | 100 | Maximum queued requests |
+| service | `request_timeout` | 300.0 | Request timeout (seconds) |
+| service | `compile` | false | torch.compile acceleration |
+| service | `data_dir` | "data" | Data directory |
+| **duplex** | `pause_timeout` | 60.0 | Duplex pause timeout (seconds) |
 
-### config.json — 统一配置文件
-
-所有配置集中在 `config.json`（从 `config.example.json` 复制）。
-`config.json` 已 gitignore，不会被提交。
-
-**配置优先级**：CLI 参数 > config.json > Pydantic 默认值
-
-| 分组 | 字段 | 默认值 | 说明 |
-|------|------|--------|------|
-| **model** | `model_path` | _(必填)_ | HuggingFace 格式模型目录 |
-| model | `pt_path` | null | 额外 .pt 权重覆盖 |
-| model | `attn_implementation` | `"auto"` | Attention 实现：`"auto"`/`"flash_attention_2"`/`"sdpa"`/`"eager"` |
-| **audio** | `ref_audio_path` | `assets/ref_audio/ref_minicpm_signature.wav` | 默认 TTS 参考音频 |
-| audio | `playback_delay_ms` | 200 | 前端音频播放延迟（ms），越大越平滑但延迟越高 |
-| audio | `chat_vocoder` | `"token2wav"` | Chat 模式 vocoder：`"token2wav"`（默认）或 `"cosyvoice2"` |
-| **service** | `gateway_port` | 10024 | Gateway 端口 |
-| service | `worker_base_port` | 22400 | Worker 起始端口 |
-| service | `max_queue_size` | 100 | 最大排队请求数 |
-| service | `request_timeout` | 300.0 | 请求超时（秒） |
-| service | `compile` | false | torch.compile 加速 |
-| service | `data_dir` | "data" | 数据目录 |
-| **duplex** | `pause_timeout` | 60.0 | Duplex 暂停超时（秒） |
-
-**最小配置**（只需模型路径）：
+**Minimal Configuration** (only model path required):
 ```json
 {"model": {"model_path": "/path/to/model"}}
 ```
 
-### Attention Backend（attn_implementation）
-
-控制模型推理使用的 Attention 实现。默认 `"auto"` 自动检测环境并选择最优方案。
-
-| 值 | 行为 | 适用场景 |
-|----|------|----------|
-| `"auto"`（默认） | 检测到 flash-attn 包 → `flash_attention_2`；否则 → `sdpa` | 推荐，兼容所有环境 |
-| `"flash_attention_2"` | 强制使用 Flash Attention 2，不可用时启动报错 | 确认已安装 flash-attn 且需要锁定 |
-| `"sdpa"` | 强制使用 PyTorch 内置 SDPA，不依赖 flash-attn | 无法编译 flash-attn 的环境 |
-| `"eager"` | 朴素 Attention 实现 | 仅 debug 用 |
-
-**性能对比**（A100，典型推理场景）：`flash_attention_2` 比 `sdpa` 快约 5-15%，`sdpa` 比 `eager` 快数倍。
-
-**启动日志**：Worker 启动时会明确输出实际使用的 backend，便于确认：
-
-```
-# auto 检测到 flash-attn，使用 flash_attention_2：
-[Attention] auto → flash_attention_2 (flash-attn 2.6.3 可用，性能最优)
-
-# auto 未检测到 flash-attn，降级到 sdpa：
-[Attention] auto → sdpa (flash-attn 不可用，使用 PyTorch 内置 SDPA。如需 flash_attention_2，请安装: ...)
-
-# 用户显式指定：
-[Attention] 使用用户指定: sdpa
-```
-
-**子模块实际分配**：无论顶层配置什么，Audio（Whisper）子模块始终使用 SDPA（flash_attention_2 与 Whisper 不兼容）。其余子模块（Vision/LLM/TTS）遵循配置。
-
-### CLI 参数覆盖
+## CLI Argument Overrides
 
 ```bash
 # Worker
@@ -208,62 +253,27 @@ python worker.py --model-path /alt/model --pt-path /alt/weights.pt --ref-audio-p
 python gateway.py --port 10025 --workers localhost:22400,localhost:22401 --http
 ```
 
-## 对话模式
 
-| 模式 | 特点 | 接口 |
-|------|------|------|
-| **Chat** | 无状态，一问一答 | POST /api/chat |
-| **Streaming** | 有状态，KV Cache 复用，流式输出 | WS /ws/streaming/{session_id} |
-| **Duplex** | 全双工实时对话，支持打断 | WS /ws/duplex/{session_id} |
+## Resource Consumption
 
-三种模式共享同一个模型实例，毫秒级热切换（< 0.1ms）。
+| Resource | Token2Wav (default) |
+|----------|---------------------|
+| VRAM (per Worker, after initialization) | ~21.5 GB |
+| Model loading time | ~16s |
+| Mode switching latency | < 0.1ms |
 
-## 项目结构
+> Compile mode incurs an additional ~60s compilation time on the first inference.
 
-```
-minicpmo45_service/
-├── config.json               # 服务配置（从 config.example.json 复制，gitignored）
-├── config.example.json       # 配置示例（完整字段 + 默认值）
-├── config.py                 # 配置加载逻辑（Pydantic 定义 + JSON 加载）
-├── requirements.txt          # Python 依赖
-├── start_all.sh              # 一键启动脚本
-│
-├── gateway.py                # Gateway（路由、排队、WS 代理）
-├── worker.py                 # Worker（推理服务）
-├── gateway_modules/          # Gateway 业务模块
-│
-├── core/                     # 核心封装
-│   ├── schemas/              # Pydantic Schema（请求/响应）
-│   └── processors/           # 推理处理器（UnifiedProcessor）
-│
-├── MiniCPMO45/               # 模型代码（submodule）
-├── static/                   # 前端页面
-├── resources/                # 资源文件（参考音频等）
-├── tests/                    # 测试
-└── tmp/                      # 运行时日志和 PID 文件
-```
-
-## 资源消耗
-
-| 资源 | Token2Wav（默认） | CosyVoice2 模式 |
-|------|-------------------|-----------------|
-| 显存（每 Worker） | ~21.5 GB | ~22 GB |
-| 模型加载时间 | ~16s | ~112s |
-| 模式切换延迟 | < 0.1ms | < 0.1ms |
-
-> compile 模式首次推理额外 ~60s 编译耗时。
-
-## 测试
+## Testing
 
 ```bash
-cd minicpmo45_service
 
-# Schema 单元测试（无需 GPU）
+# Schema unit tests (no GPU required)
 PYTHONPATH=. .venv/base/bin/python -m pytest tests/test_schemas.py -v
 
-# Processor 测试（需要 GPU）
+# Processor tests (GPU required)
 CUDA_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/base/bin/python -m pytest tests/test_chat.py tests/test_streaming.py tests/test_duplex.py -v -s
 
-# API 集成测试（需要先启动服务）
+# API integration tests (service must be running)
 PYTHONPATH=. .venv/base/bin/python -m pytest tests/test_api.py -v -s
 ```
