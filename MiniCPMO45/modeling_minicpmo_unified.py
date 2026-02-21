@@ -3426,7 +3426,8 @@ class DuplexCapability:
         
         self.tts_pad_id = self.tokenizer.convert_tokens_to_ids("<|tts_pad|>")
         bad_token_ids = getattr(self.tokenizer, "bad_token_ids", [])
-        self.forbidden_token_ids = [self.tts_pad_id] + list(bad_token_ids)
+        # self.forbidden_token_ids = [self.tts_pad_id] + list(bad_token_ids)
+        self.forbidden_token_ids = [] + list(bad_token_ids)
         
         self.decoder = StreamDecoder(
             llm=self.model.llm, tokenizer=self.tokenizer, forbidden_token_ids=self.forbidden_token_ids
@@ -3544,6 +3545,9 @@ class DuplexCapability:
         # Deferred finalize state（必须清理，否则上一个 session 异常退出后
         # _pending_finalize 残留，导致新 session 的第一个 prefill 报错）
         self._pending_finalize = None
+
+        # 禁止连续 chunk 解码 <|tts_pad|>
+        self._last_chunk_had_tts_pad = False
 
         # Schema tracking: 记录完整的 prefill + generate token 序列
         # prefill_schema_tokens: 每个元素是一个 unit 的 prefill token 列表
@@ -4115,9 +4119,16 @@ class DuplexCapability:
         is_listen = False
         end_of_turn = False
 
+        # 如果上个 chunk 解码了 <|tts_pad|>，本 chunk 禁止再解码
+        _tts_pad_suppressed = False
+        if self._last_chunk_had_tts_pad and self.tts_pad_id not in self.decoder.forbidden_token_ids:
+            self.decoder.forbidden_token_ids.append(self.tts_pad_id)
+            _tts_pad_suppressed = True
+
         llm_start_time = time.time()
         _token_trace = []  # [DEBUG] 记录每个 token 的详细信息
         _pending_terminator_id = None  # 延迟 feed 的终止符，和 </unit> 合并
+        _chunk_has_tts_pad = False
 
         for j in range(max_new_speak_tokens_per_chunk):
             if j == max_new_speak_tokens_per_chunk - 1:
@@ -4153,6 +4164,9 @@ class DuplexCapability:
                     last_id = torch.tensor([self.tts_bos_token_id], dtype=torch.long, device=self.device)
 
             self.total_ids.append(last_id.item())
+
+            if last_id.item() == self.tts_pad_id:
+                _chunk_has_tts_pad = True
 
             is_listen = last_id.item() == self.listen_token_id
             _tok_str = self.tokenizer.decode([last_id.item()])
@@ -4195,15 +4209,24 @@ class DuplexCapability:
                     total_hidden_in_unit.append([last_id.item(), hidden, end_of_turn])
                     total_ids_in_unit.append(last_id.item())
 
+        # 恢复 forbidden list & 更新连续 tts_pad 状态
+        if _tts_pad_suppressed:
+            self.decoder.forbidden_token_ids.remove(self.tts_pad_id)
+            assert self.tts_pad_id not in self.decoder.forbidden_token_ids
+        self._last_chunk_had_tts_pad = _chunk_has_tts_pad
+
         # [DEBUG] 打印完整 token trace
         _trace_str = "\n".join(_token_trace)
         logger.info(
             f"[TokenTrace] t={current_time} is_listen={is_listen} "
-            f"text_tokens={len(total_ids_in_unit)} total_steps={len(_token_trace)}\n{_trace_str}"
+            f"text_tokens={len(total_ids_in_unit)} total_steps={len(_token_trace)}"
+            f" tts_pad={'suppressed' if _tts_pad_suppressed else 'allowed'}"
+            f" had_tts_pad={_chunk_has_tts_pad}\n{_trace_str}"
         )
 
         # 计算生成的文本（用于滑窗 context 保留，过滤掉特殊 token）
-        generated_text = self.tokenizer.decode(total_ids_in_unit, skip_special_tokens=True) if total_ids_in_unit else ""
+        generated_text = self.tokenizer.decode(total_ids_in_unit, skip_special_tokens=False) if total_ids_in_unit else ""
+        generated_text += f"({str(len(total_ids_in_unit))},{len(generated_text)})|" # token num + char num
 
         # 存储 finalize 所需状态（延迟到 finalize_unit() 执行）
         input_type = self.current_mode.lower() if self.current_mode else "audio"
@@ -4247,7 +4270,7 @@ class DuplexCapability:
 
         if end_of_turn:
             min_token_per_chunk = 0
-        force_flush = False
+        force_flush = True
         if self.tts_text_start_pos == 0:  # 这是turn的开始
             min_token_per_chunk = 0  # 可以允许解码<1s的音频
             force_flush = True
