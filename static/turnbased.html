@@ -621,6 +621,48 @@
             background: #f5f8fb;
         }
 
+        /* Keyboard shortcut hints above input */
+        .input-hints {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 6px 0;
+            font-size: 12px;
+            color: #999;
+        }
+        .input-hints .hint-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .input-hints kbd {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 5px;
+            font-family: inherit;
+            font-size: 11px;
+            color: #666;
+            background: #f0f0ec;
+            border: 1px solid #d5d5d0;
+            border-radius: 4px;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+        }
+        .input-hints .hint-icon {
+            width: 14px;
+            height: 14px;
+            opacity: 0.45;
+            flex-shrink: 0;
+        }
+        .input-hints .hint-sep {
+            width: 1px;
+            height: 12px;
+            background: #ddd;
+        }
+
         /* Drag & drop overlay */
         .initial-input-wrap, .input-wrap { position: relative; }
         .drag-overlay {
@@ -818,7 +860,7 @@
     <!-- ========== 初始视图（ChatGPT 风格） ========== -->
     <div class="initial-view" id="initialView">
         <div class="initial-title">MiniCPM-o 4.5</div>
-        <div class="initial-subtitle">Text · Image · Audio — Multimodal Chat</div>
+        <div class="initial-subtitle">Turn-based Chat</div>
 
         <!-- Preset + System 配置 -->
         <div class="system-config-card" style="padding:16px 20px;">
@@ -843,6 +885,24 @@
                     </div>
                 </div>
             </details>
+        </div>
+
+        <!-- 快捷键提示 -->
+        <div class="input-hints">
+            <span class="hint-item">
+                <svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+                Hold <kbd>Space</kbd> to record, release to stop
+            </span>
+            <span class="hint-sep"></span>
+            <span class="hint-item">
+                <svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7 7 7-7"/><path d="M12 19V5"/></svg>
+                <kbd>Enter</kbd> to send
+            </span>
+            <span class="hint-sep"></span>
+            <span class="hint-item">
+                <svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                Drag & drop or <kbd>⌘V</kbd> to attach
+            </span>
         </div>
 
         <!-- 首轮输入（UserContentEditor） -->
@@ -876,7 +936,7 @@
                 </div>
                 <div class="input-actions">
                     <button class="btn-mic" id="micBtnInit" title="Record audio (Space key)">🎤 <span class="kbd-hint">Space</span></button>
-                    <button class="btn-attach" id="attachBtnInit" title="Attach image or audio (drag &amp; drop / paste also supported)">📎</button>
+                    <!-- <button class="btn-attach" id="attachBtnInit" title="Attach image or audio (drag &amp; drop / paste also supported)">📎</button> -->
                     <button class="btn-send" id="sendBtnInit" onclick="sendFirstMessage()">&#8593;</button>
                 </div>
             </div>
@@ -925,6 +985,22 @@
         </div>
 
         <div class="input-area">
+            <div class="input-hints">
+                <span class="hint-item">
+                    <svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+                    Hold <kbd>Space</kbd> to record, release to stop
+                </span>
+                <span class="hint-sep"></span>
+                <span class="hint-item">
+                    <svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7 7 7-7"/><path d="M12 19V5"/></svg>
+                    <kbd>Enter</kbd> to send
+                </span>
+                <span class="hint-sep"></span>
+                <span class="hint-item">
+                    <svg class="hint-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    Drag & drop or <kbd>⌘V</kbd> to attach
+                </span>
+            </div>
             <div class="input-wrap">
                 <div class="drag-overlay" id="dragOverlayChat">📎 Drop image or audio here</div>
                 <div id="composeEditorChat"></div>
@@ -960,7 +1036,7 @@
                     </div>
                     <div class="input-actions">
                         <button class="btn-mic" id="micBtnChat" title="Record audio (Space key)">🎤 <span class="kbd-hint">Space</span></button>
-                        <button class="btn-attach" id="attachBtnChat" title="Attach image or audio (drag &amp; drop / paste also supported)">📎</button>
+                        <!-- <button class="btn-attach" id="attachBtnChat" title="Attach image or audio (drag &amp; drop / paste also supported)">📎</button> -->
                         <button class="btn-send" id="sendBtn" onclick="sendMessage()">&#8593;</button>
                     </div>
                 </div>
@@ -1012,11 +1088,11 @@ function init() {
     // 创建 Compose Editor（初始视图 + 对话视图）— compose 模式融入外层容器
     state.composeEditorInit = new UserContentEditor(
         document.getElementById('composeEditorInit'),
-        { placeholder: 'Type or press Space to record...', onSubmit: () => sendFirstMessage(), compose: true }
+        { placeholder: 'Type or press Space to record...', onSubmit: () => sendFirstMessage(), compose: true, showImageBtn: false }
     );
     state.composeEditorChat = new UserContentEditor(
         document.getElementById('composeEditorChat'),
-        { placeholder: 'Type or press Space to record...', onSubmit: () => sendMessage(), compose: true }
+        { placeholder: 'Type or press Space to record...', onSubmit: () => sendMessage(), compose: true, showImageBtn: false }
     );
 
     // 默认让 chat compose editor 成为 Space 键目标
@@ -1045,8 +1121,8 @@ function initInputEnhancements() {
     // ── Attach 按钮 → 文件选择 ──
     const attachInputInit = _createAttachFileInput(() => state.composeEditorInit);
     const attachInputChat = _createAttachFileInput(() => state.composeEditorChat);
-    document.getElementById('attachBtnInit').addEventListener('click', () => attachInputInit.click());
-    document.getElementById('attachBtnChat').addEventListener('click', () => attachInputChat.click());
+    document.getElementById('attachBtnInit')?.addEventListener('click', () => attachInputInit.click());
+    document.getElementById('attachBtnChat')?.addEventListener('click', () => attachInputChat.click());
 
     // ── 拖拽上传 ──
     _setupDragDrop(
@@ -1860,6 +1936,7 @@ function startEditMessage(index) {
         onChange: () => {},
         onSubmit: () => saveEditMessage(index),
         onCancel: () => cancelEditMessage(index),
+        showImageBtn: false,
     });
     editor.setItems(editItems);
     state._editEditor = editor;

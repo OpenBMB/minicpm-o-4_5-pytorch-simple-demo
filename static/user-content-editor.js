@@ -715,7 +715,8 @@ class UserContentEditor {
         this.onSubmit = options.onSubmit || null;
         this.onCancel = options.onCancel || null;
         this.placeholder = options.placeholder || 'Type a message...';
-        this.isCompose = !!options.compose; // compose 模式：融入外层容器，无自身边框
+        this.isCompose = !!options.compose;
+        this.showImageBtn = options.showImageBtn !== false;
         this.items = [];
         this.wrap = document.createElement('div');
         this.wrap.className = 'uce-wrap' + (this.isCompose ? ' uce-compose' : '');
@@ -845,15 +846,17 @@ class UserContentEditor {
         });
         adds.appendChild(addAudioBtn);
 
-        const addImageBtn = document.createElement('button');
-        addImageBtn.className = 'uce-empty-add-btn';
-        addImageBtn.textContent = '+ Image';
-        addImageBtn.addEventListener('click', () => {
-            this.items.push({ type: 'image', file: null, name: '', objectUrl: null, data: null });
-            this.render();
-            this.onChange(this.getItems());
-        });
-        adds.appendChild(addImageBtn);
+        if (this.showImageBtn) {
+            const addImageBtn = document.createElement('button');
+            addImageBtn.className = 'uce-empty-add-btn';
+            addImageBtn.textContent = '+ Image';
+            addImageBtn.addEventListener('click', () => {
+                this.items.push({ type: 'image', file: null, name: '', objectUrl: null, data: null });
+                this.render();
+                this.onChange(this.getItems());
+            });
+            adds.appendChild(addImageBtn);
+        }
         bottom.appendChild(adds);
 
         const recZone = document.createElement('div');
@@ -1046,11 +1049,13 @@ class UserContentEditor {
         addAudio.addEventListener('click', () => this._add('audio'));
         addGroup.appendChild(addAudio);
 
-        const addImage = document.createElement('button');
-        addImage.className = 'uce-add-btn';
-        addImage.textContent = '+ Image';
-        addImage.addEventListener('click', () => this._add('image'));
-        addGroup.appendChild(addImage);
+        if (this.showImageBtn) {
+            const addImage = document.createElement('button');
+            addImage.className = 'uce-add-btn';
+            addImage.textContent = '+ Image';
+            addImage.addEventListener('click', () => this._add('image'));
+            addGroup.appendChild(addImage);
+        }
 
         const recBtn = document.createElement('button');
         recBtn.className = 'uce-add-btn uce-rec-btn-add';
