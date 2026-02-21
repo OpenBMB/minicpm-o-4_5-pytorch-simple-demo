@@ -4248,9 +4248,15 @@ class DuplexCapability:
                 n_tokens=len(total_ids_in_unit),
             )
 
+        # 如果 unit 中出现了 tts_pad_id，传空列表给 TTS
+        tts_hidden_in_unit = [] if _chunk_has_tts_pad else total_hidden_in_unit
+
         self.total_hidden.append(total_hidden_in_unit)
         text = generated_text
-        print(f"> speak: {text}")
+        if _chunk_has_tts_pad:
+            print(f"> speak (tts_pad): {text}, give an empty condition to duplex tts")
+        else:
+            print(f"> speak: {text}")
 
         if not self.generate_audio:
             return self._make_generate_result(
@@ -4262,7 +4268,7 @@ class DuplexCapability:
         # TTS generate
         tts_start_time = time.time()
         tts_prep_start_time = time.time()
-        tts_condition = self._convert_results_to_tts_input(total_hidden_in_unit)
+        tts_condition = self._convert_results_to_tts_input(tts_hidden_in_unit)
         tts_prep_end_time = time.time()
 
         max_token_per_chunk = 25 + 1
