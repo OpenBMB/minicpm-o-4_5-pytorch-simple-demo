@@ -4241,8 +4241,11 @@ class DuplexCapability:
         )
 
         # 计算生成的文本（用于滑窗 context 保留，过滤掉特殊 token）
-        generated_text = self.tokenizer.decode(total_ids_in_unit, skip_special_tokens=False) if total_ids_in_unit else ""
-        generated_text += f"({str(len(total_ids_in_unit))},{len(generated_text)})|" # token num + char num
+        if os.environ.get("DEBUG_CHUNK_TEXT") == "1":
+            generated_text = self.tokenizer.decode(total_ids_in_unit, skip_special_tokens=False) if total_ids_in_unit else ""
+            generated_text += f"({len(total_ids_in_unit)},{len(generated_text)})|"
+        else:
+            generated_text = self.tokenizer.decode(total_ids_in_unit, skip_special_tokens=True) if total_ids_in_unit else ""
 
         # 存储 finalize 所需状态（延迟到 finalize_unit() 执行）
         input_type = self.current_mode.lower() if self.current_mode else "audio"

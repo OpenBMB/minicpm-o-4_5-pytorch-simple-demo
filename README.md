@@ -19,6 +19,8 @@ The 3 currently supported modes share a single model instance with millisecond-l
 - Simple and readable codebase for continual development
 - Serve as API backend for third-party applications
 
+![Demo Preview](assets/images/demo_preview.png)
+
 ## Architecture
 
 ```
