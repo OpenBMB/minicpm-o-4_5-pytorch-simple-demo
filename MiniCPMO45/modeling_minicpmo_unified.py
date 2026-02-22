@@ -272,7 +272,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
 
         return MiniCPMTTS(config=self.config.tts_config, audio_tokenizer=None)
 
-    def init_tts(self, streaming=False, model_dir=None, enable_float16=False, n_timesteps=10):
+    def init_tts(self, streaming=False, model_dir=None, enable_float16=False, n_timesteps=5):
         if streaming:
             if self.config.tts_config.audio_tokenizer_type != "s3tokenizer_step_audio":
                 logger.warning("audio tokenizer type is set to s3tokenizer_step_audio")
