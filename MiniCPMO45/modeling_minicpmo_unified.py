@@ -4296,7 +4296,7 @@ class DuplexCapability:
         force_flush = True
         if self.tts_text_start_pos == 0:  # 这是turn的开始
             min_token_per_chunk = 0  # 可以允许解码<1s的音频
-            min_token_per_chunk = 10 + 1
+            # min_token_per_chunk = 10 + 1
             force_flush = True
 
         if self.tts_current_turn_start_time is None:
