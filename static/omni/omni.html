@@ -125,6 +125,11 @@
                         <label class="fo-radio" data-tip="Mix video audio with microphone and send to the model"><input type="radio" name="fileAudioMode" value="mixed"> Video+Mic</label>
                     </div>
                 </div>
+                <div class="fo-row">
+                    <span class="fo-label" data-tip="Playback volume of original video audio (speaker output only, does not affect audio sent to model)">Playback Volume</span>
+                    <input type="range" class="fo-range" id="filePlaybackVol" min="0" max="100" value="30" step="5">
+                    <span class="fo-val" id="filePlaybackVolVal">30%</span>
+                </div>
                 <button class="fo-mixer-btn" id="btnMixerToggle" style="display:none;" data-tip="Open draggable mixer panel">Mixer</button>
             </div>
             <div class="fo-group">

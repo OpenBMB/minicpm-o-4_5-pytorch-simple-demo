@@ -87,6 +87,7 @@ const settingsPersistence = new SettingsPersistence('omni_settings', [
     { type: 'mode', selector: '.mode-btn' },
     // File options
     { type: 'radio', name: 'fileAudioMode' },
+    { id: 'filePlaybackVol', type: 'range' },
     { id: 'frameOffset', type: 'range' },
     { id: 'padBeforeSec', type: 'number' },
     { id: 'padAfterSec', type: 'number' },
@@ -459,9 +460,9 @@ class FileMediaProvider extends MediaProvider {
         this._videoEl.style.display = 'block';
         // mic-only: mute video; video-only/mixed: play original audio through speaker
         this._videoEl.muted = (this._audioMode === 'mic');
-        if (this._audioMode === 'mixed') {
-            const monPct = parseInt(document.getElementById('mxMonitor')?.value) || 50;
-            this._videoEl.volume = monPct / 100;
+        if (this._audioMode !== 'mic') {
+            const volPct = parseInt(document.getElementById('filePlaybackVol')?.value) ?? 30;
+            this._videoEl.volume = volPct / 100;
         }
 
         // 7. Start chunk feeding
@@ -1633,6 +1634,16 @@ document.querySelectorAll('input[name="fileAudioMode"]').forEach(radio => {
 // Frame offset slider
 document.getElementById('frameOffset').addEventListener('input', function() {
     document.getElementById('frameOffsetVal').textContent = parseFloat(this.value).toFixed(2);
+});
+
+// File playback volume slider — real-time update of video element volume
+document.getElementById('filePlaybackVol').addEventListener('input', function() {
+    const pct = parseInt(this.value);
+    document.getElementById('filePlaybackVolVal').textContent = pct + '%';
+    const videoEl = document.getElementById('videoEl');
+    if (media instanceof FileMediaProvider && !videoEl.muted) {
+        videoEl.volume = pct / 100;
+    }
 });
 
 // Control buttons (mic calibration is handled by MixerController)
