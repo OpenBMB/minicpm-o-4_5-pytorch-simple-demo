@@ -37,6 +37,8 @@ Worker Pool (:22400+)
 - **Gateway** — 请求路由与分发、WebSocket 代理、请求排队与会话亲和
 - **Worker** — 每 Worker 独占一张 GPU，支持 Turn-based Chat / Duplex 协议，Duplex 支持暂停/恢复（超时自动释放）
 
+![Demo Preview](assets/images/demo_preview.png)
+
 
 ## 快速开始
 
