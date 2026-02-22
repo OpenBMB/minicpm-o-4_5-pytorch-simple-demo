@@ -49,6 +49,25 @@ Worker Pool (:22400+)
 1. 确保你有一张显存大于 28GB 的 NVIDIA GPU。
 2. 确保你的机器安装了 Linux 操作系统。
 
+### 安装 FFmpeg
+
+FFmpeg 用于视频帧提取 和 推理结果可视化。更多信息请访问 [FFmpeg 官网](https://ffmpeg.org/)。
+
+**macOS (Homebrew):**
+```bash
+brew install ffmpeg
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt update && sudo apt install ffmpeg
+```
+
+**验证安装:**
+```bash
+ffmpeg -version
+```
+
 ### 部署步骤
 **1. 安装Python 3.10**
 

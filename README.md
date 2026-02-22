@@ -45,6 +45,25 @@ Worker Pool (:22400+)
 1. Make sure you have an NVIDIA GPU with more than 28GB of VRAM.
 2. Make sure your machine is running a Linux operating system.
 
+### Install FFmpeg
+
+FFmpeg is required for video frame extraction and inference result visualization. For more information, visit the [official FFmpeg website](https://ffmpeg.org/).
+
+**macOS (Homebrew):**
+```bash
+brew install ffmpeg
+```
+
+**Ubuntu/Debian:**
+```bash
+sudo apt update && sudo apt install ffmpeg
+```
+
+**Verify installation:**
+```bash
+ffmpeg -version
+```
+
 ### Deployment Steps
 **1. Install Python 3.10**
 
