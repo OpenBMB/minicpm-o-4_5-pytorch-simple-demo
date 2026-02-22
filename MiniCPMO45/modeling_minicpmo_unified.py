@@ -3426,8 +3426,8 @@ class DuplexCapability:
         
         self.tts_pad_id = self.tokenizer.convert_tokens_to_ids("<|tts_pad|>")
         bad_token_ids = getattr(self.tokenizer, "bad_token_ids", [])
-        # self.forbidden_token_ids = [self.tts_pad_id] + list(bad_token_ids)
-        self.forbidden_token_ids = [] + list(bad_token_ids)
+        self.forbidden_token_ids = [self.tts_pad_id] + list(bad_token_ids)
+        # self.forbidden_token_ids = [] + list(bad_token_ids)
         
         self.decoder = StreamDecoder(
             llm=self.model.llm, tokenizer=self.tokenizer, forbidden_token_ids=self.forbidden_token_ids
@@ -4183,6 +4183,22 @@ class DuplexCapability:
                 # normal speak
                 self.current_turn_ended = False
 
+                # 在 feed 之前检查字符长度，超限则不 feed、不记录，直接终止
+                if j != 0:
+                    _test_ids = total_ids_in_unit + [last_id.item()]
+                    _chunk_text = self.tokenizer.decode(_test_ids, skip_special_tokens=True)
+                    if len(_chunk_text) >= 22:
+                        self.total_ids.pop()
+                        if self.ls_mode == "explicit":
+                            _pending_terminator_id = self.chunk_eos_token_id
+                            self.total_ids.append(self.chunk_eos_token_id)
+                        _kept_text = self.tokenizer.decode(total_ids_in_unit, skip_special_tokens=True) if total_ids_in_unit else ""
+                        _token_trace.append(
+                            f"  j={j} CHAR_LIMIT len={len(_chunk_text)}>=20, rejected token id={last_id.item()} '{_tok_str}', "
+                            f"kept len={len(_kept_text)} text='{_kept_text}' (forced chunk_eos, not fed to KV)"
+                        )
+                        break
+
                 if last_id.item() in self.chunk_speak_token_ids:
                     pass
                 else:
@@ -4250,6 +4266,7 @@ class DuplexCapability:
 
         # 如果 unit 中出现了 tts_pad_id，传空列表给 TTS
         tts_hidden_in_unit = [] if _chunk_has_tts_pad else total_hidden_in_unit
+        tts_hidden_in_unit = total_hidden_in_unit
 
         self.total_hidden.append(total_hidden_in_unit)
         text = generated_text
@@ -4279,6 +4296,7 @@ class DuplexCapability:
         force_flush = True
         if self.tts_text_start_pos == 0:  # 这是turn的开始
             min_token_per_chunk = 0  # 可以允许解码<1s的音频
+            min_token_per_chunk = 10 + 1
             force_flush = True
 
         if self.tts_current_turn_start_time is None:
