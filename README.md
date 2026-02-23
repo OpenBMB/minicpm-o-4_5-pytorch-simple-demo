@@ -97,6 +97,9 @@ bash ./install.sh
 
 If you have a good network connection, the entire installation process takes about 5 minutes. If you are in China, consider using a third-party PyPI mirror such as the Tsinghua mirror.
 
+<details>
+<summary>Click to expand manual installation steps</summary>
+
 You can also install dependencies manually in 2 steps:
 
 ```bash
@@ -111,6 +114,8 @@ pip install "torch==2.8.0" "torchaudio==2.8.0"
 # Install the remaining dependencies
 pip install -r requirements.txt
 ```
+
+</details>
 
 **3. Create Configuration File**
 

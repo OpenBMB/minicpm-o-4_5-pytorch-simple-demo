@@ -101,6 +101,9 @@ bash ./install.sh
 
 如果网络良好，整个安装过程大约花费 5 分钟。如果你处在中国，可以考虑使用第三方 PyPi 镜像源，例如清华镜像源。
 
+<details>
+<summary>点击展开手动安装步骤</summary>
+
 您也可以手动安装依赖，分 2 步：
 
 ```bash
@@ -115,6 +118,8 @@ pip install "torch==2.8.0" "torchaudio==2.8.0"
 # 安装其余依赖。
 pip install -r requirements.txt
 ```
+
+</details>
 
 **3. 创建配置文件**
 
