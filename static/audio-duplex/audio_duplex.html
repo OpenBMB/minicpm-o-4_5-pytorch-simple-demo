@@ -15,8 +15,6 @@
         <h1>MiniCPM-o 4.5</h1>
         <div class="nav-links">
             <a href="/">Home</a>
-            <a href="/turnbased">Turn-based Chat</a>
-            <a href="/omni">Omni Full-Duplex</a>
             <a href="/audio_duplex" class="active">Audio Full-Duplex</a>
         </div>
     </div>
@@ -204,5 +202,9 @@
 <script src="/static/shared/preset-selector.js"></script>
 <script src="/static/shared/save-share.js"></script>
 <script type="module" src="/static/audio-duplex/audio-duplex-app.js"></script>
+<script type="module">
+import { initNav } from '/static/shared/app-nav.js';
+initNav('audio_duplex');
+</script>
 </body>
 </html>

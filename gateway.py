@@ -31,7 +31,7 @@ import httpx
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request, UploadFile, File
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from gateway_modules.models import (
@@ -48,6 +48,12 @@ from gateway_modules.ref_audio_registry import (
     RefAudioListResponse,
     UploadRefAudioRequest,
     RefAudioResponse,
+)
+from gateway_modules.app_registry import (
+    AppRegistry,
+    AppToggleRequest,
+    AppsPublicResponse,
+    AppsAdminResponse,
 )
 
 logging.basicConfig(
@@ -72,6 +78,7 @@ def _sanitize_session_id(session_id: str) -> str:
 
 worker_pool: Optional[WorkerPool] = None
 ref_audio_registry: Optional[RefAudioRegistry] = None
+app_registry: AppRegistry = AppRegistry()
 
 # 配置（通过 main() 传入）
 GATEWAY_CONFIG: Dict[str, Any] = {}
@@ -206,6 +213,8 @@ async def chat(request: Request):
     无状态，路由到任意空闲 Worker。
     如果无空闲 Worker，入 FIFO 队列等待。
     """
+    if not app_registry.is_enabled("turnbased"):
+        raise HTTPException(status_code=403, detail="Turn-based Chat is currently disabled")
     if worker_pool is None:
         raise HTTPException(status_code=503, detail="Service not ready")
 
@@ -322,6 +331,9 @@ async def streaming_ws(ws: WebSocket, session_id: str):
     4. 无空闲 Worker → FIFO 排队，推送队列状态
     5. Generate 完成后更新 Worker 的 cached_hash + last_cache_used_at
     """
+    if not app_registry.is_enabled("turnbased"):
+        await ws.close(code=1008, reason="Turn-based Chat is currently disabled")
+        return
     if worker_pool is None:
         await ws.close(code=1013, reason="Service not ready")
         return
@@ -569,6 +581,11 @@ async def duplex_ws(ws: WebSocket, session_id: str):
     先 accept WS（以便推送排队状态），然后入 FIFO 队列等待 Worker。
     Duplex 独占一个 Worker，直到用户挂断或暂停超时。
     """
+    duplex_app = "audio_duplex" if session_id.startswith("adx_") else "omni"
+    if not app_registry.is_enabled(duplex_app):
+        await ws.close(code=1008, reason=f"{duplex_app} is currently disabled")
+        return
+
     if worker_pool is None:
         await ws.close(code=1013, reason="Service not ready")
         return
@@ -1195,6 +1212,31 @@ async def session_viewer(session_id: str):
     return HTMLResponse(f"<h1>Session {session_id}</h1><p>Viewer page not found</p>")
 
 
+# ============ APP 管理 ============
+
+@app.get("/api/apps", response_model=AppsPublicResponse)
+async def get_enabled_apps():
+    """返回当前启用的 APP 列表（前端导航栏和主页卡片使用）"""
+    return AppsPublicResponse(apps=app_registry.get_enabled_apps())
+
+
+@app.get("/api/admin/apps", response_model=AppsAdminResponse)
+async def get_all_apps():
+    """返回所有 APP 列表（含 enabled 状态，Admin 页面使用）"""
+    return AppsAdminResponse(apps=app_registry.get_all_apps())
+
+
+@app.put("/api/admin/apps/{app_id}")
+async def toggle_app(app_id: str, req: AppToggleRequest):
+    """切换 APP 启用/禁用状态（Admin 操作，运行时生效）"""
+    result = app_registry.set_enabled(app_id, req.enabled)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Unknown app: {app_id}")
+    action = "enabled" if req.enabled else "disabled"
+    logger.info(f"[AppRegistry] App '{app_id}' {action}")
+    return {"success": True, "app": result}
+
+
 # ============ 静态文件 ============
 
 static_dir = os.path.join(os.path.dirname(__file__), "static")
@@ -1217,6 +1259,8 @@ async def index():
 @app.get("/turnbased", response_class=HTMLResponse)
 async def turnbased():
     """Turn-based Chat Demo 页面"""
+    if not app_registry.is_enabled("turnbased"):
+        return RedirectResponse(url="/", status_code=302)
     page_path = os.path.join(static_dir, "turnbased.html")
     if os.path.exists(page_path):
         return FileResponse(page_path)
@@ -1226,6 +1270,8 @@ async def turnbased():
 @app.get("/omni", response_class=HTMLResponse)
 async def omni():
     """Omni Duplex Demo 页面"""
+    if not app_registry.is_enabled("omni"):
+        return RedirectResponse(url="/", status_code=302)
     omni_path = os.path.join(static_dir, "omni", "omni.html")
     if os.path.exists(omni_path):
         return FileResponse(omni_path)
@@ -1235,6 +1281,8 @@ async def omni():
 @app.get("/audio_duplex", response_class=HTMLResponse)
 async def audio_duplex():
     """语音双工 Demo 页面（简化版 Omni，无视频）"""
+    if not app_registry.is_enabled("audio_duplex"):
+        return RedirectResponse(url="/", status_code=302)
     page_path = os.path.join(static_dir, "audio-duplex", "audio_duplex.html")
     if os.path.exists(page_path):
         return FileResponse(page_path)

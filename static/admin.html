@@ -79,6 +79,31 @@
         .stat .label { font-size: 12px; color: #888; }
 
         .refresh-note { font-size: 11px; color: #555; margin-top: 4px; }
+
+        /* Toggle switch */
+        .toggle { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle .slider {
+            position: absolute; cursor: pointer; inset: 0;
+            background: #444; border-radius: 24px; transition: 0.25s;
+        }
+        .toggle .slider::before {
+            content: ''; position: absolute; width: 18px; height: 18px;
+            left: 3px; bottom: 3px; background: #ccc; border-radius: 50%; transition: 0.25s;
+        }
+        .toggle input:checked + .slider { background: #4ecca3; }
+        .toggle input:checked + .slider::before { transform: translateX(20px); background: #fff; }
+
+        .app-row {
+            display: flex; align-items: center; gap: 16px;
+            padding: 12px 16px; border-bottom: 1px solid #2a2a4a;
+        }
+        .app-row:last-child { border-bottom: none; }
+        .app-row .app-name { font-weight: 600; font-size: 14px; flex: 1; }
+        .app-row .app-route { font-size: 12px; color: #888; font-family: monospace; }
+        .app-row .app-status { font-size: 11px; margin-left: 8px; }
+        .app-row .app-status.on { color: #4ecca3; }
+        .app-row .app-status.off { color: #e94560; }
     </style>
 </head>
 <body>
@@ -93,6 +118,13 @@
             <div class="stat"><div class="value" id="queueLength">-</div><div class="label">Queue</div></div>
         </div>
         <div class="refresh-note">每 5 秒自动刷新</div>
+    </div>
+
+    <!-- APP 管理 -->
+    <h2>APP 管理</h2>
+    <div class="card">
+        <div id="appList"></div>
+        <div class="refresh-note">切换后立即生效，无需重启服务</div>
     </div>
 
     <!-- Worker 状态 -->
@@ -180,6 +212,48 @@
 
 <script>
 const API_BASE = window.location.origin;
+
+// ============ APP 管理 ============
+async function loadApps() {
+    try {
+        const resp = await fetch(`${API_BASE}/api/admin/apps`);
+        const data = await resp.json();
+        const container = document.getElementById('appList');
+        container.innerHTML = data.apps.map(a => {
+            const checked = a.enabled ? 'checked' : '';
+            const statusCls = a.enabled ? 'on' : 'off';
+            const statusText = a.enabled ? 'Enabled' : 'Disabled';
+            return `<div class="app-row">
+                <label class="toggle">
+                    <input type="checkbox" ${checked} onchange="toggleApp('${a.app_id}', this.checked)">
+                    <span class="slider"></span>
+                </label>
+                <span class="app-name">${a.name}</span>
+                <span class="app-route">${a.route}</span>
+                <span class="app-status ${statusCls}">${statusText}</span>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        console.error('Load apps failed:', e);
+    }
+}
+
+async function toggleApp(appId, enabled) {
+    try {
+        const resp = await fetch(`${API_BASE}/api/admin/apps/${appId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+        });
+        if (!resp.ok) {
+            alert('Toggle failed: ' + (await resp.text()));
+        }
+        loadApps();
+    } catch (e) {
+        alert('Toggle failed: ' + e.message);
+        loadApps();
+    }
+}
 
 // ============ 数据加载 ============
 async function loadStatus() {
@@ -411,6 +485,7 @@ function refresh() {
     loadQueue();
     loadRefAudios();
     loadSessions();
+    loadApps();
 }
 
 refresh();

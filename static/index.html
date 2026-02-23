@@ -60,14 +60,18 @@
         }
 
         .mode-cards {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
             gap: 24px;
             max-width: 960px;
             width: 100%;
         }
+        .mode-card {
+            width: 280px;
+        }
         @media (max-width: 800px) {
-            .mode-cards { grid-template-columns: 1fr; }
+            .mode-card { width: 100%; }
         }
 
         .mode-card {
@@ -207,9 +211,6 @@
             <h1>MiniCPM-o 4.5</h1>
             <div class="nav-links">
                 <a href="/" class="active">Home</a>
-                <a href="/turnbased">Turn-based Chat</a>
-                <a href="/omni">Omni Full-Duplex</a>
-                <a href="/audio_duplex">Audio Full-Duplex</a>
             </div>
         </div>
     </div>
@@ -218,26 +219,7 @@
         <div class="home-title">Choose mode</div>
         <!-- <div class="home-subtitle">Text · Image · Audio · Video — Multimodal inference</div> -->
 
-        <div class="mode-cards">
-            <a href="/turnbased" class="mode-card turnbased">
-                <div class="card-icon" aria-hidden="true">💬</div>
-                <div class="card-title">Turn-based Chat</div>
-                <div class="card-desc">Multi-turn chat: text and audio input with streaming output. For Q&amp;A, editing, and multi-turn tasks.</div>
-                <div class="card-enter">Enter →</div>
-            </a>
-            <a href="/omni" class="mode-card omni">
-                <div class="card-icon" aria-hidden="true">🎥</div>
-                <div class="card-title">Omni Full-Duplex</div>
-                <div class="card-desc">Full-duplex real-time: camera + mic or local video/audio file; speak and see with live replies. Live / File modes.</div>
-                <div class="card-enter">Enter →</div>
-            </a>
-            <a href="/audio_duplex" class="mode-card audio">
-                <div class="card-icon" aria-hidden="true">🎤</div>
-                <div class="card-title">Audio Full-Duplex</div>
-                <div class="card-desc">Voice-only full-duplex: live mic or local audio file, low-latency voice conversation. Live / File modes.</div>
-                <div class="card-enter">Enter →</div>
-            </a>
-        </div>
+        <div class="mode-cards" id="mode-cards"></div>
 
         <div class="recent-section" id="recent-section" style="display:none;">
             <div class="recent-header">
@@ -248,7 +230,32 @@
         </div>
     </main>
 
-    <script>
+    <script type="module">
+    import { initNav } from '/static/shared/app-nav.js';
+
+    const APP_CARD_META = {
+        turnbased: { css: 'turnbased', icon: '💬', desc: 'Multi-turn chat: text and audio input with streaming output. For Q&A, editing, and multi-turn tasks.' },
+        omni:      { css: 'omni',      icon: '🎥', desc: 'Full-duplex real-time: camera + mic or local video/audio file; speak and see with live replies. Live / File modes.' },
+        audio_duplex: { css: 'audio', icon: '🎤', desc: 'Voice-only full-duplex: live mic or local audio file, low-latency voice conversation. Live / File modes.' },
+    };
+
+    (async function() {
+        const apps = await initNav(null);
+
+        if (apps) {
+            const cardsEl = document.getElementById('mode-cards');
+            cardsEl.innerHTML = apps.map(a => {
+                const m = APP_CARD_META[a.app_id] || { css: '', icon: '📦', desc: '' };
+                return `<a href="${a.route}" class="mode-card ${m.css}">
+                    <div class="card-icon" aria-hidden="true">${m.icon}</div>
+                    <div class="card-title">${a.name}</div>
+                    <div class="card-desc">${m.desc}</div>
+                    <div class="card-enter">Enter →</div>
+                </a>`;
+            }).join('');
+        }
+    })();
+
     (function() {
         const KEY = 'minicpmo45_recent_sessions';
         const section = document.getElementById('recent-section');
