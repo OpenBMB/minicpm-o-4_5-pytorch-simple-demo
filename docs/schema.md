@@ -1,6 +1,6 @@
-# Core 模块详解
+# Schema 与处理器
 
-Core 模块是连接 Worker 服务层与底层模型的桥梁，提供类型安全的 Schema 定义、统一的处理器抽象和能力声明系统。
+本模块定义了系统的数据模型（Pydantic Schema）、统一处理器抽象和能力声明系统，是连接 Worker 服务层与底层模型的桥梁。
 
 ## 模块结构
 
@@ -16,7 +16,6 @@ core/
 ├── schemas/
 │   ├── __init__.py          # Schema 导出
 │   ├── common.py            # 公共类型定义
-│   ├── chat.py              # Chat 请求/响应
 │   ├── streaming.py         # Streaming 请求/响应
 │   └── duplex.py            # Duplex 请求/响应
 └── processors/
@@ -67,35 +66,6 @@ class Message(BaseModel):
 | `TTSConfig` | `enabled`, `mode`, `ref_audio_path`, `ref_audio_data`, `language` | TTS 配置 |
 | `ImageConfig` | `max_slice_nums`, `use_image_id` | 图像处理配置 |
 | `GenerationConfig` | `max_new_tokens=512`, `temperature=0.7`, `top_p=0.8` | 生成配置 |
-
-### chat.py — Chat 模式 Schema
-
-#### ChatRequest
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `messages` | `List[Message]` | — | 消息列表（至少 1 条） |
-| `generation` | `GenerationConfig` | 默认值 | 生成配置 |
-| `tts` | `TTSConfig` | 默认值 | TTS 配置 |
-| `image` | `ImageConfig` | 默认值 | 图像配置 |
-| `use_tts_template` | `bool` | `False` | 使用 TTS 模板 |
-| `omni_mode` | `bool` | `False` | Omni 模式 |
-| `enable_thinking` | `bool` | `False` | 启用思考链 |
-| `return_prompt` | `bool` | `False` | 返回 prompt |
-
-#### ChatResponse
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `text` | `str` | 生成的文本 |
-| `audio_data` | `Optional[str]` | Base64 音频数据 |
-| `audio_sample_rate` | `int` | 音频采样率（24kHz） |
-| `tokens_generated` | `Optional[int]` | 生成 token 数 |
-| `duration_ms` | `Optional[float]` | 耗时（毫秒） |
-| `token_stats` | `Optional[Dict]` | Token 统计（cached/input/generated/total） |
-| `recording_session_id` | `Optional[str]` | 录制会话 ID |
-| `success` | `bool` | 是否成功 |
-| `error` | `Optional[str]` | 错误信息 |
 
 ### streaming.py — Streaming 模式 Schema
 
@@ -228,7 +198,7 @@ class BaseProcessor(ABC):
 
 #### UnifiedProcessor
 
-统一处理器，一次加载模型，支持三种模式毫秒级热切换。
+统一处理器，一次加载模型，支持 Streaming / Duplex 两种模式毫秒级热切换。
 
 ```python
 class UnifiedProcessor(BaseProcessor):
@@ -236,7 +206,7 @@ class UnifiedProcessor(BaseProcessor):
         self, model_path, pt_path=None, device="cuda",
         ref_audio_path=None, duplex_config=None,
         preload_both_tts=True, compile=False,
-        chat_vocoder="token2wav", attn_implementation="auto"
+        attn_implementation="auto"
     )
 ```
 
@@ -244,19 +214,11 @@ class UnifiedProcessor(BaseProcessor):
 |----------|------|
 | `_load_model()` | 加载模型和 TTS |
 | `_release_resources()` | 释放所有资源 |
-| `set_chat_mode()` | 切换到 Chat 模式，返回 `ChatView` |
 | `set_streaming_mode()` | 切换到 Streaming 模式，返回 `StreamingView` |
 | `set_duplex_mode()` | 切换到 Duplex 模式，返回 `DuplexView` |
-| `chat` | ChatView 属性 |
 | `streaming` | StreamingView 属性 |
 | `duplex` | DuplexView 属性 |
 | `kv_cache_length` | 当前 KV Cache 长度 |
-
-#### ChatView
-
-| 方法 | 说明 |
-|------|------|
-| `chat(request, max_new_tokens, do_sample, generate_audio)` | 执行 Chat 推理，返回 `ChatResponse` |
 
 #### StreamingView
 
@@ -293,7 +255,6 @@ class UnifiedProcessor(BaseProcessor):
 
 ```python
 class ProcessorMode(Enum):
-    CHAT = "chat"
     STREAMING = "streaming"
     DUPLEX = "duplex"
 ```
@@ -324,14 +285,14 @@ class ProcessorCapabilities:
 
 ### 预定义能力常量
 
-| 能力 | Chat | Streaming | Duplex |
-|------|------|-----------|--------|
-| 流式输出 | -- | 支持 | 支持 |
-| 打断支持 | -- | -- | 支持 |
-| 回溯支持 | 支持 | 支持 | -- |
-| KV Cache 复用 | -- | 支持 | -- |
-| 独占 Worker | -- | -- | 需要 |
-| 多轮对话 | 支持 | 支持 | 支持 |
+| 能力 | Streaming | Duplex |
+|------|-----------|--------|
+| 流式输出 | 支持 | 支持 |
+| 打断支持 | -- | 支持 |
+| 回溯支持 | 支持 | -- |
+| KV Cache 复用 | 支持 | -- |
+| 独占 Worker | -- | 需要 |
+| 多轮对话 | 支持 | 支持 |
 
 ### 辅助函数
 

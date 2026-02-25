@@ -37,16 +37,10 @@ const state = {
 };
 ```
 
-### Chat vs Streaming 模式
+### Streaming 模式
 
-通过 `<select id="modeSelect">` 切换：
+通过 WebSocket (`WS /ws/streaming/{request_id}`) 进行流式对话：
 
-**Chat 模式** (`POST /api/chat`)：
-1. 用 `fetch()` 发送完整消息列表
-2. 支持 `AbortController` 取消
-3. 一次性返回完整响应（文本 + 可选音频）
-
-**Streaming 模式** (`WS /ws/streaming/{request_id}`)：
 1. 建立 WebSocket 连接
 2. 发送 `prefill` 消息（含消息历史 + ref_audio_base64）
 3. 收到 `prefill_done` 后发送 `generate`

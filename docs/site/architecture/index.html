@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>前端概述 - MiniCPM-o 4.5 文档</title>
+<title>架构概述 - MiniCPM-o 4.5 文档</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -78,7 +78,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
     <li class="nav-group">
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
-        <li><a href="../architecture/index.html">架构概述</a></li>
+        <li><a href="../architecture/index.html" class="active">架构概述</a></li>
         <li><a href="../architecture/streaming.html">Streaming 模式</a></li>
         <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="../architecture/internals.html">内部机制</a></li>
@@ -92,7 +92,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
     <li class="nav-group">
       <span class="nav-group-header">前端模块</span>
       <ul class="nav-group-children">
-        <li><a href="../frontend/index.html" class="active">前端概述</a></li>
+        <li><a href="../frontend/index.html">前端概述</a></li>
         <li><a href="../frontend/pages.html">页面与路由</a></li>
         <li><a href="../frontend/audio.html">音频处理</a></li>
         <li><a href="../frontend/duplex-session.html">双工会话</a></li>
@@ -104,120 +104,150 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </ul>
 </nav>
 <main class="content" id="content">
-  <article><h1 id="_1">前端模块概述</h1>
-<p>前端采用纯 <strong>HTML + JavaScript + CSS</strong> 构建，无框架依赖，通过模块化设计组织代码。支持实时 WebSocket 通信、Web Audio API 音频处理和 MediaRecorder 视频录制。</p>
-<h2 id="_2">模块结构</h2>
-<div class="codehilite"><pre><span></span><code>static/
-├── index.html                          # 首页（模式选择 + 最近会话）
-├── turnbased.html                      # 轮次对话页面
-├── admin.html                          # 管理面板
-├── session-viewer.html                 # 会话回放查看器
-│
-├── omni/                               # Omni 全双工页面
-│   ├── omni.html / omni-app.js / omni.css
-│
-├── audio-duplex/                       # 音频全双工页面
-│   ├── audio_duplex.html / audio-duplex-app.js / audio-duplex.css
-│
-├── duplex/                             # 双工共享库
-│   ├── duplex-shared.css               #   共享样式
-│   ├── lib/                            #   核心库（10+ 模块）
-│   └── ui/                             #   UI 组件
-│
-├── shared/                             # 跨页面共享组件
-│   ├── app-nav.js / preset-selector.js / save-share.js
-│
-├── lib/                                # 通用工具库
-│   ├── chat-eta-estimator.js / countdown-timer.js
-│
-├── ref-audio-player.js                 # 参考音频播放器
-├── system-content-editor.js            # 系统内容编辑器
-└── user-content-editor.js              # 用户消息编辑器
-</code></pre></div>
+  <article><h1 id="_1">系统架构概述</h1>
+<h2 id="_2">整体架构</h2>
+<p>系统采用 <strong>Frontend - Gateway - Worker Pool</strong> 三层架构：</p>
+<pre class="mermaid">
+graph TB
+    subgraph clientLayer [客户端层]
+        Browser["浏览器 (HTML/JS)"]
+    end
 
-<h2 id="_3">子文档导航</h2>
+    subgraph gatewayLayer [网关层]
+        Gateway["Gateway (:8006, HTTPS)"]
+        WPool["WorkerPool 调度器"]
+        Queue["FIFO 请求队列"]
+        AppReg["AppRegistry"]
+        RefAudio["RefAudioRegistry"]
+        Gateway --> WPool
+        Gateway --> Queue
+        Gateway --> AppReg
+        Gateway --> RefAudio
+    end
+
+    subgraph workerLayer [Worker 层]
+        W0["Worker 0 (GPU 0)\n:22400"]
+        W1["Worker 1 (GPU 1)\n:22401"]
+        W2["Worker N (GPU N)\n:22400+N"]
+    end
+
+    subgraph modelLayer [模型层]
+        UP["UnifiedProcessor"]
+        StreamV["StreamingView"]
+        DuplexV["DuplexView"]
+        UP --> StreamV
+        UP --> DuplexV
+    end
+
+    Browser -->|"HTTPS / WSS"| Gateway
+    WPool -->|"HTTP / WS (内部)"| W0
+    WPool -->|"HTTP / WS (内部)"| W1
+    WPool -->|"HTTP / WS (内部)"| W2
+    W0 --> UP
+</pre>
+
+<h3 id="_3">各层职责</h3>
 <table>
 <thead>
 <tr>
-<th>文档</th>
-<th>内容</th>
+<th>层</th>
+<th>组件</th>
+<th>职责</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><a href="pages.md">页面与路由</a></td>
-<td>各页面功能详解、路由系统、Turn-based Chat 状态管理</td>
+<td><strong>客户端层</strong></td>
+<td>浏览器前端</td>
+<td>模式选择、音视频采集、WebSocket 通信、会话录制</td>
 </tr>
 <tr>
-<td><a href="audio.md">音频处理</a></td>
-<td>AudioWorklet 采集、AudioPlayer 播放、LUFS 测量、混音器</td>
+<td><strong>网关层</strong></td>
+<td>Gateway</td>
+<td>请求路由分发、WebSocket 代理、FIFO 排队、会话亲和、ETA 估算</td>
 </tr>
 <tr>
-<td><a href="duplex-session.md">双工会话</a></td>
-<td>DuplexSession 类、WebSocket 协议、状态机、录制系统</td>
+<td><strong>Worker 层</strong></td>
+<td>Worker x N</td>
+<td>每 Worker 独占一张 GPU，执行模型推理，管理 KV Cache</td>
 </tr>
 <tr>
-<td><a href="components.md">UI 组件</a></td>
-<td>共享组件库、内容编辑器、预设选择器、导航系统</td>
+<td><strong>模型层</strong></td>
+<td>UnifiedProcessor</td>
+<td>统一模型加载，Streaming / Duplex 毫秒级热切换</td>
 </tr>
 </tbody>
 </table>
-<h2 id="_4">页面路由</h2>
+<h2 id="_4">三种交互模式</h2>
+<p>系统提供三种交互模式，底层共用 <strong>两个 WebSocket 接口</strong>：</p>
 <table>
 <thead>
 <tr>
-<th>页面</th>
-<th>URL</th>
-<th>说明</th>
+<th>模式</th>
+<th>特点</th>
+<th>输入模态</th>
+<th>输出模态</th>
+<th>交互范式</th>
+<th>对应接口</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>首页</td>
-<td><code>/</code></td>
-<td>模式选择卡片、最近会话列表</td>
-</tr>
-<tr>
+<td><strong>Turn-based Chat</strong></td>
+<td>低延迟流式交互，按钮或 VAD 触发回复，基础能力强</td>
+<td>音频 + 文本 + 图像</td>
+<td>音频 + 文本</td>
 <td>轮次对话</td>
-<td><code>/turnbased</code></td>
-<td>Turn-based Chat 交互</td>
+<td>Streaming</td>
 </tr>
 <tr>
-<td>Omni 全双工</td>
-<td><code>/omni</code></td>
-<td>视觉 + 语音全双工</td>
+<td><strong>Omnimodal Full-Duplex</strong></td>
+<td>全模态全双工，视觉 + 语音输入与语音输出同时进行</td>
+<td>视觉 + 语音</td>
+<td>文本 + 语音</td>
+<td>全双工</td>
+<td>Duplex</td>
 </tr>
 <tr>
-<td>音频全双工</td>
-<td><code>/audio_duplex</code></td>
-<td>纯音频全双工</td>
-</tr>
-<tr>
-<td>管理面板</td>
-<td><code>/admin</code></td>
-<td>Worker 状态、队列管理、应用开关</td>
-</tr>
-<tr>
-<td>会话回放</td>
-<td><code>/s/{session_id}</code></td>
-<td>会话录制回放</td>
-</tr>
-<tr>
-<td>API 文档</td>
-<td><code>/docs</code></td>
-<td>FastAPI 自动生成</td>
+<td><strong>Audio Full-Duplex</strong></td>
+<td>语音全双工，语音输入和输出同时进行</td>
+<td>语音</td>
+<td>文本 + 语音</td>
+<td>全双工</td>
+<td>Duplex</td>
 </tr>
 </tbody>
 </table>
-<h2 id="_5">技术栈</h2>
+<pre class="mermaid">
+graph LR
+    subgraph modes [三种交互模式]
+        TB["Turn-based Chat\n轮次对话"]
+        OD["Omnimodal Full-Duplex\n全模态全双工"]
+        AD["Audio Full-Duplex\n语音全双工"]
+    end
+
+    subgraph apis [两个 WebSocket 接口]
+        StreamAPI["/ws/streaming/{session_id}\nStreamingView"]
+        DuplexAPI["/ws/duplex/{session_id}\nDuplexView"]
+    end
+
+    TB --> StreamAPI
+    OD --> DuplexAPI
+    AD --> DuplexAPI
+</pre>
+
+<h3 id="streaming-turn-based-chat">Streaming 接口 — Turn-based Chat</h3>
+<p>Turn-based Chat 通过 <strong>Streaming 接口</strong> (<code>/ws/streaming/{session_id}</code>) 实现轮次式多模态对话。</p>
+<p>用户发送完整消息后，模型流式返回文本 + 音频。支持 KV Cache 跨轮复用，多轮对话无需重新 prefill 历史。前端可通过按钮或 VAD（语音活动检测）触发回复。</p>
+<p>详见 <a href="streaming.html">Streaming 模式详解</a>。</p>
+<h3 id="duplex-full-duplex">Duplex 接口 — Full-Duplex</h3>
+<p>Omnimodal Full-Duplex 和 Audio Full-Duplex 共用 <strong>Duplex 接口</strong> (<code>/ws/duplex/{session_id}</code>)，区别仅在于是否传入视频帧：</p>
 <ul>
-<li>无框架：纯 HTML + ES Module JavaScript</li>
-<li>实时通信：WebSocket（全双工、流式对话）</li>
-<li>音频处理：Web Audio API + AudioWorklet</li>
-<li>视频采集：getUserMedia + Canvas</li>
-<li>视频录制：MediaRecorder API</li>
-<li>状态持久化：localStorage</li>
-</ul></article>
+<li><strong>Omnimodal Full-Duplex</strong>：每秒发送 <code>audio_chunk</code> + <code>video_frame</code>，模型同时处理视觉和语音</li>
+<li><strong>Audio Full-Duplex</strong>：每秒仅发送 <code>audio_chunk</code>，无视觉输入</li>
+</ul>
+<p>两者共享相同的 prefill-generate unit 循环，Worker 在整个会话期间被独占。</p>
+<p>详见 <a href="duplex.html">Duplex 模式详解</a>。</p></article>
   <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>

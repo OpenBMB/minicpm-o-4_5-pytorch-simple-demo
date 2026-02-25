@@ -24,10 +24,13 @@ SITE_DIR = DOCS_DIR / "site"
 # (md路径, 显示标题, 分组名或None)
 PAGES = [
     ("index.md",                   "项目概述",      None),
-    ("architecture.md",            "系统架构",      None),
+    ("architecture/index.md",      "架构概述",      "系统架构"),
+    ("architecture/streaming.md",  "Streaming 模式","系统架构"),
+    ("architecture/duplex.md",     "Duplex 模式",   "系统架构"),
+    ("architecture/internals.md",  "内部机制",      "系统架构"),
     ("gateway.md",                 "Gateway 模块",  None),
     ("worker.md",                  "Worker 模块",   None),
-    ("core.md",                    "Core 模块",     None),
+    ("schema.md",                  "Schema",        None),
     ("model.md",                   "模型模块",      None),
     ("compile.md",                 "torch.compile", None),
     ("frontend/index.md",          "前端概述",      "前端模块"),

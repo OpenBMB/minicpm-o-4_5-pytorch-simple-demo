@@ -230,7 +230,7 @@ LRU 路由的目的是让同一个会话的多轮对话尽量命中同一个 Wor
 
 ### 枚举
 
-- **GatewayWorkerStatus** — Worker 状态枚举：`idle` / `busy_chat` / `busy_streaming` / `duplex_active` / `duplex_paused` / `offline`
+- **GatewayWorkerStatus** — Worker 状态枚举：`idle` / `busy_streaming` / `duplex_active` / `duplex_paused` / `offline`
 
 ### 数据模型
 

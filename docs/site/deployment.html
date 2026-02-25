@@ -75,10 +75,18 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </div>
   <ul class="nav-list">
     <li><a href="index.html">项目概述</a></li>
-    <li><a href="architecture.html">系统架构</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="architecture/index.html">架构概述</a></li>
+        <li><a href="architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="architecture/internals.html">内部机制</a></li>
+      </ul>
+    </li>
     <li><a href="gateway.html">Gateway 模块</a></li>
     <li><a href="worker.html">Worker 模块</a></li>
-    <li><a href="core.html">Core 模块</a></li>
+    <li><a href="schema.html">Schema</a></li>
     <li><a href="model.html">模型模块</a></li>
     <li><a href="compile.html">torch.compile</a></li>
     <li class="nav-group">
@@ -330,12 +338,6 @@ pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </s
 <td>int</td>
 <td>200</td>
 <td>前端音频播放延迟（ms），越大越平滑但延迟越高</td>
-</tr>
-<tr>
-<td><code>chat_vocoder</code></td>
-<td>str</td>
-<td><code>"token2wav"</code></td>
-<td>Chat 模式 vocoder 选择</td>
 </tr>
 </tbody>
 </table>

@@ -50,7 +50,6 @@ graph TB
         TextOut["文本输出"]
         TTSBlock["TTS 模块"]
         T2W["Token2Wav"]
-        CV2["CosyVoice2"]
         AudioOut["音频输出\n(24kHz)"]
     end
 
@@ -61,7 +60,6 @@ graph TB
     LLM --> TextOut
     LLM --> TTSBlock
     TTSBlock --> T2W --> AudioOut
-    TTSBlock --> CV2 --> AudioOut
 ```
 
 ---
@@ -164,7 +162,6 @@ TTS 模块专用配置。
 | 方法 | 说明 |
 |------|------|
 | `forward(input_ids, pixel_values, audio_features, ...)` | 前向传播（支持 KV Cache） |
-| `chat(msgs, tokenizer, ...)` | 离线对话（文本/图像/音频输入，可选 TTS 输出） |
 | `streaming_prefill(session_id, msgs, tokenizer, ...)` | 流式预填充（支持 KV Cache 复用） |
 | `streaming_generate(session_id, tokenizer, ...)` | 流式生成（Generator） |
 
@@ -214,7 +211,7 @@ TTS 生成器，将 LLM 输出的文本 token 转换为音频 token。
 
 ### 设计目标
 
-统一模型将 Chat、Streaming、Duplex 三种模式合并到同一个模型实例中，实现毫秒级模式切换（< 0.1ms），避免重复加载模型权重。
+统一模型将 Streaming、Duplex 两种模式合并到同一个模型实例中，实现毫秒级模式切换（< 0.1ms），避免重复加载模型权重。
 
 ### MiniCPMO（统一版）
 
@@ -223,11 +220,9 @@ TTS 生成器，将 LLM 输出的文本 token 转换为音频 token。
 ```mermaid
 graph LR
     UModel["MiniCPMO\n(统一入口)"]
-    ChatMode["Chat 模式"]
     StreamMode["Streaming 模式"]
     DuplexCap["DuplexCapability\n(双工能力)"]
 
-    UModel -->|"set_mode(CHAT)"| ChatMode
     UModel -->|"set_mode(STREAMING)"| StreamMode
     UModel -->|"set_mode(DUPLEX)"| DuplexCap
 ```
@@ -238,9 +233,7 @@ graph LR
 |------|------|
 | `init_unified(preload_both_tts)` | 初始化统一模型，预加载双 TTS |
 | `set_mode(mode)` | 切换模式（自动切换 TTS tokenizer，清理 KV Cache） |
-| `chat(msgs, ...)` | Chat 推理 |
 | `streaming_prefill(...)` / `streaming_generate(...)` | Streaming 推理 |
-| `duplex_chat(...)` | 离线双工推理 |
 | `duplex_prepare(...)` / `duplex_prefill(...)` / `duplex_generate(...)` | 在线双工推理 |
 
 ### DuplexCapability

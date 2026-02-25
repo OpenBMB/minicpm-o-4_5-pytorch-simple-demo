@@ -110,7 +110,6 @@ CLI 参数 > config.json > Pydantic 默认值
 |------|------|--------|------|
 | `ref_audio_path` | str | `assets/ref_audio/ref_minicpm_signature.wav` | 默认 TTS 参考音频路径 |
 | `playback_delay_ms` | int | 200 | 前端音频播放延迟（ms），越大越平滑但延迟越高 |
-| `chat_vocoder` | str | `"token2wav"` | Chat 模式 vocoder 选择 |
 
 #### service — 服务配置
 

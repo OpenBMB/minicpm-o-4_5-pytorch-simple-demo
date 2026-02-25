@@ -75,10 +75,18 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </div>
   <ul class="nav-list">
     <li><a href="index.html">项目概述</a></li>
-    <li><a href="architecture.html">系统架构</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="architecture/index.html">架构概述</a></li>
+        <li><a href="architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="architecture/internals.html">内部机制</a></li>
+      </ul>
+    </li>
     <li><a href="gateway.html">Gateway 模块</a></li>
     <li><a href="worker.html">Worker 模块</a></li>
-    <li><a href="core.html">Core 模块</a></li>
+    <li><a href="schema.html">Schema</a></li>
     <li><a href="model.html" class="active">模型模块</a></li>
     <li><a href="compile.html">torch.compile</a></li>
     <li class="nav-group">
@@ -143,7 +151,6 @@ graph TB
         TextOut["文本输出"]
         TTSBlock["TTS 模块"]
         T2W["Token2Wav"]
-        CV2["CosyVoice2"]
         AudioOut["音频输出\n(24kHz)"]
     end
 
@@ -154,7 +161,6 @@ graph TB
     LLM --> TextOut
     LLM --> TTSBlock
     TTSBlock --> T2W --> AudioOut
-    TTSBlock --> CV2 --> AudioOut
 </pre>
 
 <hr />
@@ -393,10 +399,6 @@ graph TB
 <td>前向传播（支持 KV Cache）</td>
 </tr>
 <tr>
-<td><code>chat(msgs, tokenizer, ...)</code></td>
-<td>离线对话（文本/图像/音频输入，可选 TTS 输出）</td>
-</tr>
-<tr>
 <td><code>streaming_prefill(session_id, msgs, tokenizer, ...)</code></td>
 <td>流式预填充（支持 KV Cache 复用）</td>
 </tr>
@@ -505,17 +507,15 @@ graph TB
 <hr />
 <h2 id="modeling_minicpmo_unifiedpy">modeling_minicpmo_unified.py — 统一模型</h2>
 <h3 id="_11">设计目标</h3>
-<p>统一模型将 Chat、Streaming、Duplex 三种模式合并到同一个模型实例中，实现毫秒级模式切换（&lt; 0.1ms），避免重复加载模型权重。</p>
+<p>统一模型将 Streaming、Duplex 两种模式合并到同一个模型实例中，实现毫秒级模式切换（&lt; 0.1ms），避免重复加载模型权重。</p>
 <h3 id="minicpmo_1">MiniCPMO（统一版）</h3>
 <p>继承标准 <code>MiniCPMO</code>，组合 <code>DuplexCapability</code>。</p>
 <pre class="mermaid">
 graph LR
     UModel["MiniCPMO\n(统一入口)"]
-    ChatMode["Chat 模式"]
     StreamMode["Streaming 模式"]
     DuplexCap["DuplexCapability\n(双工能力)"]
 
-    UModel -->|"set_mode(CHAT)"| ChatMode
     UModel -->|"set_mode(STREAMING)"| StreamMode
     UModel -->|"set_mode(DUPLEX)"| DuplexCap
 </pre>
@@ -538,16 +538,8 @@ graph LR
 <td>切换模式（自动切换 TTS tokenizer，清理 KV Cache）</td>
 </tr>
 <tr>
-<td><code>chat(msgs, ...)</code></td>
-<td>Chat 推理</td>
-</tr>
-<tr>
 <td><code>streaming_prefill(...)</code> / <code>streaming_generate(...)</code></td>
 <td>Streaming 推理</td>
-</tr>
-<tr>
-<td><code>duplex_chat(...)</code></td>
-<td>离线双工推理</td>
 </tr>
 <tr>
 <td><code>duplex_prepare(...)</code> / <code>duplex_prefill(...)</code> / <code>duplex_generate(...)</code></td>

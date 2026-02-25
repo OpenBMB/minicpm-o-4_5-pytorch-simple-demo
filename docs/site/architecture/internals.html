@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>系统架构 - MiniCPM-o 4.5 文档</title>
+<title>内部机制 - MiniCPM-o 4.5 文档</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -74,226 +74,46 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
     <span class="sidebar-subtitle">项目文档</span>
   </div>
   <ul class="nav-list">
-    <li><a href="index.html">项目概述</a></li>
-    <li><a href="architecture.html" class="active">系统架构</a></li>
-    <li><a href="gateway.html">Gateway 模块</a></li>
-    <li><a href="worker.html">Worker 模块</a></li>
-    <li><a href="core.html">Core 模块</a></li>
-    <li><a href="model.html">模型模块</a></li>
-    <li><a href="compile.html">torch.compile</a></li>
+    <li><a href="../index.html">项目概述</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">架构概述</a></li>
+        <li><a href="../architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="../architecture/internals.html" class="active">内部机制</a></li>
+      </ul>
+    </li>
+    <li><a href="../gateway.html">Gateway 模块</a></li>
+    <li><a href="../worker.html">Worker 模块</a></li>
+    <li><a href="../schema.html">Schema</a></li>
+    <li><a href="../model.html">模型模块</a></li>
+    <li><a href="../compile.html">torch.compile</a></li>
     <li class="nav-group">
       <span class="nav-group-header">前端模块</span>
       <ul class="nav-group-children">
-        <li><a href="frontend/index.html">前端概述</a></li>
-        <li><a href="frontend/pages.html">页面与路由</a></li>
-        <li><a href="frontend/audio.html">音频处理</a></li>
-        <li><a href="frontend/duplex-session.html">双工会话</a></li>
-        <li><a href="frontend/components.html">UI 组件</a></li>
+        <li><a href="../frontend/index.html">前端概述</a></li>
+        <li><a href="../frontend/pages.html">页面与路由</a></li>
+        <li><a href="../frontend/audio.html">音频处理</a></li>
+        <li><a href="../frontend/duplex-session.html">双工会话</a></li>
+        <li><a href="../frontend/components.html">UI 组件</a></li>
       </ul>
     </li>
-    <li><a href="api.html">API 参考</a></li>
-    <li><a href="deployment.html">配置与部署</a></li>
+    <li><a href="../api.html">API 参考</a></li>
+    <li><a href="../deployment.html">配置与部署</a></li>
   </ul>
 </nav>
 <main class="content" id="content">
-  <article><h1 id="_1">系统架构与拓扑</h1>
-<h2 id="_2">整体架构</h2>
-<p>系统采用 <strong>Frontend - Gateway - Worker Pool</strong> 三层架构：</p>
-<pre class="mermaid">
-graph TB
-    subgraph clientLayer [客户端层]
-        Browser["浏览器 (HTML/JS)"]
-    end
-
-    subgraph gatewayLayer [网关层]
-        Gateway["Gateway (:8006, HTTPS)"]
-        WPool["WorkerPool 调度器"]
-        Queue["FIFO 请求队列"]
-        AppReg["AppRegistry"]
-        RefAudio["RefAudioRegistry"]
-        Gateway --> WPool
-        Gateway --> Queue
-        Gateway --> AppReg
-        Gateway --> RefAudio
-    end
-
-    subgraph workerLayer [Worker 层]
-        W0["Worker 0 (GPU 0)\n:22400"]
-        W1["Worker 1 (GPU 1)\n:22401"]
-        W2["Worker N (GPU N)\n:22400+N"]
-    end
-
-    subgraph modelLayer [模型层]
-        UP["UnifiedProcessor"]
-        ChatV["ChatView"]
-        StreamV["StreamingView"]
-        DuplexV["DuplexView"]
-        UP --> ChatV
-        UP --> StreamV
-        UP --> DuplexV
-    end
-
-    Browser -->|"HTTPS / WSS"| Gateway
-    WPool -->|"HTTP / WS (内部)"| W0
-    WPool -->|"HTTP / WS (内部)"| W1
-    WPool -->|"HTTP / WS (内部)"| W2
-    W0 --> UP
-</pre>
-
-<h3 id="_3">各层职责</h3>
-<table>
-<thead>
-<tr>
-<th>层</th>
-<th>组件</th>
-<th>职责</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>客户端层</strong></td>
-<td>浏览器前端</td>
-<td>模式选择、音视频采集、WebSocket 通信、会话录制</td>
-</tr>
-<tr>
-<td><strong>网关层</strong></td>
-<td>Gateway</td>
-<td>请求路由分发、WebSocket 代理、FIFO 排队、会话亲和、ETA 估算</td>
-</tr>
-<tr>
-<td><strong>Worker 层</strong></td>
-<td>Worker x N</td>
-<td>每 Worker 独占一张 GPU，执行模型推理，管理 KV Cache</td>
-</tr>
-<tr>
-<td><strong>模型层</strong></td>
-<td>UnifiedProcessor</td>
-<td>统一模型加载，三种模式毫秒级热切换</td>
-</tr>
-</tbody>
-</table>
-<h2 id="_4">请求处理流程</h2>
-<h3 id="chat-http">Chat 模式（无状态 HTTP）</h3>
-<pre class="mermaid">
-sequenceDiagram
-    participant C as 客户端
-    participant G as Gateway
-    participant Q as 队列
-    participant W as Worker
-
-    C->>G: POST /api/chat (ChatRequest)
-    G->>Q: enqueue("chat")
-    Q->>W: 分配空闲 Worker
-    W->>W: UnifiedProcessor.chat.chat()
-    W-->>G: ChatResponse
-    G-->>C: JSON 响应
-    G->>Q: release_worker()
-</pre>
-
-<h3 id="streaming-websocket-lru-kv-cache">Streaming 模式（WebSocket + LRU 缓存 + KV Cache 复用）</h3>
-<p>Streaming 模式的核心优化是 <strong>KV Cache 复用</strong>。当同一会话的多轮对话命中同一个 Worker 时，模型只需对新增消息做增量 prefill，而非重新处理整个历史，大幅降低延迟。</p>
-<pre class="mermaid">
-sequenceDiagram
-    participant C as 客户端
-    participant GW as Gateway
-    participant Pool as WorkerPool
-    participant W as Worker
-
-    C->>GW: WS 连接 /ws/streaming/{session_id}
-    GW->>Pool: enqueue("streaming", history_hash)
-
-    alt 有空闲 Worker（立即分配）
-        Pool->>Pool: LRU 缓存路由（见下方详解）
-        Pool-->>GW: Future.resolve(Worker)
-        GW-->>C: queue_done
-    else 无空闲 Worker（入队等待）
-        Pool-->>GW: 入 FIFO 队列
-        GW-->>C: queued (position, eta)
-        loop 等待释放
-            Pool-->>GW: 位置更新
-            GW-->>C: queue_update (position, eta)
-        end
-        Note over Pool: Worker 释放后 _dispatch_next()
-        Pool-->>GW: Future.resolve(Worker)
-        GW-->>C: queue_done
-    end
-
-    GW->>W: 建立到 Worker 的 WS 连接
-
-    alt 缓存未命中（clear_kv_cache=true）
-        GW->>W: prefill (clear_kv_cache=true, 全部消息)
-        W->>W: reset_session() 清除旧 KV Cache
-        W->>W: streaming_prefill() 全量预填充
-    else 缓存命中（clear_kv_cache=false）
-        GW->>W: prefill (clear_kv_cache=false, 仅新消息)
-        W->>W: streaming_prefill() 增量预填充<br/>复用已有 KV Cache
-    end
-    W-->>GW: prefill_done (cached_tokens, input_tokens)
-    GW-->>C: 转发 prefill_done
-
-    C->>GW: generate
-    GW->>W: 转发 generate
-    W->>W: streaming_init_tts(ref_audio)
-    loop 流式生成（逐 chunk）
-        W->>W: streaming_generate() yield chunk
-        W-->>GW: StreamingChunk (text_delta + audio_data)
-        GW-->>C: 转发 chunk
-    end
-    W-->>GW: done (token_stats)
-    GW-->>C: 转发 done
-
-    GW->>Pool: release_worker(cached_hash=当前 hash)
-    Note over Pool: 更新 Worker.cached_hash<br/>下次同 hash 请求可命中
-</pre>
-
-<h4 id="lru">LRU 缓存路由详解</h4>
-<p>LRU 缓存路由在 <strong>Gateway 侧</strong>的 <code>WorkerPool._route_streaming_worker()</code> 中实现（位于 <code>gateway_modules/worker_pool.py</code>），而非 Worker 侧。Gateway 通过 <code>WorkerConnection.cached_hash</code> 和 <code>last_cache_used_at</code> 字段追踪每个 Worker 当前缓存的会话历史 hash。</p>
-<p><strong>路由 4 级优先级</strong>：</p>
-<pre class="mermaid">
-flowchart TD
-    Start["收到 Streaming 请求\n计算 history_hash"] --> Check1{"遍历空闲 Worker\nhash == cached_hash ?"}
-    Check1 -->|"命中"| Hit["缓存命中\n分配该 Worker\n增量 prefill"]
-    Check1 -->|"未命中"| Check2{"有 cached_hash==None\n的空闲 Worker ?"}
-    Check2 -->|"有"| NoCache["分配无缓存 Worker\n避免不必要的淘汰"]
-    Check2 -->|"无"| Check3{"有其他空闲 Worker ?"}
-    Check3 -->|"有"| LRU["LRU 淘汰\n选 last_cache_used_at 最旧的\n覆盖其缓存"]
-    Check3 -->|"无"| Enqueue["无空闲 Worker\n入 FIFO 队列等待"]
-</pre>
-
-<ul>
-<li><strong>hash 计算</strong>：<code>compute_history_hash()</code> 将消息列表的 <code>role + content</code> 序列化后做 SHA-256，确保相同对话历史产生相同 hash。</li>
-<li><strong>缓存更新时机</strong>：Gateway 在 <code>release_worker()</code> 时将当前请求的 <code>history_hash</code> 写入 <code>Worker.cached_hash</code> 和 <code>last_cache_used_at</code>，供后续请求匹配。</li>
-<li><strong>Non-Streaming 请求也考虑缓存</strong>：Chat/Duplex 分配时也优先选无缓存的 Worker（<code>_get_idle_worker()</code>），避免不必要地淘汰 Streaming 的缓存。</li>
-</ul>
-<h3 id="duplex-websocket-worker">Duplex 模式（WebSocket + 独占 Worker）</h3>
-<pre class="mermaid">
-sequenceDiagram
-    participant C as 客户端
-    participant G as Gateway
-    participant Q as 队列
-    participant W as Worker
-
-    C->>G: WS /ws/duplex/{session_id}
-    G->>Q: enqueue("omni_duplex" / "audio_duplex")
-    Q->>W: 分配 Worker（独占）
-    C->>G: prepare (系统提示词 + 配置)
-    G->>W: duplex_prepare()
-    loop 全双工循环
-        C->>G: audio_chunk (+ video_frame)
-        G->>W: duplex_prefill(audio, frames)
-        W->>W: duplex_generate()
-        alt 模型决定说话
-            W-->>G: result (text + audio_data)
-            G-->>C: 转发 result
-        else 模型决定聆听
-            W-->>G: result (is_listen=true)
-        end
-    end
-    C->>G: stop
-    G->>W: duplex_cleanup()
-    G->>Q: release_worker()
-</pre>
-
+  <article><h1 id="_1">内部机制</h1>
+<h2 id="worker">Worker 启动与模型加载</h2>
+<p>Worker 基于 <strong>FastAPI</strong> 构建，每个 Worker 独占一张 GPU，通过独立端口提供 HTTP 和 WebSocket 服务。</p>
+<p>启动时在 <code>lifespan()</code> 异步上下文中调用 <code>load_model()</code>（同步操作，约 15s），通过 <code>asyncio.to_thread()</code> 避免阻塞事件循环。加载完成后：</p>
+<ol>
+<li>创建 <code>UnifiedProcessor</code> 实例（加载模型权重 + TTS）</li>
+<li><code>gc.collect()</code> + <code>torch.cuda.empty_cache()</code> 清理加载残留</li>
+<li>打印 Device Map（确认所有组件在 GPU 上）</li>
+<li>状态从 <code>LOADING</code> → <code>IDLE</code></li>
+</ol>
 <h2 id="fifo-worker">FIFO 队列与 Worker 通信机制</h2>
 <p>队列在 Gateway 侧的 <code>WorkerPool</code> 中实现，使用 <code>OrderedDict</code> 保证 FIFO 顺序。核心通信机制如下：</p>
 <pre class="mermaid">
@@ -323,9 +143,9 @@ flowchart TB
 <li><strong>asyncio.Future 桥接</strong>：每个排队请求持有一个 <code>asyncio.Future</code>，Gateway 的 WebSocket handler 通过 <code>await future</code> 阻塞等待分配结果。Worker 空闲时 <code>_dispatch_next()</code> 调用 <code>future.set_result(worker)</code> 唤醒等待者。</li>
 <li><strong>单一调度点</strong>：所有 Worker 分配都通过 <code>_dispatch_next()</code> 进行，在 Worker 释放、排队取消、健康检查恢复后触发，消除并发竞争。</li>
 <li><strong>立即标记忙碌</strong>：分配 Worker 时立即调用 <code>mark_busy()</code> 将状态改为忙碌，防止同一 Worker 被重复分配给多个请求。</li>
-<li><strong>Gateway → Worker 通信</strong>：Gateway 通过 HTTP（Chat）或 WebSocket（Streaming/Duplex）直连 Worker 的内部端口（22400+），不经过队列。队列只负责 Worker 分配，不参与数据传输。</li>
+<li><strong>Gateway → Worker 通信</strong>：Gateway 通过 WebSocket（Streaming/Duplex）直连 Worker 的内部端口（22400+），不经过队列。队列只负责 Worker 分配，不参与数据传输。</li>
 </ol>
-<h2 id="_5">模块依赖拓扑</h2>
+<h2 id="_2">模块依赖拓扑</h2>
 <pre class="mermaid">
 graph LR
     subgraph entryPoints [入口]
@@ -394,7 +214,7 @@ graph LR
     WP --> MD
 </pre>
 
-<h2 id="_6">模型推理管线</h2>
+<h2 id="_3">模型推理管线</h2>
 <pre class="mermaid">
 graph LR
     subgraph inputMod [多模态输入]
@@ -430,18 +250,16 @@ graph LR
     LLM --> TTS --> AUDOUT
 </pre>
 
-<h2 id="worker">Worker 状态机</h2>
+<h2 id="worker_1">Worker 状态机</h2>
 <pre class="mermaid">
 stateDiagram-v2
     [*] --> LOADING: 启动
     LOADING --> IDLE: 模型加载完成
     LOADING --> ERROR: 加载失败
 
-    IDLE --> BUSY_CHAT: 分配 Chat 任务
     IDLE --> BUSY_STREAMING: 分配 Streaming 任务
     IDLE --> DUPLEX_ACTIVE: 分配 Duplex 任务
 
-    BUSY_CHAT --> IDLE: 推理完成
     BUSY_STREAMING --> IDLE: 推理完成
 
     DUPLEX_ACTIVE --> DUPLEX_PAUSED: pause（客户端暂停）
@@ -452,7 +270,7 @@ stateDiagram-v2
     ERROR --> [*]
 </pre>
 
-<h2 id="_7">前端组件拓扑</h2>
+<h2 id="_4">前端组件拓扑</h2>
 <pre class="mermaid">
 graph TB
     subgraph pages [页面]
@@ -510,7 +328,53 @@ graph TB
     OM --> SRec
     AD --> SRec
     OM --> SVR
-</pre></article>
+</pre>
+
+<h2 id="_5">会话录制</h2>
+<p><code>session_recorder.py</code> 自动录制所有推理会话的输入输出数据，支持后续回放和分析。</p>
+<h3 id="_6">会话目录结构</h3>
+<div class="codehilite"><pre><span></span><code>data/sessions/{session_id}/
+├── meta.json                # 会话元数据（类型、创建时间、配置）
+├── recording.json           # Timeline 录制数据
+├── user_audio/              # 用户音频 chunks (WAV)
+├── user_frames/             # 用户视频帧 (JPEG，仅 Omni)
+├── ai_audio/                # AI 生成音频 (WAV)
+├── user_images/             # 用户上传图片 (PNG)
+├── merged_replay.wav        # 合并回放音频（Duplex）
+└── merged_replay.mp4        # 合并回放视频（Omni）
+</code></pre></div>
+
+<p>录制器使用 <code>ThreadPoolExecutor</code>（4 线程）异步写入文件，不阻塞推理。</p>
+<table>
+<thead>
+<tr>
+<th>录制器</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DuplexSessionRecorder</code></td>
+<td>Duplex 会话，记录每个 chunk 的 timeline 数据</td>
+</tr>
+<tr>
+<td><code>TurnBasedSessionRecorder</code></td>
+<td>Turn-based 会话，累积 streaming chunk</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">会话清理</h2>
+<p><code>session_cleanup.py</code> 定期清理过期会话数据。</p>
+<h3 id="_8">清理策略</h3>
+<ol>
+<li><strong>按时间</strong> — 删除超过 <code>retention_days</code> 的会话</li>
+<li><strong>按容量</strong> — 超过 <code>max_storage_gb</code> 时按 LRU 删除</li>
+</ol>
+<h3 id="_9">运行方式</h3>
+<ul>
+<li><strong>自动</strong>：Gateway 后台任务，每 24 小时执行</li>
+<li><strong>手动</strong>：<code>python session_cleanup.py --data-dir data --retention-days 30 --max-storage-gb 50</code></li>
+</ul></article>
   <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>

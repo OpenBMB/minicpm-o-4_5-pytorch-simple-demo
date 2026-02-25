@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Streaming 模式 - MiniCPM-o 4.5 文档</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">项目文档</span>
+  </div>
+  <ul class="nav-list">
+    <li><a href="../index.html">项目概述</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">架构概述</a></li>
+        <li><a href="../architecture/streaming.html" class="active">Streaming 模式</a></li>
+        <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="../architecture/internals.html">内部机制</a></li>
+      </ul>
+    </li>
+    <li><a href="../gateway.html">Gateway 模块</a></li>
+    <li><a href="../worker.html">Worker 模块</a></li>
+    <li><a href="../schema.html">Schema</a></li>
+    <li><a href="../model.html">模型模块</a></li>
+    <li><a href="../compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">前端模块</span>
+      <ul class="nav-group-children">
+        <li><a href="../frontend/index.html">前端概述</a></li>
+        <li><a href="../frontend/pages.html">页面与路由</a></li>
+        <li><a href="../frontend/audio.html">音频处理</a></li>
+        <li><a href="../frontend/duplex-session.html">双工会话</a></li>
+        <li><a href="../frontend/components.html">UI 组件</a></li>
+      </ul>
+    </li>
+    <li><a href="../api.html">API 参考</a></li>
+    <li><a href="../deployment.html">配置与部署</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="streaming">Streaming 模式详解</h1>
+<p>Streaming 模式（<code>/ws/streaming/{session_id}</code>）实现 <strong>Turn-based Chat</strong>：用户发送完整消息后，模型流式返回文本 + 音频。核心优化是 <strong>KV Cache 跨轮复用</strong>。</p>
+<h2 id="_1">基础流程</h2>
+<p>先看最简单的单轮 Streaming 流程——不涉及排队和缓存优化，只关注核心推理链路：</p>
+<pre class="mermaid">
+sequenceDiagram
+    participant C as 客户端
+    participant GW as Gateway
+    participant W as Worker
+
+    C->>GW: WS /ws/streaming/{session_id}
+    C->>GW: prefill (messages=[sys, user])
+    GW->>W: 转发全部消息
+    W->>W: reset_session() 清空旧状态
+    loop 逐条 streaming_prefill(msg)
+        W->>W: 编码消息 → LLM prefill → 累积 KV Cache
+    end
+    W-->>GW: prefill_done
+    GW-->>C: prefill_done
+
+    C->>GW: generate
+    GW->>W: 转发 generate
+    W->>W: streaming_init_tts(ref_audio)
+    loop 流式生成（逐 chunk）
+        W-->>GW: StreamingChunk (text + audio)
+        GW-->>C: 转发 chunk
+    end
+    W-->>GW: done
+    GW-->>C: done
+</pre>
+
+<p>Worker 收到消息列表后，<code>StreamingView.prefill()</code> 将其拆分为逐条调用模型的 <code>streaming_prefill()</code>：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># core/processors/unified.py — StreamingView.prefill()</span>
+<span class="k">def</span> <span class="nf">prefill</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">StreamingRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">msg</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">messages</span><span class="p">):</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_content_to_model_format</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        <span class="n">msgs</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="n">msg</span><span class="o">.</span><span class="n">role</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">content</span><span class="p">}]</span>
+        <span class="n">is_last</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">is_last_chunk</span> <span class="ow">and</span> <span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">messages</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">streaming_prefill</span><span class="p">(</span>
+            <span class="n">session_id</span><span class="o">=</span><span class="n">request</span><span class="o">.</span><span class="n">session_id</span><span class="p">,</span> <span class="n">msgs</span><span class="o">=</span><span class="n">msgs</span><span class="p">,</span>
+            <span class="n">is_last_chunk</span><span class="o">=</span><span class="n">is_last</span><span class="p">,</span> <span class="n">stream_input</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">...</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
+            <span class="n">prompt</span> <span class="o">=</span> <span class="n">result</span>
+    <span class="k">return</span> <span class="n">prompt</span>
+</code></pre></div>
+
+<p>每次 <code>streaming_prefill()</code> 执行后，模型将新的 KV 对累积到 <code>llm_past_key_values</code> 中，供后续生成使用：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># MiniCPMO45/modeling_minicpmo_unified.py — streaming_prefill()</span>
+<span class="n">cache_length</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_kv_cache_length</span><span class="p">()</span>
+<span class="n">attention_mask</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="n">cache_length</span> <span class="o">+</span> <span class="n">inputs_embeds</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="o">...</span><span class="p">)</span>
+
+<span class="n">outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="p">(</span>
+    <span class="n">past_key_values</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span><span class="p">,</span>  <span class="c1"># 传入已有 KV Cache</span>
+    <span class="n">inputs_embeds</span><span class="o">=</span><span class="n">inputs_embeds</span><span class="p">,</span>                <span class="c1"># 仅当前消息的 embedding</span>
+    <span class="n">attention_mask</span><span class="o">=</span><span class="n">attention_mask</span><span class="p">,</span>
+    <span class="n">use_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span> <span class="o">=</span> <span class="n">as_dynamic_cache</span><span class="p">(</span><span class="n">outputs</span><span class="p">[</span><span class="s2">&quot;past_key_values&quot;</span><span class="p">])</span>  <span class="c1"># 更新缓存</span>
+</code></pre></div>
+
+<h2 id="kv-cache">为什么需要 KV Cache 复用？</h2>
+<p>上面的基础流程有一个问题：<strong>每轮请求都需要从头 prefill 全部历史消息</strong>。</p>
+<pre class="mermaid">
+graph LR
+    subgraph round1 ["第 1 轮"]
+        R1["prefill: sys, user₁\n2 条消息"]
+    end
+    subgraph round2 ["第 2 轮"]
+        R2["prefill: sys, user₁, asst₁, user₂\n4 条（2 条重复）"]
+    end
+    subgraph round3 ["第 3 轮"]
+        R3["prefill: sys, user₁, asst₁, user₂, asst₂, user₃\n6 条（4 条重复）"]
+    end
+    round1 --> round2 --> round3
+</pre>
+
+<p>随着对话轮次增加，重复计算量线性增长。对于包含图像和音频的多模态消息，重复 prefill 的代价尤其高昂。</p>
+<p><strong>KV Cache 复用的核心思路</strong>：Worker 推理完成后 <strong>不清除</strong> <code>llm_past_key_values</code>。当下一轮请求被路由到同一个 Worker 时，直接复用已有缓存，仅对新增消息做增量 prefill。</p>
+<h2 id="kv-cache_1">KV Cache 复用的实现</h2>
+<p>复用机制分布在 <strong>Gateway → Worker → 模型</strong> 三层：</p>
+<h3 id="1-gateway">1. Gateway：缓存命中判断</h3>
+<p>Gateway 计算历史消息（不含最新 user 消息）的 SHA-256 hash，与 Worker 上次保存的 <code>cached_hash</code> 比对，决定是否命中：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># gateway.py — streaming_ws()</span>
+<span class="n">history</span> <span class="o">=</span> <span class="n">raw_messages</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">history_hash</span> <span class="o">=</span> <span class="n">compute_history_hash</span><span class="p">(</span><span class="n">history</span><span class="p">)</span> <span class="k">if</span> <span class="n">history</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+
+<span class="n">cache_hit</span> <span class="o">=</span> <span class="n">history_hash</span> <span class="ow">and</span> <span class="n">worker</span><span class="o">.</span><span class="n">cached_hash</span> <span class="o">==</span> <span class="n">history_hash</span>
+
+<span class="k">if</span> <span class="n">cache_hit</span><span class="p">:</span>
+    <span class="c1"># 命中：只发最新消息，指示 Worker 保留已有 KV Cache</span>
+    <span class="n">forward_msg</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">msg</span><span class="p">,</span> <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="n">raw_messages</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:],</span> <span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="c1"># 未命中：发全部消息，指示 Worker 清空后全量 prefill</span>
+    <span class="n">forward_msg</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">msg</span><span class="p">,</span> <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="n">raw_messages</span><span class="p">,</span> <span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</code></pre></div>
+
+<h3 id="2-worker">2. Worker：按指示清除或保留</h3>
+<p>Worker 收到 Gateway 的 <code>clear_kv_cache</code> 字段后，决定是否重置模型 session：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># worker.py — streaming_ws()</span>
+<span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+    <span class="n">worker</span><span class="o">.</span><span class="n">reset_streaming_session</span><span class="p">()</span>
+    <span class="c1"># → streaming_view._model.reset_session(reset_token2wav_cache=False)</span>
+</code></pre></div>
+
+<h3 id="3-llm_past_key_values">3. 模型：清除即置空 <code>llm_past_key_values</code></h3>
+<p><code>reset_session()</code> 将所有缓存状态清零。缓存未命中时，后续 <code>streaming_prefill()</code> 从空缓存开始逐条 prefill；缓存命中时，跳过 reset，新消息直接在已有 KV Cache 上增量 prefill。</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># MiniCPMO45/modeling_minicpmo_unified.py — reset_session()</span>
+<span class="k">def</span> <span class="nf">reset_session</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reset_token2wav_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span> <span class="o">=</span> <span class="kc">None</span>   <span class="c1"># 清除 LLM KV Cache</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">audio_past_key_values</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">session_id</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="o">...</span>
+</code></pre></div>
+
+<h2 id="kv-cache_2">完整流程（含排队 + KV Cache 复用）</h2>
+<pre class="mermaid">
+sequenceDiagram
+    participant C as 客户端
+    participant GW as Gateway
+    participant Pool as WorkerPool
+    participant W as Worker
+
+    C->>GW: WS 连接 /ws/streaming/{session_id}
+    GW->>Pool: enqueue("streaming", history_hash)
+
+    alt 有空闲 Worker（立即分配）
+        Pool->>Pool: LRU 缓存路由（见下方详解）
+        Pool-->>GW: Future.resolve(Worker)
+        GW-->>C: queue_done
+    else 无空闲 Worker（入队等待）
+        Pool-->>GW: 入 FIFO 队列
+        GW-->>C: queued (position, eta)
+        loop 等待释放
+            Pool-->>GW: 位置更新
+            GW-->>C: queue_update (position, eta)
+        end
+        Note over Pool: Worker 释放后 _dispatch_next()
+        Pool-->>GW: Future.resolve(Worker)
+        GW-->>C: queue_done
+    end
+
+    GW->>W: 建立到 Worker 的 WS 连接
+
+    alt 缓存未命中（clear_kv_cache=true）
+        GW->>W: prefill (clear_kv_cache=true, 全部消息)
+        W->>W: reset_session() 清除旧 KV Cache
+        W->>W: streaming_prefill() 全量预填充
+    else 缓存命中（clear_kv_cache=false）
+        GW->>W: prefill (clear_kv_cache=false, 仅新消息)
+        W->>W: streaming_prefill() 增量预填充<br/>复用已有 KV Cache
+    end
+    W-->>GW: prefill_done (cached_tokens, input_tokens)
+    GW-->>C: 转发 prefill_done
+
+    C->>GW: generate
+    GW->>W: 转发 generate
+    W->>W: streaming_init_tts(ref_audio)
+    loop 流式生成（逐 chunk）
+        W->>W: streaming_generate() yield chunk
+        W-->>GW: StreamingChunk (text_delta + audio_data)
+        GW-->>C: 转发 chunk
+    end
+    W-->>GW: done (token_stats)
+    GW-->>C: 转发 done
+
+    GW->>Pool: release_worker(cached_hash=当前 hash)
+    Note over Pool: 更新 Worker.cached_hash<br/>下次同 hash 请求可命中
+</pre>
+
+<h2 id="lru">LRU 缓存路由详解</h2>
+<p>LRU 缓存路由在 <strong>Gateway 侧</strong>的 <code>WorkerPool._route_streaming_worker()</code> 中实现（位于 <code>gateway_modules/worker_pool.py</code>），而非 Worker 侧。Gateway 通过 <code>WorkerConnection.cached_hash</code> 和 <code>last_cache_used_at</code> 字段追踪每个 Worker 当前缓存的会话历史 hash。</p>
+<p><strong>路由 4 级优先级</strong>：</p>
+<pre class="mermaid">
+flowchart TD
+    Start["收到 Streaming 请求\n计算 history_hash"] --> Check1{"遍历空闲 Worker\nhash == cached_hash ?"}
+    Check1 -->|"命中"| Hit["缓存命中\n分配该 Worker\n增量 prefill"]
+    Check1 -->|"未命中"| Check2{"有 cached_hash==None\n的空闲 Worker ?"}
+    Check2 -->|"有"| NoCache["分配无缓存 Worker\n避免不必要的淘汰"]
+    Check2 -->|"无"| Check3{"有其他空闲 Worker ?"}
+    Check3 -->|"有"| LRU["LRU 淘汰\n选 last_cache_used_at 最旧的\n覆盖其缓存"]
+    Check3 -->|"无"| Enqueue["无空闲 Worker\n入 FIFO 队列等待"]
+</pre>
+
+<ul>
+<li><strong>hash 计算</strong>：<code>compute_history_hash()</code> 将消息列表的 <code>role + content</code> 序列化后做 SHA-256，确保相同对话历史产生相同 hash。</li>
+<li><strong>缓存更新时机</strong>：Gateway 在 <code>release_worker()</code> 时将当前请求的 <code>history_hash</code> 写入 <code>Worker.cached_hash</code> 和 <code>last_cache_used_at</code>，供后续请求匹配。</li>
+<li><strong>Non-Streaming 请求也考虑缓存</strong>：Duplex 分配时也优先选无缓存的 Worker（<code>_get_idle_worker()</code>），避免不必要地淘汰 Streaming 的缓存。</li>
+</ul>
+<h2 id="worker">Worker 侧处理细节</h2>
+<p>Worker 使用固定 <code>session_id="streaming"</code> 管理 KV Cache 状态。以下是 Worker WebSocket handler 中 prefill / generate / stop 三个阶段的具体实现。</p>
+<h3 id="prefill">prefill 阶段</h3>
+<ol>
+<li>检查状态（IDLE 或 BUSY_STREAMING）</li>
+<li>设置状态 → <code>BUSY_STREAMING</code></li>
+<li>检查 Gateway 发来的 <code>clear_kv_cache</code> 标志：</li>
+<li><code>true</code>（缓存未命中）→ <code>reset_streaming_session()</code> 清除 KV Cache</li>
+<li><code>false</code>（缓存命中）→ 保留已有 KV Cache</li>
+<li>解码前端发送的 <code>ref_audio_base64</code> → 缓存到 <code>_streaming_ref_audio_cache</code></li>
+<li>构建消息列表（支持 text / audio / image 多模态内容）</li>
+<li>记录 prefill 前后 KV Cache 长度差 → <code>cached_tokens</code> / <code>input_tokens</code></li>
+<li><code>streaming_prefill(request)</code> 执行预填充</li>
+<li>发送 <code>prefill_done</code>（含 <code>cached_tokens</code>, <code>input_tokens</code>）</li>
+</ol>
+<p><strong>KV Cache 复用关键</strong>：<code>cached_tokens</code> 表示复用的缓存 token 数。缓存命中时 <code>cached_tokens &gt; 0</code>，只需增量处理新消息，首 token 延迟显著降低。</p>
+<h3 id="generate">generate 阶段</h3>
+<ol>
+<li>从 <code>_streaming_ref_audio_cache</code> 取出 ref audio（prefill 时缓存的）</li>
+<li><code>streaming_init_tts(ref_audio)</code> 初始化 TTS</li>
+<li>在 <code>run_in_executor</code> 中运行 <code>streaming_generate()</code>：</li>
+<li>Generator 逐 chunk yield <code>StreamingChunk</code></li>
+<li>每个 chunk 通过 <code>asyncio.Queue</code> 传到主协程</li>
+<li>主协程逐个发送 chunk 给客户端</li>
+<li>每 yield 一个 chunk 后检查 <code>stop_event</code></li>
+<li>发送 <code>done</code>（含完整 <code>token_stats</code>）</li>
+<li>状态恢复 → <code>IDLE</code></li>
+</ol>
+<h3 id="_2">停止控制</h3>
+<ul>
+<li>每个 WS 连接创建独立的 <code>threading.Event</code></li>
+<li><code>threading.Event</code> 跨线程安全（asyncio 线程 ↔ generate 工作线程）</li>
+<li>客户端发 <code>stop</code> 或断开连接时 <code>set()</code> 触发中断</li>
+<li>HTTP <code>POST /streaming/stop</code> 广播到所有活跃 session</li>
+</ul></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

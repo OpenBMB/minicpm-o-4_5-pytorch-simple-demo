@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Core 模块 - MiniCPM-o 4.5 文档</title>
+<title>Schema - MiniCPM-o 4.5 文档</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -75,10 +75,18 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </div>
   <ul class="nav-list">
     <li><a href="index.html">项目概述</a></li>
-    <li><a href="architecture.html">系统架构</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="architecture/index.html">架构概述</a></li>
+        <li><a href="architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="architecture/internals.html">内部机制</a></li>
+      </ul>
+    </li>
     <li><a href="gateway.html">Gateway 模块</a></li>
     <li><a href="worker.html">Worker 模块</a></li>
-    <li><a href="core.html" class="active">Core 模块</a></li>
+    <li><a href="schema.html" class="active">Schema</a></li>
     <li><a href="model.html">模型模块</a></li>
     <li><a href="compile.html">torch.compile</a></li>
     <li class="nav-group">
@@ -96,8 +104,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </ul>
 </nav>
 <main class="content" id="content">
-  <article><h1 id="core">Core 模块详解</h1>
-<p>Core 模块是连接 Worker 服务层与底层模型的桥梁，提供类型安全的 Schema 定义、统一的处理器抽象和能力声明系统。</p>
+  <article><h1 id="schema">Schema 与处理器</h1>
+<p>本模块定义了系统的数据模型（Pydantic Schema）、统一处理器抽象和能力声明系统，是连接 Worker 服务层与底层模型的桥梁。</p>
 <h2 id="_1">模块结构</h2>
 <div class="codehilite"><pre><span></span><code>core/
 ├── __init__.py              # 模块入口，统一导出
@@ -110,7 +118,6 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 ├── schemas/
 │   ├── __init__.py          # Schema 导出
 │   ├── common.py            # 公共类型定义
-│   ├── chat.py              # Chat 请求/响应
 │   ├── streaming.py         # Streaming 请求/响应
 │   └── duplex.py            # Duplex 请求/响应
 └── processors/
@@ -213,125 +220,6 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <td><code>GenerationConfig</code></td>
 <td><code>max_new_tokens=512</code>, <code>temperature=0.7</code>, <code>top_p=0.8</code></td>
 <td>生成配置</td>
-</tr>
-</tbody>
-</table>
-<h3 id="chatpy-chat-schema">chat.py — Chat 模式 Schema</h3>
-<h4 id="chatrequest">ChatRequest</h4>
-<table>
-<thead>
-<tr>
-<th>字段</th>
-<th>类型</th>
-<th>默认值</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>messages</code></td>
-<td><code>List[Message]</code></td>
-<td>—</td>
-<td>消息列表（至少 1 条）</td>
-</tr>
-<tr>
-<td><code>generation</code></td>
-<td><code>GenerationConfig</code></td>
-<td>默认值</td>
-<td>生成配置</td>
-</tr>
-<tr>
-<td><code>tts</code></td>
-<td><code>TTSConfig</code></td>
-<td>默认值</td>
-<td>TTS 配置</td>
-</tr>
-<tr>
-<td><code>image</code></td>
-<td><code>ImageConfig</code></td>
-<td>默认值</td>
-<td>图像配置</td>
-</tr>
-<tr>
-<td><code>use_tts_template</code></td>
-<td><code>bool</code></td>
-<td><code>False</code></td>
-<td>使用 TTS 模板</td>
-</tr>
-<tr>
-<td><code>omni_mode</code></td>
-<td><code>bool</code></td>
-<td><code>False</code></td>
-<td>Omni 模式</td>
-</tr>
-<tr>
-<td><code>enable_thinking</code></td>
-<td><code>bool</code></td>
-<td><code>False</code></td>
-<td>启用思考链</td>
-</tr>
-<tr>
-<td><code>return_prompt</code></td>
-<td><code>bool</code></td>
-<td><code>False</code></td>
-<td>返回 prompt</td>
-</tr>
-</tbody>
-</table>
-<h4 id="chatresponse">ChatResponse</h4>
-<table>
-<thead>
-<tr>
-<th>字段</th>
-<th>类型</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>text</code></td>
-<td><code>str</code></td>
-<td>生成的文本</td>
-</tr>
-<tr>
-<td><code>audio_data</code></td>
-<td><code>Optional[str]</code></td>
-<td>Base64 音频数据</td>
-</tr>
-<tr>
-<td><code>audio_sample_rate</code></td>
-<td><code>int</code></td>
-<td>音频采样率（24kHz）</td>
-</tr>
-<tr>
-<td><code>tokens_generated</code></td>
-<td><code>Optional[int]</code></td>
-<td>生成 token 数</td>
-</tr>
-<tr>
-<td><code>duration_ms</code></td>
-<td><code>Optional[float]</code></td>
-<td>耗时（毫秒）</td>
-</tr>
-<tr>
-<td><code>token_stats</code></td>
-<td><code>Optional[Dict]</code></td>
-<td>Token 统计（cached/input/generated/total）</td>
-</tr>
-<tr>
-<td><code>recording_session_id</code></td>
-<td><code>Optional[str]</code></td>
-<td>录制会话 ID</td>
-</tr>
-<tr>
-<td><code>success</code></td>
-<td><code>bool</code></td>
-<td>是否成功</td>
-</tr>
-<tr>
-<td><code>error</code></td>
-<td><code>Optional[str]</code></td>
-<td>错误信息</td>
 </tr>
 </tbody>
 </table>
@@ -637,13 +525,13 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </table>
 <h3 id="unifiedpy">unified.py — 统一处理器</h3>
 <h4 id="unifiedprocessor">UnifiedProcessor</h4>
-<p>统一处理器，一次加载模型，支持三种模式毫秒级热切换。</p>
+<p>统一处理器，一次加载模型，支持 Streaming / Duplex 两种模式毫秒级热切换。</p>
 <div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">UnifiedProcessor</span><span class="p">(</span><span class="n">BaseProcessor</span><span class="p">):</span>
     <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">,</span> <span class="n">pt_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">,</span>
         <span class="n">ref_audio_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">duplex_config</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">preload_both_tts</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="nb">compile</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-        <span class="n">chat_vocoder</span><span class="o">=</span><span class="s2">&quot;token2wav&quot;</span><span class="p">,</span> <span class="n">attn_implementation</span><span class="o">=</span><span class="s2">&quot;auto&quot;</span>
+        <span class="n">attn_implementation</span><span class="o">=</span><span class="s2">&quot;auto&quot;</span>
     <span class="p">)</span>
 </code></pre></div>
 
@@ -664,20 +552,12 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <td>释放所有资源</td>
 </tr>
 <tr>
-<td><code>set_chat_mode()</code></td>
-<td>切换到 Chat 模式，返回 <code>ChatView</code></td>
-</tr>
-<tr>
 <td><code>set_streaming_mode()</code></td>
 <td>切换到 Streaming 模式，返回 <code>StreamingView</code></td>
 </tr>
 <tr>
 <td><code>set_duplex_mode()</code></td>
 <td>切换到 Duplex 模式，返回 <code>DuplexView</code></td>
-</tr>
-<tr>
-<td><code>chat</code></td>
-<td>ChatView 属性</td>
 </tr>
 <tr>
 <td><code>streaming</code></td>
@@ -690,21 +570,6 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <tr>
 <td><code>kv_cache_length</code></td>
 <td>当前 KV Cache 长度</td>
-</tr>
-</tbody>
-</table>
-<h4 id="chatview">ChatView</h4>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>chat(request, max_new_tokens, do_sample, generate_audio)</code></td>
-<td>执行 Chat 推理，返回 <code>ChatResponse</code></td>
 </tr>
 </tbody>
 </table>
@@ -802,7 +667,6 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <h2 id="capabilitiespy">capabilities.py — 能力声明系统</h2>
 <h3 id="processormode">ProcessorMode 枚举</h3>
 <div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">ProcessorMode</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
-    <span class="n">CHAT</span> <span class="o">=</span> <span class="s2">&quot;chat&quot;</span>
     <span class="n">STREAMING</span> <span class="o">=</span> <span class="s2">&quot;streaming&quot;</span>
     <span class="n">DUPLEX</span> <span class="o">=</span> <span class="s2">&quot;duplex&quot;</span>
 </code></pre></div>
@@ -834,7 +698,6 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <thead>
 <tr>
 <th>能力</th>
-<th>Chat</th>
 <th>Streaming</th>
 <th>Duplex</th>
 </tr>
@@ -842,37 +705,31 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <tbody>
 <tr>
 <td>流式输出</td>
-<td>--</td>
 <td>支持</td>
 <td>支持</td>
 </tr>
 <tr>
 <td>打断支持</td>
 <td>--</td>
-<td>--</td>
 <td>支持</td>
 </tr>
 <tr>
 <td>回溯支持</td>
 <td>支持</td>
-<td>支持</td>
 <td>--</td>
 </tr>
 <tr>
 <td>KV Cache 复用</td>
-<td>--</td>
 <td>支持</td>
 <td>--</td>
 </tr>
 <tr>
 <td>独占 Worker</td>
 <td>--</td>
-<td>--</td>
 <td>需要</td>
 </tr>
 <tr>
 <td>多轮对话</td>
-<td>支持</td>
 <td>支持</td>
 <td>支持</td>
 </tr>

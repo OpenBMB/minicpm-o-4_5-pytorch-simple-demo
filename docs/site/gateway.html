@@ -75,10 +75,18 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </div>
   <ul class="nav-list">
     <li><a href="index.html">项目概述</a></li>
-    <li><a href="architecture.html">系统架构</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="architecture/index.html">架构概述</a></li>
+        <li><a href="architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="architecture/internals.html">内部机制</a></li>
+      </ul>
+    </li>
     <li><a href="gateway.html" class="active">Gateway 模块</a></li>
     <li><a href="worker.html">Worker 模块</a></li>
-    <li><a href="core.html">Core 模块</a></li>
+    <li><a href="schema.html">Schema</a></li>
     <li><a href="model.html">模型模块</a></li>
     <li><a href="compile.html">torch.compile</a></li>
     <li class="nav-group">
@@ -490,7 +498,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <p>为 Gateway 层定义所有 API 数据模型，基于 Pydantic。</p>
 <h3 id="_8">枚举</h3>
 <ul>
-<li><strong>GatewayWorkerStatus</strong> — Worker 状态枚举：<code>idle</code> / <code>busy_chat</code> / <code>busy_streaming</code> / <code>duplex_active</code> / <code>duplex_paused</code> / <code>offline</code></li>
+<li><strong>GatewayWorkerStatus</strong> — Worker 状态枚举：<code>idle</code> / <code>busy_streaming</code> / <code>duplex_active</code> / <code>duplex_paused</code> / <code>offline</code></li>
 </ul>
 <h3 id="_9">数据模型</h3>
 <table>

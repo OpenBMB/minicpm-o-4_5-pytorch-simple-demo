@@ -75,10 +75,18 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </div>
   <ul class="nav-list">
     <li><a href="../index.html">项目概述</a></li>
-    <li><a href="../architecture.html">系统架构</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">架构概述</a></li>
+        <li><a href="../architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="../architecture/internals.html">内部机制</a></li>
+      </ul>
+    </li>
     <li><a href="../gateway.html">Gateway 模块</a></li>
     <li><a href="../worker.html">Worker 模块</a></li>
-    <li><a href="../core.html">Core 模块</a></li>
+    <li><a href="../schema.html">Schema</a></li>
     <li><a href="../model.html">模型模块</a></li>
     <li><a href="../compile.html">torch.compile</a></li>
     <li class="nav-group">
@@ -126,19 +134,16 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <span class="p">};</span>
 </code></pre></div>
 
-<h3 id="chat-vs-streaming">Chat vs Streaming 模式</h3>
-<p>通过 <code>&lt;select id="modeSelect"&gt;</code> 切换：</p>
-<p><strong>Chat 模式</strong> (<code>POST /api/chat</code>)：
-1. 用 <code>fetch()</code> 发送完整消息列表
-2. 支持 <code>AbortController</code> 取消
-3. 一次性返回完整响应（文本 + 可选音频）</p>
-<p><strong>Streaming 模式</strong> (<code>WS /ws/streaming/{request_id}</code>)：
-1. 建立 WebSocket 连接
-2. 发送 <code>prefill</code> 消息（含消息历史 + ref_audio_base64）
-3. 收到 <code>prefill_done</code> 后发送 <code>generate</code>
-4. 逐 chunk 接收 <code>StreamingChunk</code>（text_delta + audio_data）
-5. 收到 <code>done</code> 后渲染完整结果
-6. 排队时显示 <code>CountdownTimer</code></p>
+<h3 id="streaming">Streaming 模式</h3>
+<p>通过 WebSocket (<code>WS /ws/streaming/{request_id}</code>) 进行流式对话：</p>
+<ol>
+<li>建立 WebSocket 连接</li>
+<li>发送 <code>prefill</code> 消息（含消息历史 + ref_audio_base64）</li>
+<li>收到 <code>prefill_done</code> 后发送 <code>generate</code></li>
+<li>逐 chunk 接收 <code>StreamingChunk</code>（text_delta + audio_data）</li>
+<li>收到 <code>done</code> 后渲染完整结果</li>
+<li>排队时显示 <code>CountdownTimer</code></li>
+</ol>
 <h3 id="_3">消息构建流程</h3>
 <ol>
 <li>从 <code>UserContentEditor</code> 获取用户输入 items</li>

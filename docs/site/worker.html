@@ -75,10 +75,18 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </div>
   <ul class="nav-list">
     <li><a href="index.html">项目概述</a></li>
-    <li><a href="architecture.html">系统架构</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="architecture/index.html">架构概述</a></li>
+        <li><a href="architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="architecture/internals.html">内部机制</a></li>
+      </ul>
+    </li>
     <li><a href="gateway.html">Gateway 模块</a></li>
     <li><a href="worker.html" class="active">Worker 模块</a></li>
-    <li><a href="core.html">Core 模块</a></li>
+    <li><a href="schema.html">Schema</a></li>
     <li><a href="model.html">模型模块</a></li>
     <li><a href="compile.html">torch.compile</a></li>
     <li class="nav-group">
@@ -96,26 +104,9 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </ul>
 </nav>
 <main class="content" id="content">
-  <article><h1 id="worker">Worker 模块详解</h1>
-<p>Worker 是系统的推理执行单元，每个 Worker 独占一张 GPU，持有一个 <code>UnifiedProcessor</code> 实例，提供 Chat / Streaming / Duplex 三种推理模式。</p>
-<h2 id="_1">模块结构</h2>
-<div class="codehilite"><pre><span></span><code>worker.py                  # Worker 主服务
-session_recorder.py        # 会话录制器
-session_cleanup.py         # 会话清理器
-</code></pre></div>
-
-<h2 id="workerpy-worker">worker.py — Worker 主服务</h2>
-<p>Worker 基于 <strong>FastAPI</strong> 构建，通过独立端口提供 HTTP 和 WebSocket 服务。</p>
-<h3 id="_2">启动与模型加载</h3>
-<p>Worker 启动时在 <code>lifespan()</code> 异步上下文中调用 <code>load_model()</code>（同步操作，约 15s），通过 <code>asyncio.to_thread()</code> 避免阻塞事件循环。加载完成后：</p>
-<ol>
-<li>创建 <code>UnifiedProcessor</code> 实例（加载模型权重 + TTS）</li>
-<li><code>gc.collect()</code> + <code>torch.cuda.empty_cache()</code> 清理加载残留</li>
-<li>打印 Device Map（确认所有组件在 GPU 上）</li>
-<li>状态从 <code>LOADING</code> → <code>IDLE</code></li>
-</ol>
-<h3 id="_3">核心类</h3>
-<h4 id="workerstatus">WorkerStatus 枚举</h4>
+  <article><h1 id="worker-api">Worker API 参考</h1>
+<p>Worker 是系统的推理执行单元，每个 Worker 独占一张 GPU，持有一个 <code>UnifiedProcessor</code> 实例。详细的处理流程和实现细节见 <a href="architecture/streaming.html">Streaming 模式详解</a> 和 <a href="architecture/duplex.html">Duplex 模式详解</a>。</p>
+<h2 id="workerstatus">WorkerStatus 枚举</h2>
 <table>
 <thead>
 <tr>
@@ -134,11 +125,6 @@ session_cleanup.py         # 会话清理器
 <td><code>IDLE</code></td>
 <td>空闲</td>
 <td>是</td>
-</tr>
-<tr>
-<td><code>BUSY_CHAT</code></td>
-<td>正在执行 Chat</td>
-<td>否</td>
 </tr>
 <tr>
 <td><code>BUSY_STREAMING</code></td>
@@ -162,8 +148,7 @@ session_cleanup.py         # 会话清理器
 </tr>
 </tbody>
 </table>
-<h4 id="minicpmoworker">MiniCPMOWorker</h4>
-<p>Worker 主类，封装模型加载和推理逻辑。</p>
+<h2 id="minicpmoworker">MiniCPMOWorker 方法</h2>
 <table>
 <thead>
 <tr>
@@ -175,10 +160,6 @@ session_cleanup.py         # 会话清理器
 <tr>
 <td><code>load_model()</code></td>
 <td>同步加载模型，初始化 UnifiedProcessor</td>
-</tr>
-<tr>
-<td><code>chat(request)</code></td>
-<td>Chat 推理（无状态，完整 prefill）</td>
 </tr>
 <tr>
 <td><code>streaming_prefill(request)</code></td>
@@ -226,7 +207,7 @@ session_cleanup.py         # 会话清理器
 </tr>
 </tbody>
 </table>
-<h3 id="http-websocket">HTTP / WebSocket 端点</h3>
+<h2 id="http-websocket">HTTP / WebSocket 端点</h2>
 <table>
 <thead>
 <tr>
@@ -240,11 +221,6 @@ session_cleanup.py         # 会话清理器
 <td><code>/health</code></td>
 <td>GET</td>
 <td>健康检查（返回 status, gpu_id, model_loaded, kv_cache_length）</td>
-</tr>
-<tr>
-<td><code>/chat</code></td>
-<td>POST</td>
-<td>Chat 推理</td>
 </tr>
 <tr>
 <td><code>/streaming/stop</code></td>
@@ -272,194 +248,7 @@ session_cleanup.py         # 会话清理器
 <td>清除 KV Cache</td>
 </tr>
 </tbody>
-</table>
-<hr />
-<h2 id="_4">三种推理模式详解</h2>
-<h3 id="chat">Chat 推理流程</h3>
-<p>Chat 是最简单的无状态模式。每次请求完整 prefill，不复用 KV Cache。</p>
-<ol>
-<li>检查 Worker 状态（必须 IDLE，否则等待最多 5s）</li>
-<li>设置状态 → <code>BUSY_CHAT</code></li>
-<li><code>processor.set_chat_mode()</code> 获取 <code>ChatView</code></li>
-<li><code>ChatView.chat(request)</code> 执行推理：</li>
-<li><code>_convert_messages_to_model_format()</code> 转换多模态消息</li>
-<li><code>model.chat()</code> 执行前向传播 + 可选 TTS</li>
-<li>记录 token 统计（<code>input_tokens</code>, <code>generated_tokens</code>）</li>
-<li>状态恢复 → <code>IDLE</code></li>
-<li>可选：<code>TurnBasedSessionRecorder</code> 录制本轮对话</li>
-</ol>
-<h3 id="streaming-websocket">Streaming WebSocket 处理流程</h3>
-<p>支持 <strong>KV Cache 复用</strong> 的多轮对话模式。Worker 使用固定 <code>session_id="streaming"</code> 管理 KV Cache 状态。</p>
-<h4 id="prefill">prefill 阶段</h4>
-<ol>
-<li>检查状态（IDLE 或 BUSY_STREAMING）</li>
-<li>设置状态 → <code>BUSY_STREAMING</code></li>
-<li>检查 Gateway 发来的 <code>clear_kv_cache</code> 标志：</li>
-<li><code>true</code>（缓存未命中）→ <code>reset_streaming_session()</code> 清除 KV Cache</li>
-<li><code>false</code>（缓存命中）→ 保留已有 KV Cache</li>
-<li>解码前端发送的 <code>ref_audio_base64</code> → 缓存到 <code>_streaming_ref_audio_cache</code></li>
-<li>构建消息列表（支持 text / audio / image 多模态内容）</li>
-<li>记录 prefill 前后 KV Cache 长度差 → <code>cached_tokens</code> / <code>input_tokens</code></li>
-<li><code>streaming_prefill(request)</code> 执行预填充</li>
-<li>发送 <code>prefill_done</code>（含 <code>cached_tokens</code>, <code>input_tokens</code>）</li>
-</ol>
-<p><strong>KV Cache 复用关键</strong>：<code>cached_tokens</code> 表示复用的缓存 token 数。缓存命中时 <code>cached_tokens &gt; 0</code>，只需增量处理新消息，首 token 延迟显著降低。</p>
-<h4 id="generate">generate 阶段</h4>
-<ol>
-<li>从 <code>_streaming_ref_audio_cache</code> 取出 ref audio（prefill 时缓存的）</li>
-<li><code>streaming_init_tts(ref_audio)</code> 初始化 TTS</li>
-<li>在 <code>run_in_executor</code> 中运行 <code>streaming_generate()</code>：</li>
-<li>Generator 逐 chunk yield <code>StreamingChunk</code></li>
-<li>每个 chunk 通过 <code>asyncio.Queue</code> 传到主协程</li>
-<li>主协程逐个发送 chunk 给客户端</li>
-<li>每 yield 一个 chunk 后检查 <code>stop_event</code></li>
-<li>发送 <code>done</code>（含完整 <code>token_stats</code>）</li>
-<li>状态恢复 → <code>IDLE</code></li>
-</ol>
-<h4 id="_5">停止控制</h4>
-<ul>
-<li>每个 WS 连接创建独立的 <code>threading.Event</code></li>
-<li><code>threading.Event</code> 跨线程安全（asyncio 线程 ↔ generate 工作线程）</li>
-<li>客户端发 <code>stop</code> 或断开连接时 <code>set()</code> 触发中断</li>
-<li>HTTP <code>POST /streaming/stop</code> 广播到所有活跃 session</li>
-</ul>
-<h3 id="duplex-websocket">Duplex WebSocket 处理流程</h3>
-<p>最复杂的独占模式，支持全双工实时交互。Worker 在整个 Duplex 会话期间被独占。</p>
-<h4 id="prepare">prepare 阶段</h4>
-<ol>
-<li>设置状态 → <code>DUPLEX_ACTIVE</code>（独占 Worker）</li>
-<li>解码 LLM ref_audio 和 TTS ref_audio（两者可以不同）：</li>
-<li>LLM ref_audio → 嵌入 system prompt</li>
-<li>TTS ref_audio → 初始化 vocoder</li>
-<li><code>duplex_prepare(system_prompt, ref_audio, tts_audio)</code> 初始化双工会话</li>
-<li>初始化 <code>DuplexSessionRecorder</code>（可选）</li>
-<li>发送 <code>prepared</code></li>
-</ol>
-<h4 id="_6">全双工循环</h4>
-<p>每轮循环处理一个音频 chunk（约 1 秒）：</p>
-<ol>
-<li>解码 <code>audio_base64</code> → float32 音频波形（16kHz）</li>
-<li>解码 <code>frame_base64_list</code> → PIL Image 列表（仅 Omni 模式）</li>
-<li>等待上一轮 finalize 完成（<code>asyncio.Event</code> 栅栏）</li>
-<li>在线程中执行：</li>
-<li><code>duplex_prefill(audio, frames)</code> — 预填充音频 + 视频</li>
-<li><code>duplex_generate(force_listen)</code> — 模型决定 listen 或 speak</li>
-<li>发送 <code>result</code>（含 <code>is_listen</code>, <code>text</code>, <code>audio_data</code>, 性能指标, <code>kv_cache_length</code>）</li>
-<li><strong>Deferred Finalize</strong>（默认开启）：</li>
-<li>先发送结果给客户端（overlap 网络传输）</li>
-<li>异步执行 <code>duplex_finalize()</code>（约 37ms，feed 终止符 + 滑窗维护）</li>
-<li>通过 <code>asyncio.Event</code> 栅栏保证在下轮 prefill 前完成</li>
-<li>实测：LISTEN wall_clock 降低约 30ms，SPEAK 降低约 50ms</li>
-</ol>
-<h4 id="_7">暂停与恢复</h4>
-<ul>
-<li><code>pause</code> → <code>DUPLEX_PAUSED</code> + 启动超时看门狗</li>
-<li><code>resume</code> → <code>DUPLEX_ACTIVE</code> + 取消看门狗</li>
-<li>超时（默认 60s）→ 自动释放 Worker，通知客户端</li>
-</ul>
-<h4 id="_8">停止与清理</h4>
-<ul>
-<li><code>stop</code> → <code>duplex_stop()</code></li>
-<li><code>finally</code> 块（无论正常/异常结束）：</li>
-<li><code>duplex_stop()</code> 停止生成</li>
-<li><code>duplex_cleanup()</code> 释放 GPU 资源：<ul>
-<li>释放 KV Cache、TTS caches 等</li>
-<li><code>gc.collect()</code> + <code>torch.cuda.empty_cache()</code></li>
-<li>释放约 1.5GB 显存（诊断数据：stop 后泄漏 ~1,591 MB → cleanup 后残留 ~48 MB）</li>
-</ul>
-</li>
-<li>状态恢复 → <code>IDLE</code></li>
-</ul>
-<hr />
-<h2 id="session_recorderpy">session_recorder.py — 会话录制器</h2>
-<p>自动录制所有推理会话的输入输出数据，支持后续回放和分析。</p>
-<h3 id="_9">会话目录结构</h3>
-<div class="codehilite"><pre><span></span><code>data/sessions/{session_id}/
-├── meta.json                # 会话元数据（类型、创建时间、配置）
-├── recording.json           # Timeline 录制数据
-├── user_audio/              # 用户音频 chunks (WAV)
-├── user_frames/             # 用户视频帧 (JPEG，仅 Omni)
-├── ai_audio/                # AI 生成音频 (WAV)
-├── user_images/             # 用户上传图片 (PNG)
-├── merged_replay.wav        # 合并回放音频（Duplex）
-└── merged_replay.mp4        # 合并回放视频（Omni）
-</code></pre></div>
-
-<h3 id="_10">核心类</h3>
-<h4 id="duplexsessionrecorder">DuplexSessionRecorder</h4>
-<p>专为 Duplex 会话设计，记录每个 chunk 的 timeline 数据。</p>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>record_chunk(...)</code></td>
-<td>记录一个 chunk（音频 + 文本 + 性能指标）</td>
-</tr>
-<tr>
-<td><code>save_user_audio(index, waveform)</code></td>
-<td>保存用户音频</td>
-</tr>
-<tr>
-<td><code>save_user_frame(index, jpeg_bytes)</code></td>
-<td>保存用户视频帧</td>
-</tr>
-<tr>
-<td><code>save_ai_audio(turn, chunk, waveform)</code></td>
-<td>保存 AI 音频</td>
-</tr>
-<tr>
-<td><code>finalize()</code></td>
-<td>结束录制，生成合并回放</td>
-</tr>
-</tbody>
-</table>
-<h4 id="turnbasedsessionrecorder">TurnBasedSessionRecorder</h4>
-<p>专为 Turn-based 会话设计。</p>
-<table>
-<thead>
-<tr>
-<th>方法</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>start_turn(index, ts, input)</code></td>
-<td>开始一轮对话</td>
-</tr>
-<tr>
-<td><code>end_turn(timing)</code></td>
-<td>结束一轮</td>
-</tr>
-<tr>
-<td><code>add_streaming_chunk(text_delta, audio)</code></td>
-<td>累积 streaming chunk</td>
-</tr>
-<tr>
-<td><code>record_chat_turn(...)</code></td>
-<td>记录 chat turn</td>
-</tr>
-</tbody>
-</table>
-<p>使用 <code>ThreadPoolExecutor</code>（4 线程）异步写入文件，不阻塞推理。</p>
-<hr />
-<h2 id="session_cleanuppy">session_cleanup.py — 会话清理器</h2>
-<p>定期清理过期会话数据。</p>
-<h3 id="_11">清理策略</h3>
-<ol>
-<li><strong>按时间</strong> — 删除超过 <code>retention_days</code> 的会话</li>
-<li><strong>按容量</strong> — 超过 <code>max_storage_gb</code> 时按 LRU 删除</li>
-</ol>
-<h3 id="_12">运行方式</h3>
-<ul>
-<li><strong>自动</strong>：Gateway 后台任务，每 24 小时执行</li>
-<li><strong>手动</strong>：<code>python session_cleanup.py --data-dir data --retention-days 30 --max-storage-gb 50</code></li>
-</ul></article>
+</table></article>
   <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
