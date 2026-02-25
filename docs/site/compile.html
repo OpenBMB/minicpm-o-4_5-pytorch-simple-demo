@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>torch.compile - MiniCPM-o 4.5 文档</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">项目文档</span>
+  </div>
+  <ul class="nav-list">
+    <li><a href="index.html">项目概述</a></li>
+    <li><a href="architecture.html">系统架构</a></li>
+    <li><a href="gateway.html">Gateway 模块</a></li>
+    <li><a href="worker.html">Worker 模块</a></li>
+    <li><a href="core.html">Core 模块</a></li>
+    <li><a href="model.html">模型模块</a></li>
+    <li><a href="compile.html" class="active">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">前端模块</span>
+      <ul class="nav-group-children">
+        <li><a href="frontend/index.html">前端概述</a></li>
+        <li><a href="frontend/pages.html">页面与路由</a></li>
+        <li><a href="frontend/audio.html">音频处理</a></li>
+        <li><a href="frontend/duplex-session.html">双工会话</a></li>
+        <li><a href="frontend/components.html">UI 组件</a></li>
+      </ul>
+    </li>
+    <li><a href="api.html">API 参考</a></li>
+    <li><a href="deployment.html">配置与部署</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="torchcompile">torch.compile 加速</h1>
+<h2 id="_1">概述</h2>
+<p>本项目支持通过 <code>torch.compile</code> 对核心子模块进行 JIT 编译加速。编译后 Triton 内核替代 PyTorch eager 实现，可获得约 5-20% 的推理加速（取决于模块和硬件）。</p>
+<p>该功能为<strong>实验性</strong>，默认关闭。</p>
+<h2 id="_2">启用方式</h2>
+<h3 id="_3">命令行</h3>
+<div class="codehilite"><pre><span></span><code>bash<span class="w"> </span>start_all.sh<span class="w"> </span>--compile
+</code></pre></div>
+
+<h3 id="_4">配置文件</h3>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;service&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;compile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="worker">Worker 单独启动</h3>
+<div class="codehilite"><pre><span></span><code><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>worker.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--worker-index<span class="w"> </span><span class="m">0</span><span class="w"> </span>--gpu-id<span class="w"> </span><span class="m">0</span><span class="w"> </span>--compile
+</code></pre></div>
+
+<h2 id="_5">编译链路</h2>
+<pre class="mermaid">
+flowchart TB
+    subgraph workerStart [Worker 启动]
+        Load["load_model()"]
+        UP["UnifiedProcessor.__init__()"]
+        InitUnified["model.init_unified()"]
+        Apply["model.apply_torch_compile()"]
+        Warmup["model.warmup_compile()"]
+        Ready["Worker IDLE"]
+    end
+
+    Load --> UP --> InitUnified --> Apply --> Warmup --> Ready
+
+    subgraph applyDetail [apply_torch_compile 内部]
+        VPM["torch.compile(vpm)"]
+        LLM["torch.compile(llm.model)"]
+        RES["torch.compile(resampler)"]
+        TTS["torch.compile(tts.model)"]
+        TF32["set_float32_matmul_precision('high')"]
+    end
+
+    Apply --> VPM
+    Apply --> LLM
+    Apply --> RES
+    Apply --> TTS
+    Apply --> TF32
+
+    subgraph warmupDetail [warmup_compile 内部]
+        WV["vpm warmup\n224x224 dummy image"]
+        WL1["llm prefill warmup\n32 tokens"]
+        WL2["llm decode warmup\n1 token + KV cache"]
+        WT1["tts prefill warmup\n32 tokens"]
+        WT2["tts decode warmup\n1 token + KV cache"]
+    end
+
+    Warmup --> WV --> WL1 --> WL2 --> WT1 --> WT2
+</pre>
+
+<h2 id="_6">编译目标</h2>
+<h3 id="_7">被编译的子模块</h3>
+<table>
+<thead>
+<tr>
+<th>子模块</th>
+<th>原始类</th>
+<th>编译理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vpm</code></td>
+<td><code>SiglipVisionTransformer</code></td>
+<td>视觉编码器，计算密集型 Transformer</td>
+</tr>
+<tr>
+<td><code>llm.model</code></td>
+<td><code>Qwen3Model</code></td>
+<td>LLM 核心 backbone，推理主要耗时点</td>
+</tr>
+<tr>
+<td><code>resampler</code></td>
+<td><code>Resampler</code></td>
+<td>视觉特征重采样，Perceiver 架构</td>
+</tr>
+<tr>
+<td><code>tts.model</code></td>
+<td><code>LlamaModel</code></td>
+<td>TTS 核心 backbone，音频 token 生成</td>
+</tr>
+</tbody>
+</table>
+<p>注意：只编译内层 backbone（如 <code>llm.model</code>），不编译外层 wrapper（如 <code>Qwen3ForCausalLM</code>），因为外层包含 Python 控制流（<code>generate()</code> 循环），编译收益低且容易导致 graph break。</p>
+<h3 id="_8">不编译的部分</h3>
+<table>
+<thead>
+<tr>
+<th>子模块</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apm</code>（Whisper 音频编码器）</td>
+<td>streaming 特殊行为 + 动态 shape，compile 收益低</td>
+</tr>
+<tr>
+<td><code>tts.audio_tokenizer</code>（Token2Wav/CosyVoice2）</td>
+<td>外部库，非标准 <code>nn.Module</code></td>
+</tr>
+<tr>
+<td><code>MiniCPMO</code> 外层</td>
+<td>Python 控制流多（chat/streaming/duplex 分支），compile 收益低</td>
+</tr>
+<tr>
+<td><code>lm_head</code></td>
+<td>在外层 wrapper 中，generate 循环内调用</td>
+</tr>
+</tbody>
+</table>
+<h2 id="apply_torch_compile">apply_torch_compile() 实现</h2>
+<p>位于 <code>MiniCPMO45/modeling_minicpmo_unified.py</code>。</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">apply_torch_compile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="n">compile_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="n">mode</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="n">dynamic</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">vpm</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vpm</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">resampler</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">resampler</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">tts</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tts</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
+
+    <span class="n">torch</span><span class="o">.</span><span class="n">set_float32_matmul_precision</span><span class="p">(</span><span class="s2">&quot;high&quot;</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_compiled</span> <span class="o">=</span> <span class="kc">True</span>
+</code></pre></div>
+
+<h3 id="_9">编译参数</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mode</code></td>
+<td><code>"default"</code></td>
+<td>编译模式</td>
+</tr>
+<tr>
+<td><code>dynamic</code></td>
+<td><code>True</code></td>
+<td>启用动态 shape 支持</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_10">编译模式选择</h4>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>编译耗时</th>
+<th>运行速度</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>default</code></td>
+<td>中等</td>
+<td>较快</td>
+<td>推荐，平衡编译时间和运行速度</td>
+</tr>
+<tr>
+<td><code>reduce-overhead</code></td>
+<td>中等</td>
+<td>最快</td>
+<td>使用 CUDA Graphs，仅适合静态 shape</td>
+</tr>
+<tr>
+<td><code>max-autotune</code></td>
+<td>很长</td>
+<td>最快</td>
+<td>最大优化，编译时间可能数分钟</td>
+</tr>
+</tbody>
+</table>
+<p>项目默认使用 <code>mode="default", dynamic=True</code>，因为推理场景中序列长度、图像尺寸等是动态变化的，<code>dynamic=True</code> 避免 shape 变化时重新编译。</p>
+<h3 id="tf32">TF32 精度提升</h3>
+<p><code>torch.set_float32_matmul_precision("high")</code> 启用 TF32（TensorFloat-32）矩阵乘法，在 Ampere+ 架构 GPU 上可额外加速约 5-10%，精度损失可忽略。</p>
+<h2 id="warmup_compile">warmup_compile() 实现</h2>
+<p><code>torch.compile</code> 只是包装，<strong>实际的 Triton 内核编译在首次 forward 时触发</strong>。如果不预热，第一个真实请求会承受额外的编译延迟（可能数十秒）。</p>
+<p><code>warmup_compile()</code> 用合成数据触发所有编译路径：</p>
+<h3 id="_11">预热步骤</h3>
+<p><strong>1. vpm + resampler</strong>
+- 构造 224x224 零值图片（最小尺寸，16x16=256 patches）
+- 执行一次 <code>vpm()</code> + <code>resampler()</code> forward
+- 触发视觉编码 Triton 内核编译</p>
+<p><strong>2. llm.model — prefill 路径</strong>
+- 构造 32 token 的 dummy embeddings
+- 执行 <code>llm.model(inputs_embeds=..., use_cache=True)</code> forward
+- 触发长序列 prefill 内核编译</p>
+<p><strong>3. llm.model — decode 路径</strong>
+- 构造 1 token 的 dummy embeddings + 上一步的 KV cache
+- 执行 decode forward
+- 触发单 token decode 内核编译（与 prefill 是不同的代码路径）</p>
+<p><strong>4. tts.model — prefill + decode 路径</strong>
+- 同 llm.model，分别触发 TTS 的 prefill 和 decode 内核编译</p>
+<h3 id="_12">为什么需要覆盖两条路径</h3>
+<p>LLM 和 TTS 的推理分为两个阶段：
+- <strong>Prefill</strong>：处理长序列输入，无 KV cache，矩阵 shape 较大
+- <strong>Decode</strong>：逐 token 生成，有 KV cache，矩阵 shape 为 1</p>
+<p>这两条路径的计算图不同。如果只预热 prefill，首次 decode 时仍会触发 recompile。</p>
+<h3 id="_13">预热后的清理</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">empty_cache</span><span class="p">()</span>
+</code></pre></div>
+
+<p>编译过程产生的临时显存在预热完成后释放。</p>
+<h2 id="_14">调用链</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">config</span><span class="o">.</span><span class="n">json</span><span class="p">:</span><span class="w"> </span><span class="n">compile</span><span class="o">=</span><span class="bp">true</span>
+<span class="w">    </span><span class="err">↓</span>
+<span class="n">worker</span><span class="o">.</span><span class="n">py</span><span class="p">:</span><span class="w"> </span><span class="n">WORKER_CONFIG</span><span class="p">[</span><span class="s2">&quot;compile&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">True</span>
+<span class="w">    </span><span class="err">↓</span>
+<span class="n">MiniCPMOWorker</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">compile</span><span class="o">=</span><span class="n">True</span><span class="p">)</span>
+<span class="w">    </span><span class="err">↓</span>
+<span class="n">UnifiedProcessor</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">compile</span><span class="o">=</span><span class="n">True</span><span class="p">)</span>
+<span class="w">    </span><span class="err">↓</span>
+<span class="n">UnifiedProcessor</span><span class="o">.</span><span class="n">_load_model</span><span class="p">():</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">init_unified</span><span class="p">()</span><span class="w">          </span><span class="c1"># 加载模型 + 双 TTS</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">apply_torch_compile</span><span class="p">()</span><span class="w">   </span><span class="c1"># 包装子模块</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">warmup_compile</span><span class="p">()</span><span class="w">        </span><span class="c1"># 触发编译</span>
+</code></pre></div>
+
+<h2 id="duplexcapability">DuplexCapability 自动获益</h2>
+<p><code>DuplexCapability</code> 组件通过<strong>引用</strong>访问模型的 <code>llm</code>, <code>vpm</code>, <code>tts</code> 等子模块，不持有独立副本。因此 <code>apply_torch_compile()</code> 后，Duplex 推理自动使用已编译的版本，无需额外操作。</p>
+<h2 id="_15">性能与注意事项</h2>
+<h3 id="_16">时间开销</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>耗时（典型值）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apply_torch_compile()</code>（包装）</td>
+<td>~1s</td>
+</tr>
+<tr>
+<td><code>warmup_compile()</code>（实际编译）</td>
+<td>~60s</td>
+</tr>
+<tr>
+<td>总额外启动时间</td>
+<td>~60s</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_17">显存影响</h3>
+<ul>
+<li>编译过程中会临时占用额外显存（编译器中间表示）</li>
+<li>预热完成后通过 <code>torch.cuda.empty_cache()</code> 释放</li>
+<li>运行时显存占用与非编译模式基本相同</li>
+</ul>
+<h3 id="_18">已知限制</h3>
+<ul>
+<li><strong>实验性</strong>：某些极端输入 shape 可能触发 recompile</li>
+<li><strong>首次推理延迟</strong>：如果遇到未覆盖的代码路径，仍可能触发 recompile</li>
+<li><strong>兼容性</strong>：需要 PyTorch 2.x+，部分旧版 CUDA 驱动可能不兼容 Triton</li>
+<li><strong>调试困难</strong>：编译后的代码难以单步调试</li>
+</ul>
+<h2 id="_19">基准测试</h2>
+<p>项目提供了 Duplex A/B 对比基准测试脚本：</p>
+<div class="codehilite"><pre><span></span><code><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>tests/bench_duplex_ws.py
+</code></pre></div>
+
+<p>该脚本对 normal 和 compile 模式各跑多轮，统计 LISTEN/SPEAK 稳态性能。需要同时运行两个 Worker（一个 normal，一个 compile）分别在不同端口上。</p></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>
