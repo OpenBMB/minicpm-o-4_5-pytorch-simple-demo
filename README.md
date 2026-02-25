@@ -1,6 +1,6 @@
 # MiniCPM-o 4.5 PyTorch Simple Demo System
 
-[中文文档 (Chinese Documentation)](README_zh.md)
+[中文简介](README_zh.md) | [Detailed Documentation](https://openbmb.github.io/minicpm-o-4_5-pytorch-simple-demo/site/en/index.html)
 
 This demo system is officially provided by the `MiniCPM-o 4.5` model training team. It uses a PyTorch + CUDA inference backend, combined with a lightweight frontend-backend design, aiming to demonstrate the full audio-video omnimodal full-duplex capabilities of MiniCPM-o 4.5 in a transparent, concise, and lossless manner.
 
