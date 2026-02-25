@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>UI 组件 - MiniCPM-o 4.5 文档</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">项目文档</span>
+    <a href="../../en/frontend/components.html" class="lang-switch">English</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="../index.html">项目概述</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">架构概述</a></li>
+        <li><a href="../architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="../architecture/internals.html">内部机制</a></li>
+      </ul>
+    </li>
+    <li><a href="../gateway.html">Gateway 模块</a></li>
+    <li><a href="../worker.html">Worker 模块</a></li>
+    <li><a href="../schema.html">Schema</a></li>
+    <li><a href="../model.html">模型模块</a></li>
+    <li><a href="../compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">前端模块</span>
+      <ul class="nav-group-children">
+        <li><a href="../frontend/index.html">前端概述</a></li>
+        <li><a href="../frontend/pages.html">页面与路由</a></li>
+        <li><a href="../frontend/audio.html">音频处理</a></li>
+        <li><a href="../frontend/duplex-session.html">双工会话</a></li>
+        <li><a href="../frontend/components.html" class="active">UI 组件</a></li>
+      </ul>
+    </li>
+    <li><a href="../api.html">API 参考</a></li>
+    <li><a href="../deployment.html">配置与部署</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="ui">前端 UI 组件</h1>
+<h2 id="shared">共享组件 (shared/)</h2>
+<h3 id="app-navjs">app-nav.js — 动态导航栏</h3>
+<p>从 <code>/api/apps</code> 获取已启用的应用列表，动态渲染导航链接。</p>
+<ul>
+<li>自动高亮当前页面</li>
+<li>访问未启用应用时重定向到首页</li>
+<li>响应式设计（移动端折叠）</li>
+</ul>
+<h3 id="preset-selectorjs">preset-selector.js — 预设选择器</h3>
+<p><code>PresetSelector</code> 组件管理系统提示词预设。</p>
+<ul>
+<li>从 <code>/api/presets</code> 加载预设列表</li>
+<li>下拉选择后自动填充系统提示词</li>
+<li>使用 localStorage 记忆上次选择</li>
+</ul>
+<h3 id="save-sharejs">save-share.js — 保存与分享</h3>
+<p><code>SaveShareUI</code> 管理会话保存和分享：</p>
+<ul>
+<li>上传录制到 <code>/api/sessions/{sid}/upload-recording</code></li>
+<li>生成分享链接 <code>/s/{session_id}</code></li>
+<li>最近会话存储在 localStorage（最多 20 条）</li>
+</ul>
+<hr />
+<h2 id="_1">内容编辑器</h2>
+<h3 id="ref-audio-playerjs">ref-audio-player.js — 参考音频播放器</h3>
+<p>可复用的音频播放器组件，用于参考音频预览：</p>
+<ul>
+<li>上传：文件选择或拖放</li>
+<li>解码：自动解码并重采样到 16kHz 单声道</li>
+<li>播放：播放/暂停、可拖动进度条、时长显示</li>
+<li>内部使用 <code>AudioContext</code> 解码，输出 Float32 PCM</li>
+</ul>
+<h3 id="system-content-editorjs">system-content-editor.js — 系统内容编辑器</h3>
+<p>列表式编辑器，管理 system prompt 的多模态内容：</p>
+<ul>
+<li><strong>文本项</strong>：可编辑文本</li>
+<li><strong>音频项</strong>：参考音频，集成 <code>RefAudioPlayer</code></li>
+<li>支持添加/删除/拖拽重排序</li>
+</ul>
+<h3 id="user-content-editorjs">user-content-editor.js — 用户消息编辑器</h3>
+<p>多模态用户输入编辑器：</p>
+<table>
+<thead>
+<tr>
+<th>内容类型</th>
+<th>输入方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文本</td>
+<td>文本框输入</td>
+</tr>
+<tr>
+<td>音频</td>
+<td>录音 / 文件上传 / 拖放</td>
+</tr>
+<tr>
+<td>图片</td>
+<td>文件上传 / 拖放 / 粘贴</td>
+</tr>
+</tbody>
+</table>
+<p><strong>快捷键</strong>：<code>Space</code> 录音（点击切换/长按 push-to-talk），<code>ESC</code> 取消。</p>
+<hr />
+<h2 id="ui-duplexui">双工 UI 组件 (duplex/ui/)</h2>
+<h3 id="duplex-uijs">duplex-ui.js — 指标面板 + 设置持久化</h3>
+<p><strong>MetricsPanel</strong> 实时指标面板：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>颜色阈值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Latency（延迟）</td>
+<td>绿 &lt;200ms / 黄 &lt;500ms / 红</td>
+</tr>
+<tr>
+<td>TTFS（首音延迟）</td>
+<td>绿 &lt;300ms / 黄 &lt;600ms / 红</td>
+</tr>
+<tr>
+<td>Drift（漂移）</td>
+<td>绿 &lt;50ms / 黄 &lt;200ms / 红</td>
+</tr>
+<tr>
+<td>Gaps（间隙）</td>
+<td>绿 =0 / 黄 &lt;3 / 红</td>
+</tr>
+<tr>
+<td>KV Cache</td>
+<td>绿 &lt;4096 / 黄 &lt;6144 / 红</td>
+</tr>
+</tbody>
+</table>
+<p><strong>SettingsPersistence</strong> 设置持久化：声明式字段定义，localStorage 自动存储/恢复。</p>
+<h3 id="ref-audio-initjs">ref-audio-init.js — 参考音频初始化</h3>
+<p>Duplex 页面加载时初始化参考音频：从后端加载默认和自定义参考音频列表，构建下拉选择器。</p>
+<h3 id="tts-ref-controllerjs-tts">tts-ref-controller.js — TTS 参考音频控制器</h3>
+<p>管理 TTS 参考音频选择、上传、删除。支持 LLM ref 和 TTS ref 使用不同音频。</p>
+<hr />
+<h2 id="lib">通用工具 (lib/)</h2>
+<h3 id="countdown-timerjs">countdown-timer.js — 倒计时状态机</h3>
+<p>UI 无关的倒计时状态机，通过回调报告状态。用于排队等待时间显示。</p>
+<h3 id="chat-eta-estimatorjs-eta">chat-eta-estimator.js — ETA 估算器</h3>
+<p>基于历史响应时间的 EMA 估算，区分 Chat/Streaming 模式独立估算。</p></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

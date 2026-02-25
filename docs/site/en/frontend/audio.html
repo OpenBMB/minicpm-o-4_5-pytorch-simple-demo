@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Audio - MiniCPM-o 4.5 Docs</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">Documentation</span>
+    <a href="../../zh/frontend/audio.html" class="lang-switch">中文</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="../index.html">Overview</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Architecture</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">Overview</a></li>
+        <li><a href="../architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="../architecture/duplex.html">Duplex Mode</a></li>
+        <li><a href="../architecture/internals.html">Internals</a></li>
+      </ul>
+    </li>
+    <li><a href="../gateway.html">Gateway</a></li>
+    <li><a href="../worker.html">Worker</a></li>
+    <li><a href="../schema.html">Schema</a></li>
+    <li><a href="../model.html">Model</a></li>
+    <li><a href="../compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Frontend</span>
+      <ul class="nav-group-children">
+        <li><a href="../frontend/index.html">Overview</a></li>
+        <li><a href="../frontend/pages.html">Pages & Routes</a></li>
+        <li><a href="../frontend/audio.html" class="active">Audio</a></li>
+        <li><a href="../frontend/duplex-session.html">Duplex Session</a></li>
+        <li><a href="../frontend/components.html">UI Components</a></li>
+      </ul>
+    </li>
+    <li><a href="../api.html">API Reference</a></li>
+    <li><a href="../deployment.html">Deployment</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="frontend-audio-processing-architecture">Frontend Audio Processing Architecture</h1>
+<h2 id="architecture-overview">Architecture Overview</h2>
+<pre class="mermaid">
+graph TB
+    subgraph capture [Audio Capture]
+        MIC["Microphone\ngetUserMedia()"]
+        CTX["AudioContext\n(16kHz)"]
+        WL["AudioWorkletNode\ncapture-processor"]
+        MIC --> CTX --> WL
+    end
+
+    subgraph transport [Transport]
+        WS["WebSocket\naudio_base64"]
+    end
+
+    subgraph playback [Audio Playback]
+        AP["AudioPlayer"]
+        RESAMP["Resampling\n24kHz → Device Sample Rate"]
+        BUF["AudioBufferSourceNode\nPre-scheduled Playback"]
+        AP --> RESAMP --> BUF
+    end
+
+    subgraph analysis [Audio Analysis]
+        LUFS["LUFS Measurement\nITU-R BS.1770"]
+        MIXER["MixerController\nAuto Gain"]
+        LUFS --> MIXER
+    end
+
+    subgraph recording [Recording]
+        SREC["SessionRecorder\nStereo WAV"]
+        VREC["SessionVideoRecorder\nVideo + Audio"]
+    end
+
+    WL -->|"Float32 chunk (1s)"| WS
+    WS -->|"Base64 audio (24kHz)"| AP
+    AP --> SREC
+    AP --> VREC
+    BUF --> LUFS
+</pre>
+
+<hr />
+<h2 id="capture-processorjs-audioworklet-audio-capture">capture-processor.js — AudioWorklet Audio Capture</h2>
+<p>An <code>AudioWorkletProcessor</code> running on the Web Audio rendering thread for low-latency audio capture.</p>
+<h3 id="how-it-works">How It Works</h3>
+<div class="codehilite"><pre><span></span><code><span class="nx">process</span><span class="p">(</span><span class="nx">inputs</span><span class="p">,</span><span class="w"> </span><span class="nx">outputs</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// 1. Pass through to output (for MediaStreamDestination)</span>
+<span class="w">    </span><span class="nx">output</span><span class="p">.</span><span class="nx">set</span><span class="p">(</span><span class="nx">input</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// 2. Accumulate into _buffer</span>
+<span class="w">    </span><span class="nx">_buffer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">concat</span><span class="p">(</span><span class="nx">_buffer</span><span class="p">,</span><span class="w"> </span><span class="nx">input</span><span class="p">);</span>
+<span class="w">    </span><span class="c1">// 3. Send when buffer fills a chunk</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="nx">_buffer</span><span class="p">.</span><span class="nx">length</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="nx">_chunkSize</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="kd">const</span><span class="w"> </span><span class="nx">chunk</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">_buffer</span><span class="p">.</span><span class="nx">slice</span><span class="p">(</span><span class="mf">0</span><span class="p">,</span><span class="w"> </span><span class="nx">_chunkSize</span><span class="p">);</span>
+<span class="w">        </span><span class="nx">_buffer</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">_buffer</span><span class="p">.</span><span class="nx">slice</span><span class="p">(</span><span class="nx">_chunkSize</span><span class="p">);</span>
+<span class="w">        </span><span class="nx">port</span><span class="p">.</span><span class="nx">postMessage</span><span class="p">({</span><span class="nx">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;chunk&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">audio</span><span class="o">:</span><span class="w"> </span><span class="nx">chunk</span><span class="p">},</span><span class="w"> </span><span class="p">[</span><span class="nx">chunk</span><span class="p">.</span><span class="nx">buffer</span><span class="p">]);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="configuration">Configuration</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>chunkSize</code></td>
+<td>16000</td>
+<td>Number of samples per chunk</td>
+</tr>
+<tr>
+<td>Sample rate</td>
+<td>16000 Hz</td>
+<td>Determined by AudioContext <code>sampleRate</code></td>
+</tr>
+<tr>
+<td>Chunk duration</td>
+<td>1 second</td>
+<td>chunkSize / sampleRate</td>
+</tr>
+</tbody>
+</table>
+<h3 id="messageport-communication">MessagePort Communication</h3>
+<p><strong>Received commands</strong>:
+- <code>{command: 'start'}</code> — Start accumulating and sending chunks
+- <code>{command: 'stop'}</code> — Stop, send remaining buffer (<code>final: true</code>)</p>
+<p><strong>Sent messages</strong>:
+- <code>{type: 'chunk', audio: Float32Array}</code> — Normal chunk
+- <code>{type: 'chunk', audio: Float32Array, final: true}</code> — Last chunk</p>
+<p>Uses <code>Transferable</code> objects (<code>[chunk.buffer]</code>) for zero-copy transfer.</p>
+<hr />
+<h2 id="audio-playerjs-ai-audio-real-time-player">audio-player.js — AI Audio Real-time Player</h2>
+<p>The <code>AudioPlayer</code> class manages real-time gapless playback of AI audio received from the server.</p>
+<h3 id="complete-api">Complete API</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init()</code></td>
+<td>Initialize AudioContext</td>
+</tr>
+<tr>
+<td><code>beginTurn()</code></td>
+<td>Start a new speaking turn (reset scheduling time)</td>
+</tr>
+<tr>
+<td><code>playChunk(base64Data, arrivalTime)</code></td>
+<td>Enqueue and schedule an audio chunk</td>
+</tr>
+<tr>
+<td><code>endTurn()</code></td>
+<td>End the current turn</td>
+</tr>
+<tr>
+<td><code>stopAll()</code></td>
+<td>Immediately stop all playback (used during force listen)</td>
+</tr>
+<tr>
+<td><code>stop()</code></td>
+<td>Full stop and cleanup</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>turnActive</code></td>
+<td>Whether in a speaking turn</td>
+</tr>
+<tr>
+<td><code>playing</code></td>
+<td>Whether audio is playing</td>
+</tr>
+<tr>
+<td><code>gapCount</code></td>
+<td>Total number of gaps</td>
+</tr>
+<tr>
+<td><code>totalShiftMs</code></td>
+<td>Total drift time</td>
+</tr>
+<tr>
+<td><code>lastAheadMs</code></td>
+<td>Last ahead buffer time</td>
+</tr>
+</tbody>
+</table>
+<h3 id="playback-flow">Playback Flow</h3>
+<pre class="mermaid">
+sequenceDiagram
+    participant S as Server
+    participant AP as AudioPlayer
+    participant ACX as AudioContext
+
+    S->>AP: playChunk(base64)
+    AP->>AP: Base64 → Float32Array
+    AP->>AP: Resample 24kHz → Device Sample Rate
+    AP->>AP: Create AudioBuffer
+
+    alt First chunk + delay configured
+        AP->>AP: setTimeout(playbackDelay)
+        Note over AP: Wait for more chunks to arrive to avoid gaps
+    end
+
+    AP->>ACX: bufferSource.start(nextTime)
+    AP->>AP: nextTime += buffer.duration
+
+    Note over AP: Subsequent chunks are tightly concatenated
+    S->>AP: playChunk(base64)
+    AP->>ACX: bufferSource.start(nextTime)
+</pre>
+
+<h3 id="gap-detection">Gap Detection</h3>
+<p>A gap (buffer underrun) is detected when <code>nextTime &lt; AudioContext.currentTime</code>:</p>
+<div class="codehilite"><pre><span></span><code>gapMs = (currentTime - nextTime) * 1000
+if gapMs &gt; 10ms:
+    gapCount++
+    totalShiftMs += gapMs
+    nextTime = currentTime + small offset    // correction
+    trigger onGap callback
+</code></pre></div>
+
+<p>Gaps are typically caused by network latency or slow inference speed.</p>
+<h3 id="playback-delay">Playback Delay</h3>
+<p>Configured via <code>getPlaybackDelayMs()</code> (default 200ms, corresponding to <code>playback_delay_ms</code> in <code>config.json</code>).</p>
+<ul>
+<li>Higher delay → more buffering → smoother playback, but higher first-audio latency</li>
+<li>Zero delay → play immediately upon receipt, may have gaps</li>
+</ul>
+<h3 id="callbacks">Callbacks</h3>
+<ul>
+<li><code>onMetrics(data)</code> — Metrics report: <code>{ahead, gapCount, totalShift, turn, pdelay}</code></li>
+<li><code>onGap(info)</code> — Gap event: <code>{gap_idx, gap_ms, total_shift_ms, chunk_idx, turn}</code></li>
+<li><code>onRawAudio(samples, sampleRate, timestamp)</code> — Raw audio data (used by SessionRecorder)</li>
+</ul>
+<hr />
+<h2 id="lufsjs-lufs-loudness-measurement">lufs.js — LUFS Loudness Measurement</h2>
+<p>Implements the <strong>ITU-R BS.1770</strong> integrated loudness measurement algorithm.</p>
+<h3 id="algorithm-steps">Algorithm Steps</h3>
+<ol>
+<li><strong>K-weighting filter</strong>: Two-stage IIR filter (high-pass + high-frequency boost), simulating human ear frequency perception</li>
+<li><strong>Block mean square</strong>: Divide the signal into 400ms overlapping blocks and compute the mean square value of each block</li>
+<li><strong>Absolute threshold</strong>: Remove silent blocks below -70 LUFS</li>
+<li><strong>Relative threshold</strong>: Compute the mean of remaining blocks and remove blocks below the mean by -10 dB</li>
+<li><strong>Integrated loudness</strong>: Compute the weighted average of the final blocks → LUFS value</li>
+</ol>
+<h3 id="usage">Usage</h3>
+<ul>
+<li><code>MixerController</code> uses it for real-time audio level monitoring</li>
+<li><code>FileAudioProvider</code> uses it for audio file normalization (adjusting gain for consistent loudness)</li>
+</ul>
+<hr />
+<h2 id="mixer-controllerjs-mixer-control">mixer-controller.js — Mixer Control</h2>
+<p><code>MixerController</code> provides a dual-channel audio mixing control interface.</p>
+<h3 id="features">Features</h3>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Real-time LUFS metering</td>
+<td>Displays real-time loudness for both user and AI audio separately</td>
+</tr>
+<tr>
+<td>Auto gain</td>
+<td>Automatically adjusts AI audio volume based on LUFS</td>
+</tr>
+<tr>
+<td>Independent volume control</td>
+<td>Separate volume sliders for user/AI</td>
+</tr>
+<tr>
+<td>Draggable panel</td>
+<td>Floating panel UI, draggable to any position</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="duplex-utilsjs-utility-functions">duplex-utils.js — Utility Functions</h2>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resampleAudio(input, srcRate, dstRate)</code></td>
+<td>Linear interpolation resampling</td>
+</tr>
+<tr>
+<td><code>float32ToBase64(float32Array)</code></td>
+<td>Float32 array → Base64 string</td>
+</tr>
+<tr>
+<td><code>base64ToFloat32(base64)</code></td>
+<td>Base64 string → Float32 array</td>
+</tr>
+</tbody>
+</table>
+<p>Resampling logic: computes the sample rate ratio and uses linear interpolation to take the weighted average of the two nearest source samples for each target sample point.</p>
+<hr />
+<h2 id="stereo-recorder-processorjs-stereo-processor">stereo-recorder-processor.js — Stereo Processor</h2>
+<p>An <code>AudioWorkletProcessor</code> implementation for stereo recording in <code>SessionRecorder</code>:
+- Receives two audio inputs (user + AI)
+- Interleaves them into stereo frames (left = user, right = AI)
+- Sends stereo PCM data via MessagePort</p>
+<hr />
+<h2 id="queue-chimesjs-queue-sound-effects">queue-chimes.js — Queue Sound Effects</h2>
+<p>Synthesizes queue status sound effects using the Web Audio API:
+- On enqueue: low-pitch tone
+- On queue completion: high-pitch tone
+- Purely synthesized sounds, no external audio file dependencies</p></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; Generated by build_docs.py</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

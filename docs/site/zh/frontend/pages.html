@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>页面与路由 - MiniCPM-o 4.5 文档</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">项目文档</span>
+    <a href="../../en/frontend/pages.html" class="lang-switch">English</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="../index.html">项目概述</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">架构概述</a></li>
+        <li><a href="../architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="../architecture/internals.html">内部机制</a></li>
+      </ul>
+    </li>
+    <li><a href="../gateway.html">Gateway 模块</a></li>
+    <li><a href="../worker.html">Worker 模块</a></li>
+    <li><a href="../schema.html">Schema</a></li>
+    <li><a href="../model.html">模型模块</a></li>
+    <li><a href="../compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">前端模块</span>
+      <ul class="nav-group-children">
+        <li><a href="../frontend/index.html">前端概述</a></li>
+        <li><a href="../frontend/pages.html" class="active">页面与路由</a></li>
+        <li><a href="../frontend/audio.html">音频处理</a></li>
+        <li><a href="../frontend/duplex-session.html">双工会话</a></li>
+        <li><a href="../frontend/components.html">UI 组件</a></li>
+      </ul>
+    </li>
+    <li><a href="../api.html">API 参考</a></li>
+    <li><a href="../deployment.html">配置与部署</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="_1">前端页面与路由</h1>
+<h2 id="app-navjs">动态导航系统 (app-nav.js)</h2>
+<p><code>AppNav</code> 组件从 <code>/api/apps</code> 获取已启用的应用列表，动态渲染导航链接。访问未启用的应用时自动重定向到首页。</p>
+<hr />
+<h2 id="indexhtml">index.html — 首页</h2>
+<ul>
+<li>展示三种交互模式的卡片，显示模式名称和特性</li>
+<li>从 <code>/api/apps</code> 获取启用状态，灰置未启用模式</li>
+<li>展示最近会话列表（来自 localStorage，通过 <code>SaveShareUI</code> 管理）</li>
+</ul>
+<hr />
+<h2 id="turnbasedhtml">turnbased.html — 轮次对话</h2>
+<p>最复杂的非双工页面，支持 Chat 和 Streaming 两种模式。</p>
+<h3 id="_2">全局状态对象</h3>
+<div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">messages</span><span class="o">:</span><span class="w"> </span><span class="p">[],</span><span class="w">                </span><span class="c1">// 消息列表 {role, content, displayText}</span>
+<span class="w">    </span><span class="nx">systemContentList</span><span class="o">:</span><span class="w"> </span><span class="p">[],</span><span class="w">       </span><span class="c1">// 系统内容列表 (text + audio + image)</span>
+<span class="w">    </span><span class="nx">isGenerating</span><span class="o">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w">         </span><span class="c1">// 是否正在生成</span>
+<span class="w">    </span><span class="nx">generationPhase</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;idle&#39;</span><span class="p">,</span><span class="w">     </span><span class="c1">// &#39;idle&#39; | &#39;queuing&#39; | &#39;generating&#39;</span>
+<span class="w">    </span><span class="nx">currentTicketId</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">       </span><span class="c1">// 排队 ticket ID（仅 streaming）</span>
+<span class="w">    </span><span class="nx">abortController</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">       </span><span class="c1">// Fetch abort（仅 chat）</span>
+<span class="w">    </span><span class="nx">streamingWs</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">           </span><span class="c1">// WebSocket 连接（仅 streaming）</span>
+<span class="w">    </span><span class="nx">requestId</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;req_&#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Date</span><span class="p">.</span><span class="nx">now</span><span class="p">(),</span>
+<span class="w">    </span><span class="nx">currentView</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;initial&#39;</span><span class="p">,</span><span class="w">      </span><span class="c1">// &#39;initial&#39; | &#39;conversation&#39;</span>
+<span class="w">    </span><span class="nx">editingIndex</span><span class="o">:</span><span class="w"> </span><span class="o">-</span><span class="mf">1</span><span class="p">,</span><span class="w">            </span><span class="c1">// 正在编辑的消息索引</span>
+<span class="w">    </span><span class="nx">ttsRefAudioMode</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;extract&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">// &#39;extract&#39; | &#39;independent&#39;</span>
+<span class="w">    </span><span class="nx">ttsRefAudioData</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">       </span><span class="c1">// TTS 参考音频 base64</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<h3 id="streaming">Streaming 模式</h3>
+<p>通过 WebSocket (<code>WS /ws/streaming/{request_id}</code>) 进行流式对话：</p>
+<ol>
+<li>建立 WebSocket 连接</li>
+<li>发送 <code>prefill</code> 消息（含消息历史 + ref_audio_base64）</li>
+<li>收到 <code>prefill_done</code> 后发送 <code>generate</code></li>
+<li>逐 chunk 接收 <code>StreamingChunk</code>（text_delta + audio_data）</li>
+<li>收到 <code>done</code> 后渲染完整结果</li>
+<li>排队时显示 <code>CountdownTimer</code></li>
+</ol>
+<h3 id="_3">消息构建流程</h3>
+<ol>
+<li>从 <code>UserContentEditor</code> 获取用户输入 items</li>
+<li>音频 Blob → 重采样到 16kHz mono → Base64 PCM float32</li>
+<li>图片 File → Base64</li>
+<li>构建 <code>content list</code> 格式：<code>[{type:"text", text:...}, {type:"audio", data:...}, ...]</code></li>
+<li><code>buildRequestMessages()</code> 组装完整消息列表（含 system prompt）</li>
+</ol>
+<h3 id="tts">TTS 参考音频</h3>
+<p>两种模式：
+- <strong>extract</strong>：从系统内容中提取（需恰好 1 个音频且 &lt;20s）
+- <strong>independent</strong>：独立上传参考音频</p>
+<p>在 Streaming 的 <code>prefill</code> 消息中通过 <code>tts_ref_audio_base64</code> 字段发送给 Worker。</p>
+<h3 id="_4">响应渲染</h3>
+<ul>
+<li><code>addMessageUI()</code> — 添加消息气泡到对话区</li>
+<li><code>updateLastAssistantMessage()</code> — 流式更新最后一条助手消息</li>
+<li>音频播放：响应中的 <code>audio_data</code> 通过 <code>createMiniPlayer()</code> 创建内联播放器</li>
+</ul>
+<hr />
+<h2 id="omnihtml-omni">omni.html — Omni 全双工</h2>
+<p>视频 + 音频全双工交互页面。</p>
+<h3 id="_5">媒体提供者</h3>
+<p><strong>LiveMediaProvider</strong>（摄像头模式）：
+- <code>getUserMedia({video, audio})</code> 获取摄像头和麦克风
+- 支持前后摄像头切换（<code>flipCamera()</code>）
+- 支持镜像模式（<code>_globalMirror</code>）
+- 视频帧捕获：Canvas <code>drawImage()</code> → JPEG Base64（质量 0.7）</p>
+<p><strong>FileMediaProvider</strong>（文件模式）：
+- 处理视频文件输入
+- 预提取帧：<code>_extractFrames()</code> 按时间点提取
+- 音频解码并重采样到 16kHz
+- 三种音频源：<code>video</code>（文件音频）/ <code>mic</code>（麦克风）/ <code>mixed</code>（混合）</p>
+<h3 id="_6">数据发送</h3>
+<p>每秒发送一个 chunk：</p>
+<div class="codehilite"><pre><span></span><code><span class="nx">media</span><span class="p">.</span><span class="nx">onChunk</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">chunk</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">msg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">type</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;audio_chunk&#39;</span><span class="p">,</span>
+<span class="w">        </span><span class="nx">audio_base64</span><span class="o">:</span><span class="w"> </span><span class="nx">arrayBufferToBase64</span><span class="p">(</span><span class="nx">chunk</span><span class="p">.</span><span class="nx">audio</span><span class="p">.</span><span class="nx">buffer</span><span class="p">)</span>
+<span class="w">    </span><span class="p">};</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="nx">chunk</span><span class="p">.</span><span class="nx">frameBase64</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nx">msg</span><span class="p">.</span><span class="nx">frame_base64_list</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="nx">chunk</span><span class="p">.</span><span class="nx">frameBase64</span><span class="p">];</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="nx">session</span><span class="p">.</span><span class="nx">sendChunk</span><span class="p">(</span><span class="nx">msg</span><span class="p">);</span>
+<span class="p">};</span>
+</code></pre></div>
+
+<h3 id="ui">UI 功能</h3>
+<ul>
+<li>视频全屏模式</li>
+<li>实时字幕叠加</li>
+<li><code>MetricsPanel</code> 实时指标</li>
+<li><code>MixerController</code> 音频混音</li>
+<li><code>SessionVideoRecorder</code> 视频录制</li>
+</ul>
+<hr />
+<h2 id="audio_duplexhtml">audio_duplex.html — 音频全双工</h2>
+<p>纯音频全双工页面，与 Omni 共享大部分 duplex 库。</p>
+<h3 id="omni">与 Omni 的区别</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>Omni</th>
+<th>Audio Duplex</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>视频帧</td>
+<td>支持（摄像头/文件）</td>
+<td>无</td>
+</tr>
+<tr>
+<td>波形可视化</td>
+<td>无</td>
+<td>有（AnalyserNode 实时绘制）</td>
+</tr>
+<tr>
+<td>文件模式</td>
+<td>视频文件</td>
+<td>音频文件（FileAudioProvider）</td>
+</tr>
+<tr>
+<td>录制</td>
+<td>SessionVideoRecorder</td>
+<td>SessionRecorder（立体声 WAV）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">波形可视化</h3>
+<p>使用 <code>AnalyserNode</code> 获取时域数据，通过 <code>requestAnimationFrame</code> 循环绘制实时波形。</p>
+<h3 id="fileaudioprovider">FileAudioProvider</h3>
+<p>处理音频文件输入：
+- 解码音频并重采样到 16kHz
+- LUFS 归一化
+- 支持 <code>mixed</code> 模式（文件音频 + 麦克风混合）</p>
+<hr />
+<h2 id="adminhtml">admin.html — 管理面板</h2>
+<ul>
+<li>Worker 状态监控（在线/离线/忙碌/Duplex 状态）</li>
+<li>队列状态管理（查看/取消排队项）</li>
+<li>应用启用/禁用开关</li>
+<li>ETA 配置编辑（基准值 + EMA 参数）</li>
+<li>定时自动刷新</li>
+</ul>
+<hr />
+<h2 id="session-viewerhtml">session-viewer.html — 会话回放</h2>
+<ul>
+<li>从 <code>/api/sessions/{sid}</code> 加载元数据和录制数据</li>
+<li>回放音频/视频（<code>merged_replay.wav</code> / <code>.mp4</code>）</li>
+<li>显示对话文本时间线</li>
+<li>支持通过 URL 分享（<code>/s/{session_id}</code>）</li>
+</ul></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Streaming Mode - MiniCPM-o 4.5 Docs</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">Documentation</span>
+    <a href="../../zh/architecture/streaming.html" class="lang-switch">中文</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="../index.html">Overview</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Architecture</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">Overview</a></li>
+        <li><a href="../architecture/streaming.html" class="active">Streaming Mode</a></li>
+        <li><a href="../architecture/duplex.html">Duplex Mode</a></li>
+        <li><a href="../architecture/internals.html">Internals</a></li>
+      </ul>
+    </li>
+    <li><a href="../gateway.html">Gateway</a></li>
+    <li><a href="../worker.html">Worker</a></li>
+    <li><a href="../schema.html">Schema</a></li>
+    <li><a href="../model.html">Model</a></li>
+    <li><a href="../compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Frontend</span>
+      <ul class="nav-group-children">
+        <li><a href="../frontend/index.html">Overview</a></li>
+        <li><a href="../frontend/pages.html">Pages & Routes</a></li>
+        <li><a href="../frontend/audio.html">Audio</a></li>
+        <li><a href="../frontend/duplex-session.html">Duplex Session</a></li>
+        <li><a href="../frontend/components.html">UI Components</a></li>
+      </ul>
+    </li>
+    <li><a href="../api.html">API Reference</a></li>
+    <li><a href="../deployment.html">Deployment</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="streaming-mode-details">Streaming Mode Details</h1>
+<p>Streaming mode (<code>/ws/streaming/{session_id}</code>) implements <strong>Turn-based Chat</strong>: after the user sends a complete message, the model streams back text + audio. The core optimization is <strong>KV Cache reuse across turns</strong>.</p>
+<h2 id="basic-flow">Basic Flow</h2>
+<p>Let's first look at the simplest single-turn Streaming flow — without queuing or cache optimizations, focusing only on the core inference pipeline:</p>
+<pre class="mermaid">
+sequenceDiagram
+    participant C as Client
+    participant GW as Gateway
+    participant W as Worker
+
+    C->>GW: WS /ws/streaming/{session_id}
+    C->>GW: prefill (messages=[sys, user])
+    GW->>W: Forward all messages
+    W->>W: reset_session() clear old state
+    loop streaming_prefill(msg) for each message
+        W->>W: Encode message → LLM prefill → accumulate KV Cache
+    end
+    W-->>GW: prefill_done
+    GW-->>C: prefill_done
+
+    C->>GW: generate
+    GW->>W: Forward generate
+    W->>W: streaming_init_tts(ref_audio)
+    loop Streaming generation (chunk by chunk)
+        W-->>GW: StreamingChunk (text + audio)
+        GW-->>C: Forward chunk
+    end
+    W-->>GW: done
+    GW-->>C: done
+</pre>
+
+<p>After receiving the message list, <code>StreamingView.prefill()</code> splits it into per-message calls to the model's <code>streaming_prefill()</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># core/processors/unified.py — StreamingView.prefill()</span>
+<span class="k">def</span> <span class="nf">prefill</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">StreamingRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">msg</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">messages</span><span class="p">):</span>
+        <span class="n">content</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_content_to_model_format</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
+        <span class="n">msgs</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="n">msg</span><span class="o">.</span><span class="n">role</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">content</span><span class="p">}]</span>
+        <span class="n">is_last</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">is_last_chunk</span> <span class="ow">and</span> <span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">messages</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">streaming_prefill</span><span class="p">(</span>
+            <span class="n">session_id</span><span class="o">=</span><span class="n">request</span><span class="o">.</span><span class="n">session_id</span><span class="p">,</span> <span class="n">msgs</span><span class="o">=</span><span class="n">msgs</span><span class="p">,</span>
+            <span class="n">is_last_chunk</span><span class="o">=</span><span class="n">is_last</span><span class="p">,</span> <span class="n">stream_input</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">...</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
+            <span class="n">prompt</span> <span class="o">=</span> <span class="n">result</span>
+    <span class="k">return</span> <span class="n">prompt</span>
+</code></pre></div>
+
+<p>After each <code>streaming_prefill()</code> call, the model accumulates new KV pairs into <code>llm_past_key_values</code> for subsequent generation:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># MiniCPMO45/modeling_minicpmo_unified.py — streaming_prefill()</span>
+<span class="n">cache_length</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_kv_cache_length</span><span class="p">()</span>
+<span class="n">attention_mask</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="n">cache_length</span> <span class="o">+</span> <span class="n">inputs_embeds</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="o">...</span><span class="p">)</span>
+
+<span class="n">outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="p">(</span>
+    <span class="n">past_key_values</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span><span class="p">,</span>  <span class="c1"># Pass in existing KV Cache</span>
+    <span class="n">inputs_embeds</span><span class="o">=</span><span class="n">inputs_embeds</span><span class="p">,</span>                <span class="c1"># Embedding of current message only</span>
+    <span class="n">attention_mask</span><span class="o">=</span><span class="n">attention_mask</span><span class="p">,</span>
+    <span class="n">use_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span> <span class="o">=</span> <span class="n">as_dynamic_cache</span><span class="p">(</span><span class="n">outputs</span><span class="p">[</span><span class="s2">&quot;past_key_values&quot;</span><span class="p">])</span>  <span class="c1"># Update cache</span>
+</code></pre></div>
+
+<h2 id="why-is-kv-cache-reuse-needed">Why Is KV Cache Reuse Needed?</h2>
+<p>The basic flow above has a problem: <strong>every turn requires re-prefilling all historical messages from scratch</strong>.</p>
+<pre class="mermaid">
+graph LR
+    subgraph round1 ["Round 1"]
+        R1["prefill: sys, user₁\n2 messages"]
+    end
+    subgraph round2 ["Round 2"]
+        R2["prefill: sys, user₁, asst₁, user₂\n4 messages (2 redundant)"]
+    end
+    subgraph round3 ["Round 3"]
+        R3["prefill: sys, user₁, asst₁, user₂, asst₂, user₃\n6 messages (4 redundant)"]
+    end
+    round1 --> round2 --> round3
+</pre>
+
+<p>As the number of dialogue turns increases, redundant computation grows linearly. For multimodal messages containing images and audio, the cost of redundant prefilling is especially high.</p>
+<p><strong>The core idea of KV Cache reuse</strong>: After the Worker finishes inference, it <strong>does not clear</strong> <code>llm_past_key_values</code>. When the next turn request is routed to the same Worker, it directly reuses the existing cache and only performs incremental prefill for new messages.</p>
+<h2 id="kv-cache-reuse-implementation">KV Cache Reuse Implementation</h2>
+<p>The reuse mechanism spans three layers: <strong>Gateway → Worker → Model</strong>:</p>
+<h3 id="1-gateway-cache-hit-detection">1. Gateway: Cache Hit Detection</h3>
+<p>The Gateway computes a SHA-256 hash of historical messages (excluding the latest user message) and compares it with the Worker's previously saved <code>cached_hash</code> to determine a hit:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># gateway.py — streaming_ws()</span>
+<span class="n">history</span> <span class="o">=</span> <span class="n">raw_messages</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">history_hash</span> <span class="o">=</span> <span class="n">compute_history_hash</span><span class="p">(</span><span class="n">history</span><span class="p">)</span> <span class="k">if</span> <span class="n">history</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+
+<span class="n">cache_hit</span> <span class="o">=</span> <span class="n">history_hash</span> <span class="ow">and</span> <span class="n">worker</span><span class="o">.</span><span class="n">cached_hash</span> <span class="o">==</span> <span class="n">history_hash</span>
+
+<span class="k">if</span> <span class="n">cache_hit</span><span class="p">:</span>
+    <span class="c1"># Hit: send only the latest message, instruct the Worker to keep existing KV Cache</span>
+    <span class="n">forward_msg</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">msg</span><span class="p">,</span> <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="n">raw_messages</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:],</span> <span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="c1"># Miss: send all messages, instruct the Worker to clear and do full prefill</span>
+    <span class="n">forward_msg</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">msg</span><span class="p">,</span> <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="n">raw_messages</span><span class="p">,</span> <span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+</code></pre></div>
+
+<h3 id="2-worker-clear-or-keep-as-instructed">2. Worker: Clear or Keep as Instructed</h3>
+<p>The Worker receives the <code>clear_kv_cache</code> field from the Gateway and decides whether to reset the model session:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># worker.py — streaming_ws()</span>
+<span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+    <span class="n">worker</span><span class="o">.</span><span class="n">reset_streaming_session</span><span class="p">()</span>
+    <span class="c1"># → streaming_view._model.reset_session(reset_token2wav_cache=False)</span>
+</code></pre></div>
+
+<h3 id="3-model-clearing-means-nullifying-llm_past_key_values">3. Model: Clearing Means Nullifying <code>llm_past_key_values</code></h3>
+<p><code>reset_session()</code> zeroes out all cache state. On a cache miss, the subsequent <code>streaming_prefill()</code> starts from an empty cache and prefills all messages; on a cache hit, the reset is skipped, and new messages are incrementally prefilled on top of the existing KV Cache.</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># MiniCPMO45/modeling_minicpmo_unified.py — reset_session()</span>
+<span class="k">def</span> <span class="nf">reset_session</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reset_token2wav_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span> <span class="o">=</span> <span class="kc">None</span>   <span class="c1"># Clear LLM KV Cache</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">audio_past_key_values</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">session_id</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="o">...</span>
+</code></pre></div>
+
+<h2 id="full-flow-with-queuing-kv-cache-reuse">Full Flow (with Queuing + KV Cache Reuse)</h2>
+<pre class="mermaid">
+sequenceDiagram
+    participant C as Client
+    participant GW as Gateway
+    participant Pool as WorkerPool
+    participant W as Worker
+
+    C->>GW: WS connect /ws/streaming/{session_id}
+    GW->>Pool: enqueue("streaming", history_hash)
+
+    alt Idle Worker available (immediate assignment)
+        Pool->>Pool: LRU cache routing (see details below)
+        Pool-->>GW: Future.resolve(Worker)
+        GW-->>C: queue_done
+    else No idle Worker (enqueue and wait)
+        Pool-->>GW: Enter FIFO queue
+        GW-->>C: queued (position, eta)
+        loop Waiting for release
+            Pool-->>GW: Position update
+            GW-->>C: queue_update (position, eta)
+        end
+        Note over Pool: Worker released → _dispatch_next()
+        Pool-->>GW: Future.resolve(Worker)
+        GW-->>C: queue_done
+    end
+
+    GW->>W: Establish WS connection to Worker
+
+    alt Cache miss (clear_kv_cache=true)
+        GW->>W: prefill (clear_kv_cache=true, all messages)
+        W->>W: reset_session() clear old KV Cache
+        W->>W: streaming_prefill() full prefill
+    else Cache hit (clear_kv_cache=false)
+        GW->>W: prefill (clear_kv_cache=false, new messages only)
+        W->>W: streaming_prefill() incremental prefill<br/>reusing existing KV Cache
+    end
+    W-->>GW: prefill_done (cached_tokens, input_tokens)
+    GW-->>C: Forward prefill_done
+
+    C->>GW: generate
+    GW->>W: Forward generate
+    W->>W: streaming_init_tts(ref_audio)
+    loop Streaming generation (chunk by chunk)
+        W->>W: streaming_generate() yield chunk
+        W-->>GW: StreamingChunk (text_delta + audio_data)
+        GW-->>C: Forward chunk
+    end
+    W-->>GW: done (token_stats)
+    GW-->>C: Forward done
+
+    GW->>Pool: release_worker(cached_hash=current hash)
+    Note over Pool: Update Worker.cached_hash<br/>next request with same hash can hit cache
+</pre>
+
+<h2 id="lru-cache-routing-details">LRU Cache Routing Details</h2>
+<p>LRU cache routing is implemented on the <strong>Gateway side</strong> in <code>WorkerPool._route_streaming_worker()</code> (located in <code>gateway_modules/worker_pool.py</code>), not on the Worker side. The Gateway tracks each Worker's currently cached session history hash via the <code>WorkerConnection.cached_hash</code> and <code>last_cache_used_at</code> fields.</p>
+<p><strong>4-level routing priority</strong>:</p>
+<pre class="mermaid">
+flowchart TD
+    Start["Streaming request received\nCompute history_hash"] --> Check1{"Iterate idle Workers\nhash == cached_hash ?"}
+    Check1 -->|"Hit"| Hit["Cache hit\nAssign this Worker\nIncremental prefill"]
+    Check1 -->|"Miss"| Check2{"Any idle Worker with\ncached_hash==None ?"}
+    Check2 -->|"Yes"| NoCache["Assign cacheless Worker\nAvoid unnecessary eviction"]
+    Check2 -->|"No"| Check3{"Any other idle Worker ?"}
+    Check3 -->|"Yes"| LRU["LRU eviction\nPick Worker with oldest last_cache_used_at\nOverwrite its cache"]
+    Check3 -->|"No"| Enqueue["No idle Worker\nEnter FIFO queue and wait"]
+</pre>
+
+<ul>
+<li><strong>Hash computation</strong>: <code>compute_history_hash()</code> serializes the <code>role + content</code> of the message list and computes a SHA-256 hash, ensuring the same conversation history produces the same hash.</li>
+<li><strong>Cache update timing</strong>: The Gateway writes the current request's <code>history_hash</code> to <code>Worker.cached_hash</code> and <code>last_cache_used_at</code> during <code>release_worker()</code>, for subsequent request matching.</li>
+<li><strong>Non-Streaming requests also consider cache</strong>: Duplex assignment also preferentially selects cacheless Workers (<code>_get_idle_worker()</code>), avoiding unnecessary eviction of Streaming caches.</li>
+</ul>
+<h2 id="worker-side-processing-details">Worker-Side Processing Details</h2>
+<p>The Worker uses a fixed <code>session_id="streaming"</code> to manage KV Cache state. Below are the specific implementations of the prefill / generate / stop phases in the Worker WebSocket handler.</p>
+<h3 id="prefill-phase">Prefill Phase</h3>
+<ol>
+<li>Check state (IDLE or BUSY_STREAMING)</li>
+<li>Set state → <code>BUSY_STREAMING</code></li>
+<li>Check the <code>clear_kv_cache</code> flag from the Gateway:</li>
+<li><code>true</code> (cache miss) → <code>reset_streaming_session()</code> clears the KV Cache</li>
+<li><code>false</code> (cache hit) → keep existing KV Cache</li>
+<li>Decode <code>ref_audio_base64</code> from the frontend → cache to <code>_streaming_ref_audio_cache</code></li>
+<li>Build the message list (supports text / audio / image multimodal content)</li>
+<li>Record KV Cache length difference before and after prefill → <code>cached_tokens</code> / <code>input_tokens</code></li>
+<li><code>streaming_prefill(request)</code> executes the prefill</li>
+<li>Send <code>prefill_done</code> (with <code>cached_tokens</code>, <code>input_tokens</code>)</li>
+</ol>
+<p><strong>KV Cache reuse key point</strong>: <code>cached_tokens</code> represents the number of reused cache tokens. On a cache hit, <code>cached_tokens &gt; 0</code>, meaning only new messages need incremental processing, significantly reducing time-to-first-token latency.</p>
+<h3 id="generate-phase">Generate Phase</h3>
+<ol>
+<li>Retrieve ref audio from <code>_streaming_ref_audio_cache</code> (cached during prefill)</li>
+<li><code>streaming_init_tts(ref_audio)</code> initializes TTS</li>
+<li>Run <code>streaming_generate()</code> in <code>run_in_executor</code>:</li>
+<li>Generator yields <code>StreamingChunk</code> chunk by chunk</li>
+<li>Each chunk is passed to the main coroutine via <code>asyncio.Queue</code></li>
+<li>Main coroutine sends each chunk to the client</li>
+<li>After each yielded chunk, check <code>stop_event</code></li>
+<li>Send <code>done</code> (with full <code>token_stats</code>)</li>
+<li>Restore state → <code>IDLE</code></li>
+</ol>
+<h3 id="stop-control">Stop Control</h3>
+<ul>
+<li>Each WS connection creates an independent <code>threading.Event</code></li>
+<li><code>threading.Event</code> is thread-safe across threads (asyncio thread ↔ generate worker thread)</li>
+<li>Triggered by <code>set()</code> when the client sends <code>stop</code> or disconnects</li>
+<li>HTTP <code>POST /streaming/stop</code> broadcasts to all active sessions</li>
+</ul></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; Generated by build_docs.py</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

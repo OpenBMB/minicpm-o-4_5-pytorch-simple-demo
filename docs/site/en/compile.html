@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>torch.compile - MiniCPM-o 4.5 Docs</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">Documentation</span>
+    <a href="../zh/compile.html" class="lang-switch">中文</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="index.html">Overview</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Architecture</span>
+      <ul class="nav-group-children">
+        <li><a href="architecture/index.html">Overview</a></li>
+        <li><a href="architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="architecture/duplex.html">Duplex Mode</a></li>
+        <li><a href="architecture/internals.html">Internals</a></li>
+      </ul>
+    </li>
+    <li><a href="gateway.html">Gateway</a></li>
+    <li><a href="worker.html">Worker</a></li>
+    <li><a href="schema.html">Schema</a></li>
+    <li><a href="model.html">Model</a></li>
+    <li><a href="compile.html" class="active">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Frontend</span>
+      <ul class="nav-group-children">
+        <li><a href="frontend/index.html">Overview</a></li>
+        <li><a href="frontend/pages.html">Pages & Routes</a></li>
+        <li><a href="frontend/audio.html">Audio</a></li>
+        <li><a href="frontend/duplex-session.html">Duplex Session</a></li>
+        <li><a href="frontend/components.html">UI Components</a></li>
+      </ul>
+    </li>
+    <li><a href="api.html">API Reference</a></li>
+    <li><a href="deployment.html">Deployment</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="torchcompile-acceleration">torch.compile Acceleration</h1>
+<h2 id="overview">Overview</h2>
+<p>This project supports JIT compilation acceleration of core submodules via <code>torch.compile</code>. After compilation, Triton kernels replace PyTorch eager implementations, yielding approximately 5-20% inference speedup (depending on the module and hardware).</p>
+<p>This feature is <strong>experimental</strong> and disabled by default.</p>
+<h2 id="how-to-enable">How to Enable</h2>
+<h3 id="command-line">Command Line</h3>
+<div class="codehilite"><pre><span></span><code>bash<span class="w"> </span>start_all.sh<span class="w"> </span>--compile
+</code></pre></div>
+
+<h3 id="configuration-file">Configuration File</h3>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;service&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;compile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="standalone-worker-start">Standalone Worker Start</h3>
+<div class="codehilite"><pre><span></span><code><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>worker.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--worker-index<span class="w"> </span><span class="m">0</span><span class="w"> </span>--gpu-id<span class="w"> </span><span class="m">0</span><span class="w"> </span>--compile
+</code></pre></div>
+
+<h2 id="compilation-pipeline">Compilation Pipeline</h2>
+<pre class="mermaid">
+flowchart TB
+    subgraph workerStart [Worker Startup]
+        Load["load_model()"]
+        UP["UnifiedProcessor.__init__()"]
+        InitUnified["model.init_unified()"]
+        Apply["model.apply_torch_compile()"]
+        Warmup["model.warmup_compile()"]
+        Ready["Worker IDLE"]
+    end
+
+    Load --> UP --> InitUnified --> Apply --> Warmup --> Ready
+
+    subgraph applyDetail [apply_torch_compile Internals]
+        VPM["torch.compile(vpm)"]
+        LLM["torch.compile(llm.model)"]
+        RES["torch.compile(resampler)"]
+        TTS["torch.compile(tts.model)"]
+        TF32["set_float32_matmul_precision('high')"]
+    end
+
+    Apply --> VPM
+    Apply --> LLM
+    Apply --> RES
+    Apply --> TTS
+    Apply --> TF32
+
+    subgraph warmupDetail [warmup_compile Internals]
+        WV["vpm warmup\n224x224 dummy image"]
+        WL1["llm prefill warmup\n32 tokens"]
+        WL2["llm decode warmup\n1 token + KV cache"]
+        WT1["tts prefill warmup\n32 tokens"]
+        WT2["tts decode warmup\n1 token + KV cache"]
+    end
+
+    Warmup --> WV --> WL1 --> WL2 --> WT1 --> WT2
+</pre>
+
+<h2 id="compilation-targets">Compilation Targets</h2>
+<h3 id="compiled-submodules">Compiled Submodules</h3>
+<table>
+<thead>
+<tr>
+<th>Submodule</th>
+<th>Original Class</th>
+<th>Reason for Compilation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vpm</code></td>
+<td><code>SiglipVisionTransformer</code></td>
+<td>Vision encoder, compute-intensive Transformer</td>
+</tr>
+<tr>
+<td><code>llm.model</code></td>
+<td><code>Qwen3Model</code></td>
+<td>Core LLM backbone, primary inference bottleneck</td>
+</tr>
+<tr>
+<td><code>resampler</code></td>
+<td><code>Resampler</code></td>
+<td>Visual feature resampling, Perceiver architecture</td>
+</tr>
+<tr>
+<td><code>tts.model</code></td>
+<td><code>LlamaModel</code></td>
+<td>Core TTS backbone, audio token generation</td>
+</tr>
+</tbody>
+</table>
+<p>Note: Only the inner backbone is compiled (e.g., <code>llm.model</code>), not the outer wrapper (e.g., <code>Qwen3ForCausalLM</code>), because the outer layer contains Python control flow (<code>generate()</code> loop), where compilation provides little benefit and easily causes graph breaks.</p>
+<h3 id="parts-not-compiled">Parts Not Compiled</h3>
+<table>
+<thead>
+<tr>
+<th>Submodule</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apm</code> (Whisper audio encoder)</td>
+<td>Special streaming behavior + dynamic shapes; low compilation benefit</td>
+</tr>
+<tr>
+<td><code>tts.audio_tokenizer</code> (Token2Wav/CosyVoice2)</td>
+<td>External library, non-standard <code>nn.Module</code></td>
+</tr>
+<tr>
+<td><code>MiniCPMO</code> outer layer</td>
+<td>Heavy Python control flow (chat/streaming/duplex branches); low compilation benefit</td>
+</tr>
+<tr>
+<td><code>lm_head</code></td>
+<td>Inside the outer wrapper, called within the generate loop</td>
+</tr>
+</tbody>
+</table>
+<h2 id="apply_torch_compile-implementation">apply_torch_compile() Implementation</h2>
+<p>Located in <code>MiniCPMO45/modeling_minicpmo_unified.py</code>.</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">apply_torch_compile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="n">compile_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="n">mode</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="n">dynamic</span><span class="p">)</span>
+
+    <span class="bp">self</span><span class="o">.</span><span class="n">vpm</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vpm</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">resampler</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">resampler</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">tts</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tts</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
+
+    <span class="n">torch</span><span class="o">.</span><span class="n">set_float32_matmul_precision</span><span class="p">(</span><span class="s2">&quot;high&quot;</span><span class="p">)</span>
+    <span class="bp">self</span><span class="o">.</span><span class="n">_compiled</span> <span class="o">=</span> <span class="kc">True</span>
+</code></pre></div>
+
+<h3 id="compilation-parameters">Compilation Parameters</h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mode</code></td>
+<td><code>"default"</code></td>
+<td>Compilation mode</td>
+</tr>
+<tr>
+<td><code>dynamic</code></td>
+<td><code>True</code></td>
+<td>Enable dynamic shape support</td>
+</tr>
+</tbody>
+</table>
+<h4 id="compilation-mode-selection">Compilation Mode Selection</h4>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Compilation Time</th>
+<th>Runtime Speed</th>
+<th>Use Case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>default</code></td>
+<td>Moderate</td>
+<td>Faster</td>
+<td>Recommended; balances compilation time and runtime speed</td>
+</tr>
+<tr>
+<td><code>reduce-overhead</code></td>
+<td>Moderate</td>
+<td>Fastest</td>
+<td>Uses CUDA Graphs; only suitable for static shapes</td>
+</tr>
+<tr>
+<td><code>max-autotune</code></td>
+<td>Very long</td>
+<td>Fastest</td>
+<td>Maximum optimization; compilation may take several minutes</td>
+</tr>
+</tbody>
+</table>
+<p>The project defaults to <code>mode="default", dynamic=True</code> because sequence lengths, image sizes, etc. vary dynamically during inference. <code>dynamic=True</code> avoids recompilation when shapes change.</p>
+<h3 id="tf32-precision-boost">TF32 Precision Boost</h3>
+<p><code>torch.set_float32_matmul_precision("high")</code> enables TF32 (TensorFloat-32) matrix multiplication, providing an additional ~5-10% speedup on Ampere+ architecture GPUs with negligible precision loss.</p>
+<h2 id="warmup_compile-implementation">warmup_compile() Implementation</h2>
+<p><code>torch.compile</code> only wraps the modules — <strong>actual Triton kernel compilation is triggered on the first forward pass</strong>. Without warmup, the first real request would incur additional compilation latency (potentially tens of seconds).</p>
+<p><code>warmup_compile()</code> triggers all compilation paths using synthetic data:</p>
+<h3 id="warmup-steps">Warmup Steps</h3>
+<p><strong>1. vpm + resampler</strong>
+- Constructs a 224x224 zero-value image (minimum size, 16x16=256 patches)
+- Executes one <code>vpm()</code> + <code>resampler()</code> forward pass
+- Triggers vision encoding Triton kernel compilation</p>
+<p><strong>2. llm.model — prefill path</strong>
+- Constructs 32-token dummy embeddings
+- Executes <code>llm.model(inputs_embeds=..., use_cache=True)</code> forward pass
+- Triggers long-sequence prefill kernel compilation</p>
+<p><strong>3. llm.model — decode path</strong>
+- Constructs 1-token dummy embeddings + KV cache from the previous step
+- Executes decode forward pass
+- Triggers single-token decode kernel compilation (a different code path from prefill)</p>
+<p><strong>4. tts.model — prefill + decode paths</strong>
+- Same as llm.model, separately triggers TTS prefill and decode kernel compilation</p>
+<h3 id="why-both-paths-must-be-covered">Why Both Paths Must Be Covered</h3>
+<p>LLM and TTS inference consists of two phases:
+- <strong>Prefill</strong>: Processes long sequence input, no KV cache, larger matrix shapes
+- <strong>Decode</strong>: Generates tokens one at a time, with KV cache, matrix shape of 1</p>
+<p>These two paths have different computation graphs. If only prefill is warmed up, the first decode will still trigger a recompile.</p>
+<h3 id="post-warmup-cleanup">Post-Warmup Cleanup</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">empty_cache</span><span class="p">()</span>
+</code></pre></div>
+
+<p>Temporary VRAM used during compilation is released after warmup completes.</p>
+<h2 id="call-chain">Call Chain</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">config</span><span class="o">.</span><span class="n">json</span><span class="p">:</span><span class="w"> </span><span class="n">compile</span><span class="o">=</span><span class="bp">true</span>
+<span class="w">    </span><span class="err">↓</span>
+<span class="n">worker</span><span class="o">.</span><span class="n">py</span><span class="p">:</span><span class="w"> </span><span class="n">WORKER_CONFIG</span><span class="p">[</span><span class="s2">&quot;compile&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">True</span>
+<span class="w">    </span><span class="err">↓</span>
+<span class="n">MiniCPMOWorker</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">compile</span><span class="o">=</span><span class="n">True</span><span class="p">)</span>
+<span class="w">    </span><span class="err">↓</span>
+<span class="n">UnifiedProcessor</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">compile</span><span class="o">=</span><span class="n">True</span><span class="p">)</span>
+<span class="w">    </span><span class="err">↓</span>
+<span class="n">UnifiedProcessor</span><span class="o">.</span><span class="n">_load_model</span><span class="p">():</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">init_unified</span><span class="p">()</span><span class="w">          </span><span class="c1"># Load model + dual TTS</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">apply_torch_compile</span><span class="p">()</span><span class="w">   </span><span class="c1"># Wrap submodules</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">warmup_compile</span><span class="p">()</span><span class="w">        </span><span class="c1"># Trigger compilation</span>
+</code></pre></div>
+
+<h2 id="duplexcapability-automatically-benefits">DuplexCapability Automatically Benefits</h2>
+<p>The <code>DuplexCapability</code> component accesses the model's <code>llm</code>, <code>vpm</code>, <code>tts</code>, and other submodules <strong>by reference</strong> and does not hold independent copies. Therefore, after <code>apply_torch_compile()</code>, Duplex inference automatically uses the compiled versions with no additional action required.</p>
+<h2 id="performance-considerations">Performance &amp; Considerations</h2>
+<h3 id="time-overhead">Time Overhead</h3>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Duration (Typical)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apply_torch_compile()</code> (wrapping)</td>
+<td>~1s</td>
+</tr>
+<tr>
+<td><code>warmup_compile()</code> (actual compilation)</td>
+<td>~60s</td>
+</tr>
+<tr>
+<td>Total additional startup time</td>
+<td>~60s</td>
+</tr>
+</tbody>
+</table>
+<h3 id="vram-impact">VRAM Impact</h3>
+<ul>
+<li>The compilation process temporarily uses additional VRAM (compiler intermediate representations)</li>
+<li>Released via <code>torch.cuda.empty_cache()</code> after warmup completes</li>
+<li>Runtime VRAM usage is essentially the same as non-compiled mode</li>
+</ul>
+<h3 id="known-limitations">Known Limitations</h3>
+<ul>
+<li><strong>Experimental</strong>: Certain extreme input shapes may trigger recompilation</li>
+<li><strong>First inference latency</strong>: If an uncovered code path is encountered, recompilation may still be triggered</li>
+<li><strong>Compatibility</strong>: Requires PyTorch 2.x+; some older CUDA drivers may be incompatible with Triton</li>
+<li><strong>Debugging difficulty</strong>: Compiled code is difficult to step through in a debugger</li>
+</ul>
+<h2 id="benchmarking">Benchmarking</h2>
+<p>The project provides a Duplex A/B comparison benchmark script:</p>
+<div class="codehilite"><pre><span></span><code><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>tests/bench_duplex_ws.py
+</code></pre></div>
+
+<p>This script runs multiple rounds in both normal and compile modes, collecting steady-state LISTEN/SPEAK performance statistics. It requires two Workers running simultaneously (one normal, one compile) on different ports.</p></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; Generated by build_docs.py</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

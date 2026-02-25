@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Internals - MiniCPM-o 4.5 Docs</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">Documentation</span>
+    <a href="../../zh/architecture/internals.html" class="lang-switch">中文</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="../index.html">Overview</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Architecture</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">Overview</a></li>
+        <li><a href="../architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="../architecture/duplex.html">Duplex Mode</a></li>
+        <li><a href="../architecture/internals.html" class="active">Internals</a></li>
+      </ul>
+    </li>
+    <li><a href="../gateway.html">Gateway</a></li>
+    <li><a href="../worker.html">Worker</a></li>
+    <li><a href="../schema.html">Schema</a></li>
+    <li><a href="../model.html">Model</a></li>
+    <li><a href="../compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Frontend</span>
+      <ul class="nav-group-children">
+        <li><a href="../frontend/index.html">Overview</a></li>
+        <li><a href="../frontend/pages.html">Pages & Routes</a></li>
+        <li><a href="../frontend/audio.html">Audio</a></li>
+        <li><a href="../frontend/duplex-session.html">Duplex Session</a></li>
+        <li><a href="../frontend/components.html">UI Components</a></li>
+      </ul>
+    </li>
+    <li><a href="../api.html">API Reference</a></li>
+    <li><a href="../deployment.html">Deployment</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="internals">Internals</h1>
+<h2 id="worker-startup-and-model-loading">Worker Startup and Model Loading</h2>
+<p>Workers are built on <strong>FastAPI</strong>, with each Worker owning a dedicated GPU and serving HTTP and WebSocket services on a separate port.</p>
+<p>At startup, <code>load_model()</code> (a synchronous operation, ~15s) is called within the <code>lifespan()</code> async context, using <code>asyncio.to_thread()</code> to avoid blocking the event loop. Once loading completes:</p>
+<ol>
+<li>Create a <code>UnifiedProcessor</code> instance (loads model weights + TTS)</li>
+<li><code>gc.collect()</code> + <code>torch.cuda.empty_cache()</code> to clean up loading residuals</li>
+<li>Print Device Map (confirm all components are on GPU)</li>
+<li>State transitions from <code>LOADING</code> → <code>IDLE</code></li>
+</ol>
+<h2 id="fifo-queue-and-worker-communication">FIFO Queue and Worker Communication</h2>
+<p>The queue is implemented in the Gateway-side <code>WorkerPool</code>, using <code>OrderedDict</code> to guarantee FIFO ordering. The core communication mechanisms are as follows:</p>
+<pre class="mermaid">
+flowchart TB
+    subgraph enqueueFlow [Enqueue Flow]
+        Req["Request arrives"] --> TryImmediate{"Idle Worker\navailable?"}
+        TryImmediate -->|"Yes"| Assign["Assign immediately\nFuture.set_result(worker)\nWorker.mark_busy()"]
+        TryImmediate -->|"No"| CapCheck{"Queue not full?"}
+        CapCheck -->|"Full"| Reject["Reject: QueueFullError"]
+        CapCheck -->|"Not full"| AddQueue["Create QueueEntry\nwith asyncio.Future\nAdd to OrderedDict"]
+    end
+
+    subgraph dispatchFlow [Dispatch Flow _dispatch_next]
+        Release["Worker released\nrelease_worker()"] --> Dispatch["_dispatch_next()"]
+        HealthOK["Health check restored to IDLE"] --> Dispatch
+        Cancel["Cancel queued entry"] --> Dispatch
+        Dispatch --> PeekHead{"Peek queue head Entry"}
+        PeekHead --> FindWorker{"Match idle Worker"}
+        FindWorker -->|"Found"| DoAssign["Worker.mark_busy()\nFuture.set_result(worker)\nRemove queue head"]
+        FindWorker -->|"None idle"| Wait["Wait for next trigger"]
+        DoAssign --> PeekHead
+    end
+</pre>
+
+<p><strong>Key design decisions</strong>:</p>
+<ol>
+<li><strong>asyncio.Future bridging</strong>: Each queued request holds an <code>asyncio.Future</code>. The Gateway's WebSocket handler blocks via <code>await future</code> waiting for the assignment result. When a Worker becomes idle, <code>_dispatch_next()</code> calls <code>future.set_result(worker)</code> to wake the waiter.</li>
+<li><strong>Single dispatch point</strong>: All Worker assignments go through <code>_dispatch_next()</code>, triggered when a Worker is released, a queue entry is cancelled, or a health check restores a Worker. This eliminates concurrency races.</li>
+<li><strong>Immediate busy marking</strong>: When assigning a Worker, <code>mark_busy()</code> is called immediately to set the state to busy, preventing the same Worker from being assigned to multiple requests.</li>
+<li><strong>Gateway → Worker communication</strong>: The Gateway connects directly to the Worker's internal port (22400+) via WebSocket (Streaming/Duplex), bypassing the queue. The queue is only responsible for Worker assignment, not data transport.</li>
+</ol>
+<h2 id="module-dependency-topology">Module Dependency Topology</h2>
+<pre class="mermaid">
+graph LR
+    subgraph entryPoints [Entry Points]
+        GW["gateway.py"]
+        WK["worker.py"]
+        SA["start_all.sh"]
+    end
+
+    subgraph gatewayMods [gateway_modules/]
+        WP["worker_pool.py"]
+        AR["app_registry.py"]
+        MD["models.py"]
+        RA["ref_audio_registry.py"]
+    end
+
+    subgraph coreMod [core/]
+        SC["schemas/"]
+        PR["processors/"]
+        CP["capabilities.py"]
+        FA["factory.py"]
+    end
+
+    subgraph modelMod [MiniCPMO45/]
+        CFG["configuration_minicpmo.py"]
+        MOD["modeling_minicpmo.py"]
+        UNI["modeling_minicpmo_unified.py"]
+        VIS["modeling_navit_siglip.py"]
+        PRC["processing_minicpmo.py"]
+        TOK["tokenization_minicpmo_fast.py"]
+        UTL["utils.py"]
+    end
+
+    subgraph support [Support Modules]
+        CONF["config.py"]
+        SR["session_recorder.py"]
+        SCLEAN["session_cleanup.py"]
+    end
+
+    SA --> GW
+    SA --> WK
+    GW --> WP
+    GW --> AR
+    GW --> MD
+    GW --> RA
+    GW --> CONF
+    GW --> SCLEAN
+
+    WK --> PR
+    WK --> SC
+    WK --> CONF
+    WK --> SR
+
+    PR --> MOD
+    PR --> UNI
+    FA --> PR
+
+    UNI --> MOD
+    UNI --> VIS
+    UNI --> UTL
+    MOD --> CFG
+    MOD --> VIS
+    MOD --> PRC
+    MOD --> TOK
+    MOD --> UTL
+
+    WP --> MD
+</pre>
+
+<h2 id="model-inference-pipeline">Model Inference Pipeline</h2>
+<pre class="mermaid">
+graph LR
+    subgraph inputMod [Multimodal Input]
+        TXT["Text"]
+        IMG["Image"]
+        AUD["Audio"]
+    end
+
+    subgraph encoders [Encoders]
+        TOK2["Tokenizer\n(Qwen2Fast)"]
+        VE["SigLIP\nVision Encoder"]
+        RS["Resampler"]
+        AE["Whisper\nAudio Encoder"]
+        AP["Audio\nProjection"]
+    end
+
+    subgraph llmBlock [Language Model]
+        EMB["Embedding\nFusion Layer"]
+        LLM["Qwen3\nLLM Backbone"]
+    end
+
+    subgraph outputMod [Output]
+        TXTOUT["Text Output"]
+        TTS["TTS\n(Token2Wav / CosyVoice2)"]
+        AUDOUT["Audio Output\n(24kHz)"]
+    end
+
+    TXT --> TOK2 --> EMB
+    IMG --> VE --> RS --> EMB
+    AUD --> AE --> AP --> EMB
+    EMB --> LLM
+    LLM --> TXTOUT
+    LLM --> TTS --> AUDOUT
+</pre>
+
+<h2 id="worker-state-machine">Worker State Machine</h2>
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> LOADING: Startup
+    LOADING --> IDLE: Model loaded
+    LOADING --> ERROR: Loading failed
+
+    IDLE --> BUSY_STREAMING: Assigned Streaming task
+    IDLE --> DUPLEX_ACTIVE: Assigned Duplex task
+
+    BUSY_STREAMING --> IDLE: Inference complete
+
+    DUPLEX_ACTIVE --> DUPLEX_PAUSED: pause (client paused)
+    DUPLEX_PAUSED --> DUPLEX_ACTIVE: resume (client resumed)
+    DUPLEX_PAUSED --> IDLE: Timeout release
+    DUPLEX_ACTIVE --> IDLE: stop / cleanup
+
+    ERROR --> [*]
+</pre>
+
+<h2 id="frontend-component-topology">Frontend Component Topology</h2>
+<pre class="mermaid">
+graph TB
+    subgraph pages [Pages]
+        IDX["index.html\nHome"]
+        TB["turnbased.html\nTurn-based Chat"]
+        OM["omni.html\nOmni Full-Duplex"]
+        AD["audio_duplex.html\nAudio Full-Duplex"]
+        ADM["admin.html\nAdmin Panel"]
+        SV["session-viewer.html\nSession Playback"]
+    end
+
+    subgraph sharedComp [shared/]
+        NAV["app-nav.js\nNavigation Component"]
+        PS["preset-selector.js\nPreset Selector"]
+        SS["save-share.js\nSave & Share"]
+    end
+
+    subgraph duplexLib [duplex/lib/]
+        DS["duplex-session.js\nSession Management"]
+        APL["audio-player.js\nAudio Player"]
+        CP2["capture-processor.js\nAudio Capture"]
+        LU["lufs.js\nLoudness Metering"]
+        MC["mixer-controller.js\nMixer Controller"]
+        QC["queue-chimes.js\nQueue Chimes"]
+        SRec["session-recorder.js\nRecorder"]
+        SVR["session-video-recorder.js\nVideo Recorder"]
+    end
+
+    subgraph duplexUI [duplex/ui/]
+        DUI["duplex-ui.js\nMetrics Panel"]
+        RAI["ref-audio-init.js\nRef Audio Init"]
+        TRC["tts-ref-controller.js\nTTS Controller"]
+    end
+
+    IDX --> NAV
+    TB --> NAV
+    TB --> PS
+    OM --> NAV
+    OM --> DS
+    OM --> APL
+    OM --> CP2
+    AD --> NAV
+    AD --> DS
+    AD --> APL
+    AD --> CP2
+    ADM --> NAV
+    SV --> NAV
+
+    DS --> APL
+    DS --> QC
+    OM --> DUI
+    AD --> DUI
+    OM --> MC
+    AD --> MC
+    OM --> SRec
+    AD --> SRec
+    OM --> SVR
+</pre>
+
+<h2 id="session-recording">Session Recording</h2>
+<p><code>session_recorder.py</code> automatically records input/output data for all inference sessions, supporting subsequent playback and analysis.</p>
+<h3 id="session-directory-structure">Session Directory Structure</h3>
+<div class="codehilite"><pre><span></span><code><span class="n">data</span><span class="o">/</span><span class="n">sessions</span><span class="o">/</span><span class="p">{</span><span class="n">session_id</span><span class="p">}</span><span class="o">/</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">meta</span><span class="o">.</span><span class="n">json</span><span class="w">                </span><span class="c1"># Session metadata (type, creation time, config)</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">recording</span><span class="o">.</span><span class="n">json</span><span class="w">           </span><span class="c1"># Timeline recording data</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">user_audio</span><span class="o">/</span><span class="w">              </span><span class="c1"># User audio chunks (WAV)</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">user_frames</span><span class="o">/</span><span class="w">             </span><span class="c1"># User video frames (JPEG, Omni only)</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">ai_audio</span><span class="o">/</span><span class="w">                </span><span class="c1"># AI-generated audio (WAV)</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">user_images</span><span class="o">/</span><span class="w">             </span><span class="c1"># User-uploaded images (PNG)</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">merged_replay</span><span class="o">.</span><span class="n">wav</span><span class="w">        </span><span class="c1"># Merged replay audio (Duplex)</span>
+<span class="err">└──</span><span class="w"> </span><span class="n">merged_replay</span><span class="o">.</span><span class="n">mp4</span><span class="w">        </span><span class="c1"># Merged replay video (Omni)</span>
+</code></pre></div>
+
+<p>The recorder uses a <code>ThreadPoolExecutor</code> (4 threads) for asynchronous file writing without blocking inference.</p>
+<table>
+<thead>
+<tr>
+<th>Recorder</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DuplexSessionRecorder</code></td>
+<td>Duplex sessions, records timeline data for each chunk</td>
+</tr>
+<tr>
+<td><code>TurnBasedSessionRecorder</code></td>
+<td>Turn-based sessions, accumulates streaming chunks</td>
+</tr>
+</tbody>
+</table>
+<h2 id="session-cleanup">Session Cleanup</h2>
+<p><code>session_cleanup.py</code> periodically cleans up expired session data.</p>
+<h3 id="cleanup-strategy">Cleanup Strategy</h3>
+<ol>
+<li><strong>By time</strong> — delete sessions older than <code>retention_days</code></li>
+<li><strong>By capacity</strong> — when exceeding <code>max_storage_gb</code>, delete by LRU</li>
+</ol>
+<h3 id="execution-methods">Execution Methods</h3>
+<ul>
+<li><strong>Automatic</strong>: Gateway background task, runs every 24 hours</li>
+<li><strong>Manual</strong>: <code>python session_cleanup.py --data-dir data --retention-days 30 --max-storage-gb 50</code></li>
+</ul></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; Generated by build_docs.py</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

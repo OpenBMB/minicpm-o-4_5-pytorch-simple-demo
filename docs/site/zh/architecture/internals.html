@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>内部机制 - MiniCPM-o 4.5 文档</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">项目文档</span>
+    <a href="../../en/architecture/internals.html" class="lang-switch">English</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="../index.html">项目概述</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">架构概述</a></li>
+        <li><a href="../architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="../architecture/internals.html" class="active">内部机制</a></li>
+      </ul>
+    </li>
+    <li><a href="../gateway.html">Gateway 模块</a></li>
+    <li><a href="../worker.html">Worker 模块</a></li>
+    <li><a href="../schema.html">Schema</a></li>
+    <li><a href="../model.html">模型模块</a></li>
+    <li><a href="../compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">前端模块</span>
+      <ul class="nav-group-children">
+        <li><a href="../frontend/index.html">前端概述</a></li>
+        <li><a href="../frontend/pages.html">页面与路由</a></li>
+        <li><a href="../frontend/audio.html">音频处理</a></li>
+        <li><a href="../frontend/duplex-session.html">双工会话</a></li>
+        <li><a href="../frontend/components.html">UI 组件</a></li>
+      </ul>
+    </li>
+    <li><a href="../api.html">API 参考</a></li>
+    <li><a href="../deployment.html">配置与部署</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="_1">内部机制</h1>
+<h2 id="worker">Worker 启动与模型加载</h2>
+<p>Worker 基于 <strong>FastAPI</strong> 构建，每个 Worker 独占一张 GPU，通过独立端口提供 HTTP 和 WebSocket 服务。</p>
+<p>启动时在 <code>lifespan()</code> 异步上下文中调用 <code>load_model()</code>（同步操作，约 15s），通过 <code>asyncio.to_thread()</code> 避免阻塞事件循环。加载完成后：</p>
+<ol>
+<li>创建 <code>UnifiedProcessor</code> 实例（加载模型权重 + TTS）</li>
+<li><code>gc.collect()</code> + <code>torch.cuda.empty_cache()</code> 清理加载残留</li>
+<li>打印 Device Map（确认所有组件在 GPU 上）</li>
+<li>状态从 <code>LOADING</code> → <code>IDLE</code></li>
+</ol>
+<h2 id="fifo-worker">FIFO 队列与 Worker 通信机制</h2>
+<p>队列在 Gateway 侧的 <code>WorkerPool</code> 中实现，使用 <code>OrderedDict</code> 保证 FIFO 顺序。核心通信机制如下：</p>
+<pre class="mermaid">
+flowchart TB
+    subgraph enqueueFlow [入队流程]
+        Req["请求到达"] --> TryImmediate{"有空闲 Worker ?"}
+        TryImmediate -->|"有"| Assign["立即分配\nFuture.set_result(worker)\nWorker.mark_busy()"]
+        TryImmediate -->|"无"| CapCheck{"队列未满 ?"}
+        CapCheck -->|"满"| Reject["拒绝: QueueFullError"]
+        CapCheck -->|"未满"| AddQueue["创建 QueueEntry\n含 asyncio.Future\n加入 OrderedDict"]
+    end
+
+    subgraph dispatchFlow [调度流程 _dispatch_next]
+        Release["Worker 释放\nrelease_worker()"] --> Dispatch["_dispatch_next()"]
+        HealthOK["健康检查恢复 IDLE"] --> Dispatch
+        Cancel["取消排队项"] --> Dispatch
+        Dispatch --> PeekHead{"取队头 Entry"}
+        PeekHead --> FindWorker{"匹配空闲 Worker"}
+        FindWorker -->|"找到"| DoAssign["Worker.mark_busy()\nFuture.set_result(worker)\n移除队头"]
+        FindWorker -->|"无空闲"| Wait["等待下次触发"]
+        DoAssign --> PeekHead
+    end
+</pre>
+
+<p><strong>关键设计</strong>：</p>
+<ol>
+<li><strong>asyncio.Future 桥接</strong>：每个排队请求持有一个 <code>asyncio.Future</code>，Gateway 的 WebSocket handler 通过 <code>await future</code> 阻塞等待分配结果。Worker 空闲时 <code>_dispatch_next()</code> 调用 <code>future.set_result(worker)</code> 唤醒等待者。</li>
+<li><strong>单一调度点</strong>：所有 Worker 分配都通过 <code>_dispatch_next()</code> 进行，在 Worker 释放、排队取消、健康检查恢复后触发，消除并发竞争。</li>
+<li><strong>立即标记忙碌</strong>：分配 Worker 时立即调用 <code>mark_busy()</code> 将状态改为忙碌，防止同一 Worker 被重复分配给多个请求。</li>
+<li><strong>Gateway → Worker 通信</strong>：Gateway 通过 WebSocket（Streaming/Duplex）直连 Worker 的内部端口（22400+），不经过队列。队列只负责 Worker 分配，不参与数据传输。</li>
+</ol>
+<h2 id="_2">模块依赖拓扑</h2>
+<pre class="mermaid">
+graph LR
+    subgraph entryPoints [入口]
+        GW["gateway.py"]
+        WK["worker.py"]
+        SA["start_all.sh"]
+    end
+
+    subgraph gatewayMods [gateway_modules/]
+        WP["worker_pool.py"]
+        AR["app_registry.py"]
+        MD["models.py"]
+        RA["ref_audio_registry.py"]
+    end
+
+    subgraph coreMod [core/]
+        SC["schemas/"]
+        PR["processors/"]
+        CP["capabilities.py"]
+        FA["factory.py"]
+    end
+
+    subgraph modelMod [MiniCPMO45/]
+        CFG["configuration_minicpmo.py"]
+        MOD["modeling_minicpmo.py"]
+        UNI["modeling_minicpmo_unified.py"]
+        VIS["modeling_navit_siglip.py"]
+        PRC["processing_minicpmo.py"]
+        TOK["tokenization_minicpmo_fast.py"]
+        UTL["utils.py"]
+    end
+
+    subgraph support [辅助模块]
+        CONF["config.py"]
+        SR["session_recorder.py"]
+        SCLEAN["session_cleanup.py"]
+    end
+
+    SA --> GW
+    SA --> WK
+    GW --> WP
+    GW --> AR
+    GW --> MD
+    GW --> RA
+    GW --> CONF
+    GW --> SCLEAN
+
+    WK --> PR
+    WK --> SC
+    WK --> CONF
+    WK --> SR
+
+    PR --> MOD
+    PR --> UNI
+    FA --> PR
+
+    UNI --> MOD
+    UNI --> VIS
+    UNI --> UTL
+    MOD --> CFG
+    MOD --> VIS
+    MOD --> PRC
+    MOD --> TOK
+    MOD --> UTL
+
+    WP --> MD
+</pre>
+
+<h2 id="_3">模型推理管线</h2>
+<pre class="mermaid">
+graph LR
+    subgraph inputMod [多模态输入]
+        TXT["文本"]
+        IMG["图像"]
+        AUD["音频"]
+    end
+
+    subgraph encoders [编码器]
+        TOK2["Tokenizer\n(Qwen2Fast)"]
+        VE["SigLIP\nVision Encoder"]
+        RS["Resampler"]
+        AE["Whisper\nAudio Encoder"]
+        AP["Audio\nProjection"]
+    end
+
+    subgraph llmBlock [语言模型]
+        EMB["Embedding\n融合层"]
+        LLM["Qwen3\nLLM Backbone"]
+    end
+
+    subgraph outputMod [输出]
+        TXTOUT["文本输出"]
+        TTS["TTS\n(Token2Wav / CosyVoice2)"]
+        AUDOUT["音频输出\n(24kHz)"]
+    end
+
+    TXT --> TOK2 --> EMB
+    IMG --> VE --> RS --> EMB
+    AUD --> AE --> AP --> EMB
+    EMB --> LLM
+    LLM --> TXTOUT
+    LLM --> TTS --> AUDOUT
+</pre>
+
+<h2 id="worker_1">Worker 状态机</h2>
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> LOADING: 启动
+    LOADING --> IDLE: 模型加载完成
+    LOADING --> ERROR: 加载失败
+
+    IDLE --> BUSY_STREAMING: 分配 Streaming 任务
+    IDLE --> DUPLEX_ACTIVE: 分配 Duplex 任务
+
+    BUSY_STREAMING --> IDLE: 推理完成
+
+    DUPLEX_ACTIVE --> DUPLEX_PAUSED: pause（客户端暂停）
+    DUPLEX_PAUSED --> DUPLEX_ACTIVE: resume（客户端恢复）
+    DUPLEX_PAUSED --> IDLE: 超时释放
+    DUPLEX_ACTIVE --> IDLE: stop / cleanup
+
+    ERROR --> [*]
+</pre>
+
+<h2 id="_4">前端组件拓扑</h2>
+<pre class="mermaid">
+graph TB
+    subgraph pages [页面]
+        IDX["index.html\n首页"]
+        TB["turnbased.html\n轮次对话"]
+        OM["omni.html\nOmni 全双工"]
+        AD["audio_duplex.html\n音频全双工"]
+        ADM["admin.html\n管理面板"]
+        SV["session-viewer.html\n会话回放"]
+    end
+
+    subgraph sharedComp [shared/]
+        NAV["app-nav.js\n导航组件"]
+        PS["preset-selector.js\n预设选择器"]
+        SS["save-share.js\n保存分享"]
+    end
+
+    subgraph duplexLib [duplex/lib/]
+        DS["duplex-session.js\n会话管理"]
+        APL["audio-player.js\n音频播放"]
+        CP2["capture-processor.js\n音频采集"]
+        LU["lufs.js\n响度测量"]
+        MC["mixer-controller.js\n混音器"]
+        QC["queue-chimes.js\n排队音效"]
+        SRec["session-recorder.js\n录制器"]
+        SVR["session-video-recorder.js\n视频录制"]
+    end
+
+    subgraph duplexUI [duplex/ui/]
+        DUI["duplex-ui.js\n指标面板"]
+        RAI["ref-audio-init.js\n参考音频初始化"]
+        TRC["tts-ref-controller.js\nTTS 控制"]
+    end
+
+    IDX --> NAV
+    TB --> NAV
+    TB --> PS
+    OM --> NAV
+    OM --> DS
+    OM --> APL
+    OM --> CP2
+    AD --> NAV
+    AD --> DS
+    AD --> APL
+    AD --> CP2
+    ADM --> NAV
+    SV --> NAV
+
+    DS --> APL
+    DS --> QC
+    OM --> DUI
+    AD --> DUI
+    OM --> MC
+    AD --> MC
+    OM --> SRec
+    AD --> SRec
+    OM --> SVR
+</pre>
+
+<h2 id="_5">会话录制</h2>
+<p><code>session_recorder.py</code> 自动录制所有推理会话的输入输出数据，支持后续回放和分析。</p>
+<h3 id="_6">会话目录结构</h3>
+<div class="codehilite"><pre><span></span><code>data/sessions/{session_id}/
+├── meta.json                # 会话元数据（类型、创建时间、配置）
+├── recording.json           # Timeline 录制数据
+├── user_audio/              # 用户音频 chunks (WAV)
+├── user_frames/             # 用户视频帧 (JPEG，仅 Omni)
+├── ai_audio/                # AI 生成音频 (WAV)
+├── user_images/             # 用户上传图片 (PNG)
+├── merged_replay.wav        # 合并回放音频（Duplex）
+└── merged_replay.mp4        # 合并回放视频（Omni）
+</code></pre></div>
+
+<p>录制器使用 <code>ThreadPoolExecutor</code>（4 线程）异步写入文件，不阻塞推理。</p>
+<table>
+<thead>
+<tr>
+<th>录制器</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DuplexSessionRecorder</code></td>
+<td>Duplex 会话，记录每个 chunk 的 timeline 数据</td>
+</tr>
+<tr>
+<td><code>TurnBasedSessionRecorder</code></td>
+<td>Turn-based 会话，累积 streaming chunk</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">会话清理</h2>
+<p><code>session_cleanup.py</code> 定期清理过期会话数据。</p>
+<h3 id="_8">清理策略</h3>
+<ol>
+<li><strong>按时间</strong> — 删除超过 <code>retention_days</code> 的会话</li>
+<li><strong>按容量</strong> — 超过 <code>max_storage_gb</code> 时按 LRU 删除</li>
+</ol>
+<h3 id="_9">运行方式</h3>
+<ul>
+<li><strong>自动</strong>：Gateway 后台任务，每 24 小时执行</li>
+<li><strong>手动</strong>：<code>python session_cleanup.py --data-dir data --retention-days 30 --max-storage-gb 50</code></li>
+</ul></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

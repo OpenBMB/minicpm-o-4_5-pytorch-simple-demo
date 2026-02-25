@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Model - MiniCPM-o 4.5 Docs</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">Documentation</span>
+    <a href="../zh/model.html" class="lang-switch">中文</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="index.html">Overview</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Architecture</span>
+      <ul class="nav-group-children">
+        <li><a href="architecture/index.html">Overview</a></li>
+        <li><a href="architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="architecture/duplex.html">Duplex Mode</a></li>
+        <li><a href="architecture/internals.html">Internals</a></li>
+      </ul>
+    </li>
+    <li><a href="gateway.html">Gateway</a></li>
+    <li><a href="worker.html">Worker</a></li>
+    <li><a href="schema.html">Schema</a></li>
+    <li><a href="model.html" class="active">Model</a></li>
+    <li><a href="compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Frontend</span>
+      <ul class="nav-group-children">
+        <li><a href="frontend/index.html">Overview</a></li>
+        <li><a href="frontend/pages.html">Pages & Routes</a></li>
+        <li><a href="frontend/audio.html">Audio</a></li>
+        <li><a href="frontend/duplex-session.html">Duplex Session</a></li>
+        <li><a href="frontend/components.html">UI Components</a></li>
+      </ul>
+    </li>
+    <li><a href="api.html">API Reference</a></li>
+    <li><a href="deployment.html">Deployment</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="minicpmo45-model-module-details">MiniCPMO45 Model Module Details</h1>
+<p>MiniCPMO45 is the system's core model module, implementing multimodal large language model inference capabilities with support for text, image, and audio input, as well as text and audio output.</p>
+<h2 id="module-structure">Module Structure</h2>
+<div class="codehilite"><pre><span></span><code><span class="nx">MiniCPMO45</span><span class="o">/</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">configuration_minicpmo</span><span class="p">.</span><span class="nx">py</span><span class="w">       </span><span class="err">#</span><span class="w"> </span><span class="nx">Model</span><span class="w"> </span><span class="nx">configuration</span><span class="w"> </span><span class="nx">definitions</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">modeling_minicpmo</span><span class="p">.</span><span class="nx">py</span><span class="w">            </span><span class="err">#</span><span class="w"> </span><span class="nx">Main</span><span class="w"> </span><span class="nx">model</span><span class="w"> </span><span class="nx">implementation</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">modeling_minicpmo_unified</span><span class="p">.</span><span class="nx">py</span><span class="w">    </span><span class="err">#</span><span class="w"> </span><span class="nx">Unified</span><span class="w"> </span><span class="nx">model</span><span class="w"> </span><span class="p">(</span><span class="nx">supports</span><span class="w"> </span><span class="nx">hot</span><span class="o">-</span><span class="nx">switching</span><span class="p">)</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">modeling_navit_siglip</span><span class="p">.</span><span class="nx">py</span><span class="w">        </span><span class="err">#</span><span class="w"> </span><span class="nx">SigLIP</span><span class="w"> </span><span class="nx">vision</span><span class="w"> </span><span class="nx">encoder</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">processing_minicpmo</span><span class="p">.</span><span class="nx">py</span><span class="w">          </span><span class="err">#</span><span class="w"> </span><span class="nx">Multimodal</span><span class="w"> </span><span class="nx">processor</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">tokenization_minicpmo_fast</span><span class="p">.</span><span class="nx">py</span><span class="w">   </span><span class="err">#</span><span class="w"> </span><span class="nx">Fast</span><span class="w"> </span><span class="nx">tokenizer</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">utils</span><span class="p">.</span><span class="nx">py</span><span class="w">                        </span><span class="err">#</span><span class="w"> </span><span class="nx">Utility</span><span class="w"> </span><span class="nx">functions</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">tokenizer_config</span><span class="p">.</span><span class="nx">json</span><span class="w">           </span><span class="err">#</span><span class="w"> </span><span class="nx">Tokenizer</span><span class="w"> </span><span class="nx">configuration</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">generation_config</span><span class="p">.</span><span class="nx">json</span><span class="w">          </span><span class="err">#</span><span class="w"> </span><span class="nx">Generation</span><span class="w"> </span><span class="nx">configuration</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">preprocessor_config</span><span class="p">.</span><span class="nx">json</span><span class="w">        </span><span class="err">#</span><span class="w"> </span><span class="nx">Preprocessor</span><span class="w"> </span><span class="nx">configuration</span>
+<span class="err">├──</span><span class="w"> </span><span class="nx">special_tokens_map</span><span class="p">.</span><span class="nx">json</span><span class="w">         </span><span class="err">#</span><span class="w"> </span><span class="nx">Special</span><span class="w"> </span><span class="nx">token</span><span class="w"> </span><span class="nx">mapping</span>
+<span class="err">└──</span><span class="w"> </span><span class="nx">added_tokens</span><span class="p">.</span><span class="nx">json</span><span class="w">               </span><span class="err">#</span><span class="w"> </span><span class="nx">Extended</span><span class="w"> </span><span class="nx">tokens</span>
+</code></pre></div>
+
+<h2 id="multimodal-architecture-overview">Multimodal Architecture Overview</h2>
+<pre class="mermaid">
+graph TB
+    subgraph inputLayer [Input Layer]
+        TextIn["Text Input"]
+        ImageIn["Image Input"]
+        AudioIn["Audio Input\n(16kHz)"]
+    end
+
+    subgraph encoderLayer [Encoder Layer]
+        Tokenizer["Qwen2 Tokenizer"]
+        VPM["SigLIP Vision Encoder\n(ViT)"]
+        Resampler["Resampler\n(Perceiver)"]
+        APM["Whisper Audio Encoder"]
+        AudioProj["Audio Projection\nMultiModalProjector"]
+    end
+
+    subgraph fusionLayer [Fusion Layer]
+        Embedding["Multimodal Embedding Fusion"]
+    end
+
+    subgraph llmLayer [Language Model]
+        LLM["Qwen3 LLM Backbone\n(Causal LM)"]
+    end
+
+    subgraph outputLayer [Output Layer]
+        TextOut["Text Output"]
+        TTSBlock["TTS Module"]
+        T2W["Token2Wav"]
+        AudioOut["Audio Output\n(24kHz)"]
+    end
+
+    TextIn --> Tokenizer --> Embedding
+    ImageIn --> VPM --> Resampler --> Embedding
+    AudioIn --> APM --> AudioProj --> Embedding
+    Embedding --> LLM
+    LLM --> TextOut
+    LLM --> TTSBlock
+    TTSBlock --> T2W --> AudioOut
+</pre>
+
+<hr />
+<h2 id="configuration_minicpmopy-model-configuration">configuration_minicpmo.py — Model Configuration</h2>
+<h3 id="minicpmoconfig">MiniCPMOConfig</h3>
+<p>Inherits from <code>Qwen3Config</code> and defines the complete multimodal model configuration.</p>
+<p><strong>Sub-configurations</strong>:
+- <code>vision_config: SiglipVisionConfig</code> — Vision encoder configuration
+- <code>audio_config: WhisperConfig</code> — Audio encoder configuration
+- <code>tts_config: MiniCPMTTSConfig</code> — TTS module configuration
+- <code>slice_config: MiniCPMVSliceConfig</code> — Image slicing configuration</p>
+<p><strong>Key parameters</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>query_num</code></td>
+<td>64</td>
+<td>Number of Resampler queries</td>
+</tr>
+<tr>
+<td><code>image_size</code></td>
+<td>448</td>
+<td>Default image size</td>
+</tr>
+<tr>
+<td><code>drop_vision_last_layer</code></td>
+<td>True</td>
+<td>Drop the last layer of the vision encoder</td>
+</tr>
+<tr>
+<td><code>vision_batch_size</code></td>
+<td>16</td>
+<td>Vision batch size</td>
+</tr>
+<tr>
+<td><code>audio_pool_step</code></td>
+<td>5</td>
+<td>Audio feature pooling step</td>
+</tr>
+<tr>
+<td><code>audio_chunk_length</code></td>
+<td>1.0</td>
+<td>Audio chunk length (seconds)</td>
+</tr>
+<tr>
+<td><code>init_vision</code></td>
+<td>True</td>
+<td>Initialize vision encoder</td>
+</tr>
+<tr>
+<td><code>init_audio</code></td>
+<td>True</td>
+<td>Initialize audio encoder</td>
+</tr>
+<tr>
+<td><code>init_tts</code></td>
+<td>True</td>
+<td>Initialize TTS module</td>
+</tr>
+</tbody>
+</table>
+<h3 id="minicpmttsconfig">MiniCPMTTSConfig</h3>
+<p>TTS module-specific configuration.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llm_dim</code></td>
+<td>2560</td>
+<td>LLM projection dimension</td>
+</tr>
+<tr>
+<td><code>hidden_size</code></td>
+<td>768</td>
+<td>TTS hidden layer size</td>
+</tr>
+<tr>
+<td><code>num_hidden_layers</code></td>
+<td>20</td>
+<td>Number of TTS layers</td>
+</tr>
+<tr>
+<td><code>num_attention_heads</code></td>
+<td>12</td>
+<td>Number of TTS attention heads</td>
+</tr>
+<tr>
+<td><code>num_audio_tokens</code></td>
+<td>4097</td>
+<td>Number of audio tokens</td>
+</tr>
+<tr>
+<td><code>num_text_tokens</code></td>
+<td>21178</td>
+<td>Number of text tokens</td>
+</tr>
+<tr>
+<td><code>streaming</code></td>
+<td>True</td>
+<td>Streaming mode</td>
+</tr>
+<tr>
+<td><code>attention_type</code></td>
+<td><code>"sliding_recompute"</code></td>
+<td>Attention type</td>
+</tr>
+<tr>
+<td><code>window_size</code></td>
+<td>2</td>
+<td>Sliding window size</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="modeling_navit_siglippy-vision-encoder">modeling_navit_siglip.py — Vision Encoder</h2>
+<h3 id="siglip-vision-transformer">SigLIP Vision Transformer</h3>
+<p>A <strong>SigLIP</strong>-based vision encoder for processing image input.</p>
+<h4 id="architecture-components">Architecture Components</h4>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Class</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Embedding layer</td>
+<td><code>SiglipVisionEmbeddings</code></td>
+<td>Patch Embedding (Conv2d) + positional encoding</td>
+</tr>
+<tr>
+<td>Encoder</td>
+<td><code>SiglipEncoder</code></td>
+<td>Multi-layer Transformer encoder</td>
+</tr>
+<tr>
+<td>Attention</td>
+<td><code>SiglipAttention</code></td>
+<td>Multi-head self-attention (supports Flash Attention 2)</td>
+</tr>
+<tr>
+<td>FFN</td>
+<td><code>SiglipMLP</code></td>
+<td>Feed-forward network</td>
+</tr>
+<tr>
+<td>Post-processing</td>
+<td><code>post_layernorm</code></td>
+<td>Layer normalization</td>
+</tr>
+</tbody>
+</table>
+<h4 id="features">Features</h4>
+<ul>
+<li>Flash Attention 2 acceleration support</li>
+<li>Dynamic patch attention mask for handling different image sizes</li>
+<li>Batch processing of multi-size images via <code>tgt_sizes</code></li>
+</ul>
+<hr />
+<h2 id="modeling_minicpmopy-main-model-implementation">modeling_minicpmo.py — Main Model Implementation</h2>
+<h3 id="minicpmo-class">MiniCPMO Class</h3>
+<p>Inherits from <code>MiniCPMOPreTrainedModel</code> (based on <code>Qwen3PreTrainedModel</code>) and implements complete multimodal inference.</p>
+<h4 id="model-components">Model Components</h4>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llm</code></td>
+<td><code>Qwen3ForCausalLM</code></td>
+<td>Language model backbone</td>
+</tr>
+<tr>
+<td><code>vpm</code></td>
+<td><code>SiglipVisionTransformer</code></td>
+<td>Vision encoder</td>
+</tr>
+<tr>
+<td><code>resampler</code></td>
+<td><code>Resampler</code></td>
+<td>Vision feature resampling (Perceiver architecture)</td>
+</tr>
+<tr>
+<td><code>apm</code></td>
+<td><code>MiniCPMWhisperEncoder</code></td>
+<td>Audio encoder (Whisper)</td>
+</tr>
+<tr>
+<td><code>audio_projection_layer</code></td>
+<td><code>MultiModalProjector</code></td>
+<td>Audio feature projection</td>
+</tr>
+<tr>
+<td><code>tts</code></td>
+<td><code>MiniCPMTTS</code></td>
+<td>TTS generator</td>
+</tr>
+</tbody>
+</table>
+<h4 id="core-methods">Core Methods</h4>
+<p><strong>Vision processing</strong>:
+- <code>get_vision_embedding(pixel_values, tgt_sizes)</code> — Image encoding + Resampler mapping</p>
+<p><strong>Audio processing</strong>:
+- <code>get_audio_embedding(audio_features, audio_feature_lens)</code> — Whisper encoding + AvgPool1d + projection</p>
+<p><strong>Inference methods</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>forward(input_ids, pixel_values, audio_features, ...)</code></td>
+<td>Forward pass (supports KV Cache)</td>
+</tr>
+<tr>
+<td><code>streaming_prefill(session_id, msgs, tokenizer, ...)</code></td>
+<td>Streaming prefill (supports KV Cache reuse)</td>
+</tr>
+<tr>
+<td><code>streaming_generate(session_id, tokenizer, ...)</code></td>
+<td>Streaming generation (Generator)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="minicpmoduplex-class">MiniCPMODuplex Class</h3>
+<p>A specialized duplex inference class that supports simultaneous listening and speaking.</p>
+<h4 id="key-methods">Key Methods</h4>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>streaming_prefill(audio_features, frames, ...)</code></td>
+<td>Prefill audio chunks and video frames</td>
+</tr>
+<tr>
+<td><code>streaming_generate(...)</code></td>
+<td>Generate one step (decide listen or speak)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="sliding-window-strategies">Sliding Window Strategies</h4>
+<table>
+<thead>
+<tr>
+<th>Strategy</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>basic</code></td>
+<td>Basic sliding window — retains the most recent N tokens</td>
+</tr>
+<tr>
+<td><code>context</code></td>
+<td>Context sliding window — retains system prompt + most recent N tokens</td>
+</tr>
+</tbody>
+</table>
+<h3 id="minicpmtts-class">MiniCPMTTS Class</h3>
+<p>A TTS generator that converts LLM output text tokens into audio tokens.</p>
+<h4 id="architecture">Architecture</h4>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>emb_text</code></td>
+<td>Text embedding layer</td>
+</tr>
+<tr>
+<td><code>emb_code</code></td>
+<td>Audio codebook embedding</td>
+</tr>
+<tr>
+<td><code>model</code></td>
+<td>LlamaModel backbone</td>
+</tr>
+<tr>
+<td><code>head_code</code></td>
+<td>Audio token prediction head</td>
+</tr>
+</tbody>
+</table>
+<h4 id="attention-modes">Attention Modes</h4>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>full_attention</code></td>
+<td>Full attention (highest accuracy, highest memory)</td>
+</tr>
+<tr>
+<td><code>sliding_window</code></td>
+<td>Sliding window (balanced approach)</td>
+</tr>
+<tr>
+<td><code>sliding_recompute</code></td>
+<td>Sliding recompute (default, balances accuracy and efficiency)</td>
+</tr>
+<tr>
+<td><code>reindex</code></td>
+<td>RoPE reindexing (experimental)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="modeling_minicpmo_unifiedpy-unified-model">modeling_minicpmo_unified.py — Unified Model</h2>
+<h3 id="design-goals">Design Goals</h3>
+<p>The unified model merges Streaming and Duplex modes into a single model instance, enabling millisecond-level mode switching (&lt; 0.1ms) and avoiding redundant model weight loading.</p>
+<h3 id="minicpmo-unified-version">MiniCPMO (Unified Version)</h3>
+<p>Inherits from the standard <code>MiniCPMO</code> and composes <code>DuplexCapability</code>.</p>
+<pre class="mermaid">
+graph LR
+    UModel["MiniCPMO\n(Unified Entry)"]
+    StreamMode["Streaming Mode"]
+    DuplexCap["DuplexCapability\n(Duplex Capability)"]
+
+    UModel -->|"set_mode(STREAMING)"| StreamMode
+    UModel -->|"set_mode(DUPLEX)"| DuplexCap
+</pre>
+
+<h4 id="core-methods_1">Core Methods</h4>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>init_unified(preload_both_tts)</code></td>
+<td>Initialize unified model, preload dual TTS</td>
+</tr>
+<tr>
+<td><code>set_mode(mode)</code></td>
+<td>Switch mode (auto-switches TTS tokenizer, clears KV Cache)</td>
+</tr>
+<tr>
+<td><code>streaming_prefill(...)</code> / <code>streaming_generate(...)</code></td>
+<td>Streaming inference</td>
+</tr>
+<tr>
+<td><code>duplex_prepare(...)</code> / <code>duplex_prefill(...)</code> / <code>duplex_generate(...)</code></td>
+<td>Online duplex inference</td>
+</tr>
+</tbody>
+</table>
+<h3 id="duplexcapability">DuplexCapability</h3>
+<p>A composition-based duplex capability component that does not inherit from the model but shares model parameters via reference.</p>
+<h4 id="encapsulated-logic">Encapsulated Logic</h4>
+<ul>
+<li>Duplex system prompt handling</li>
+<li>Audio/video prefill</li>
+<li>Listen/Speak decision generation</li>
+<li>Streaming decoding via <code>StreamDecoder</code></li>
+</ul>
+<hr />
+<h2 id="processing_minicpmopy-multimodal-processor">processing_minicpmo.py — Multimodal Processor</h2>
+<h3 id="minicpmoprocessor">MiniCPMOProcessor</h3>
+<p>A unified multimodal preprocessor that combines image, audio, and text processing.</p>
+<h4 id="sub-processors">Sub-processors</h4>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Class</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Image</td>
+<td><code>MiniCPMVImageProcessor</code></td>
+<td>Image slicing, preprocessing, padding</td>
+</tr>
+<tr>
+<td>Audio</td>
+<td><code>MiniCPMAAudioProcessor</code></td>
+<td>Mel spectrogram extraction</td>
+</tr>
+<tr>
+<td>Text</td>
+<td><code>MiniCPMOTokenizerFast</code></td>
+<td>Tokenization</td>
+</tr>
+</tbody>
+</table>
+<h4 id="minicpmvimageprocessor">MiniCPMVImageProcessor</h4>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>slice_image(image, max_slice_nums)</code></td>
+<td>Large image slicing (max 9 slices)</td>
+</tr>
+<tr>
+<td><code>get_sliced_grid(image_size, max_slice_nums)</code></td>
+<td>Compute optimal slicing grid</td>
+</tr>
+<tr>
+<td><code>preprocess(images, ...)</code></td>
+<td>Image preprocessing (normalization, resize)</td>
+</tr>
+</tbody>
+</table>
+<h4 id="minicpmaaudioprocessor">MiniCPMAAudioProcessor</h4>
+<p>Inherits from <code>WhisperFeatureExtractor</code> and extracts Mel spectrograms.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>__call__(audio, sampling_rate, ...)</code></td>
+<td>Extract audio features</td>
+</tr>
+<tr>
+<td><code>StreamingMelProcessorExact</code></td>
+<td>Exact streaming Mel processor</td>
+</tr>
+</tbody>
+</table>
+<h4 id="unified-entry-point">Unified Entry Point</h4>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>__call__(text, images, audios, ...)</code></td>
+<td>Unified multimodal input processing</td>
+</tr>
+<tr>
+<td><code>process_image(images, ...)</code></td>
+<td>Image batch processing</td>
+</tr>
+<tr>
+<td><code>process_audio(audios, ...)</code></td>
+<td>Audio batch processing</td>
+</tr>
+<tr>
+<td><code>process_audio_streaming(audio_chunk, ...)</code></td>
+<td>Streaming audio processing</td>
+</tr>
+<tr>
+<td><code>_convert_omni_to_inputs(...)</code></td>
+<td>Omni mode input conversion</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="tokenization_minicpmo_fastpy-fast-tokenizer">tokenization_minicpmo_fast.py — Fast Tokenizer</h2>
+<h3 id="minicpmotokenizerfast">MiniCPMOTokenizerFast</h3>
+<p>Inherits from <code>Qwen2TokenizerFast</code> with extended multimodal special tokens.</p>
+<h4 id="special-tokens">Special Tokens</h4>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Token</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Image</td>
+<td><code>&lt;image&gt;</code>, <code>&lt;/image&gt;</code></td>
+<td>Image content boundaries</td>
+</tr>
+<tr>
+<td>Image slice</td>
+<td><code>&lt;slice&gt;</code>, <code>&lt;/slice&gt;</code></td>
+<td>Image slice boundaries</td>
+</tr>
+<tr>
+<td>Audio</td>
+<td><code>&lt;|audio_start|&gt;</code>, <code>&lt;|audio_end|&gt;</code></td>
+<td>Audio content boundaries</td>
+</tr>
+<tr>
+<td>TTS</td>
+<td><code>&lt;|tts_bos|&gt;</code>, <code>&lt;|tts_eos|&gt;</code></td>
+<td>TTS generation boundaries</td>
+</tr>
+<tr>
+<td>Duplex</td>
+<td><code>&lt;|listen|&gt;</code>, <code>&lt;|speak|&gt;</code></td>
+<td>Duplex mode action markers</td>
+</tr>
+</tbody>
+</table>
+<p>These special tokens provide corresponding token IDs through property methods, used for conditional logic and generation control during model inference.</p>
+<hr />
+<h2 id="utilspy-utility-functions">utils.py — Utility Functions</h2>
+<h3 id="chunkprefillchunkgenerate">ChunkPrefillChunkGenerate</h3>
+<p>Chunked prefill and generator with support for:
+- Repetition penalty
+- Length penalty
+- Forbidden token filtering
+- Chunked prefill (reduces memory peaks)</p>
+<h3 id="streamdecoder">StreamDecoder</h3>
+<p>A streaming decoder that manages the token stream in duplex mode.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enforce_window(max_len)</code></td>
+<td>Basic sliding window — truncates sequences exceeding max_len</td>
+</tr>
+<tr>
+<td><code>enforce_window_with_context(max_len, context_len)</code></td>
+<td>Context-preserving sliding window</td>
+</tr>
+<tr>
+<td><code>register_unit_start()</code> / <code>register_unit_end()</code></td>
+<td>Register generation unit boundaries</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ttsstreaminggenerator">TTSStreamingGenerator</h3>
+<p>A streaming TTS generator that manages streaming inference for the TTS model.</p>
+<p>Supports multiple attention modes:
+- <code>full_attention</code> — Full attention
+- <code>sliding_window</code> — Sliding window
+- <code>sliding_recompute</code> — Sliding recompute (default)
+- <code>reindex</code> — RoPE reindexing</p>
+<h3 id="speculativesnapshot">SpeculativeSnapshot</h3>
+<p>A VAD speculative snapshot tool for saving and restoring inference state (KV Cache, Mel processor state), supporting speculative pre-generation and rollback.</p></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; Generated by build_docs.py</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

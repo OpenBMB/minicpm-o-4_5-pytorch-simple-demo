@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Deployment - MiniCPM-o 4.5 Docs</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">Documentation</span>
+    <a href="../zh/deployment.html" class="lang-switch">中文</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="index.html">Overview</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Architecture</span>
+      <ul class="nav-group-children">
+        <li><a href="architecture/index.html">Overview</a></li>
+        <li><a href="architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="architecture/duplex.html">Duplex Mode</a></li>
+        <li><a href="architecture/internals.html">Internals</a></li>
+      </ul>
+    </li>
+    <li><a href="gateway.html">Gateway</a></li>
+    <li><a href="worker.html">Worker</a></li>
+    <li><a href="schema.html">Schema</a></li>
+    <li><a href="model.html">Model</a></li>
+    <li><a href="compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Frontend</span>
+      <ul class="nav-group-children">
+        <li><a href="frontend/index.html">Overview</a></li>
+        <li><a href="frontend/pages.html">Pages & Routes</a></li>
+        <li><a href="frontend/audio.html">Audio</a></li>
+        <li><a href="frontend/duplex-session.html">Duplex Session</a></li>
+        <li><a href="frontend/components.html">UI Components</a></li>
+      </ul>
+    </li>
+    <li><a href="api.html">API Reference</a></li>
+    <li><a href="deployment.html" class="active">Deployment</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="configuration-deployment">Configuration &amp; Deployment</h1>
+<h2 id="system-requirements">System Requirements</h2>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Minimum</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPU</td>
+<td>NVIDIA GPU with VRAM &gt; 28GB</td>
+</tr>
+<tr>
+<td>OS</td>
+<td>Linux</td>
+</tr>
+<tr>
+<td>Python</td>
+<td>3.10</td>
+</tr>
+<tr>
+<td>CUDA</td>
+<td>Compatible with PyTorch 2.8.0</td>
+</tr>
+<tr>
+<td>FFmpeg</td>
+<td>For video frame extraction and inference result visualization</td>
+</tr>
+</tbody>
+</table>
+<h3 id="resource-consumption-reference">Resource Consumption Reference</h3>
+<table>
+<thead>
+<tr>
+<th>Resource</th>
+<th>Token2Wav (Default)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VRAM (per Worker, after initialization)</td>
+<td>~21.5 GB</td>
+</tr>
+<tr>
+<td>Model loading time</td>
+<td>~16s</td>
+</tr>
+<tr>
+<td>Mode switching latency</td>
+<td>&lt; 0.1ms</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>torch.compile mode incurs an additional ~60s compilation time on first inference.</p>
+</blockquote>
+<hr />
+<h2 id="dependency-installation">Dependency Installation</h2>
+<h3 id="using-installsh-recommended">Using install.sh (Recommended)</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. Install Python 3.10 (miniconda recommended)</span>
+mkdir<span class="w"> </span>-p<span class="w"> </span>./miniconda3_install_tmp
+wget<span class="w"> </span>https://repo.anaconda.com/miniconda/Miniconda3-py310_25.11.1-1-Linux-x86_64.sh<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-O<span class="w"> </span>./miniconda3_install_tmp/miniconda.sh
+bash<span class="w"> </span>./miniconda3_install_tmp/miniconda.sh<span class="w"> </span>-b<span class="w"> </span>-u<span class="w"> </span>-p<span class="w"> </span>./miniconda3
+<span class="nb">source</span><span class="w"> </span>./miniconda3/bin/activate
+
+<span class="c1"># 2. One-command installation</span>
+bash<span class="w"> </span>./install.sh
+</code></pre></div>
+
+<p><code>install.sh</code> automatically performs the following steps:
+1. Creates a Python venv virtual environment at <code>.venv/base</code>
+2. Installs PyTorch 2.8.0 + torchaudio
+3. Installs all dependencies from <code>requirements.txt</code>
+4. Verifies the installation</p>
+<h3 id="manual-installation">Manual Installation</h3>
+<div class="codehilite"><pre><span></span><code><span class="nb">source</span><span class="w"> </span>./miniconda3/bin/activate
+python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv/base
+<span class="nb">source</span><span class="w"> </span>.venv/base/bin/activate
+
+pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;torch==2.8.0&quot;</span><span class="w"> </span><span class="s2">&quot;torchaudio==2.8.0&quot;</span>
+pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+</code></pre></div>
+
+<h3 id="python-dependency-list">Python Dependency List</h3>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Package</th>
+<th>Version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Core ML</strong></td>
+<td>transformers</td>
+<td>4.51.0</td>
+</tr>
+<tr>
+<td></td>
+<td>accelerate</td>
+<td>1.12.0</td>
+</tr>
+<tr>
+<td></td>
+<td>safetensors</td>
+<td>&gt;= 0.7.0</td>
+</tr>
+<tr>
+<td><strong>MiniCPM-o</strong></td>
+<td>minicpmo-utils[all]</td>
+<td>&gt;= 1.0.5</td>
+</tr>
+<tr>
+<td><strong>Web Service</strong></td>
+<td>fastapi</td>
+<td>&gt;= 0.128.0</td>
+</tr>
+<tr>
+<td></td>
+<td>uvicorn</td>
+<td>&gt;= 0.40.0</td>
+</tr>
+<tr>
+<td></td>
+<td>httpx</td>
+<td>&gt;= 0.28.0</td>
+</tr>
+<tr>
+<td></td>
+<td>websockets</td>
+<td>&gt;= 16.0</td>
+</tr>
+<tr>
+<td></td>
+<td>python-multipart</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>Data</strong></td>
+<td>pydantic</td>
+<td>&gt;= 2.11.0</td>
+</tr>
+<tr>
+<td></td>
+<td>numpy</td>
+<td>&gt;= 2.2.0</td>
+</tr>
+<tr>
+<td><strong>Utilities</strong></td>
+<td>tqdm</td>
+<td>&gt;= 4.67.0</td>
+</tr>
+<tr>
+<td><strong>Testing</strong></td>
+<td>pytest</td>
+<td>&gt;= 9.0.0</td>
+</tr>
+<tr>
+<td></td>
+<td>pytest-asyncio</td>
+<td>&gt;= 1.3.0</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="configuration">Configuration</h2>
+<h3 id="configjson">config.json</h3>
+<p>All configuration is centralized in the <code>config.json</code> file at the project root. Copy from <code>config.example.json</code> for first-time setup:</p>
+<div class="codehilite"><pre><span></span><code>cp<span class="w"> </span>config.example.json<span class="w"> </span>config.json
+</code></pre></div>
+
+<p><code>config.json</code> is listed in <code>.gitignore</code> and will not be committed.</p>
+<h3 id="configuration-priority">Configuration Priority</h3>
+<div class="codehilite"><pre><span></span><code>CLI arguments &gt; config.json &gt; Pydantic defaults
+</code></pre></div>
+
+<h3 id="complete-field-reference">Complete Field Reference</h3>
+<h4 id="model-model-configuration">model — Model Configuration</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>model_path</code></td>
+<td>str</td>
+<td><em>(required)</em></td>
+<td>HuggingFace format model directory or Hub ID</td>
+</tr>
+<tr>
+<td><code>pt_path</code></td>
+<td>str</td>
+<td>null</td>
+<td>Optional .pt weight override path</td>
+</tr>
+<tr>
+<td><code>attn_implementation</code></td>
+<td>str</td>
+<td><code>"auto"</code></td>
+<td>Attention implementation method</td>
+</tr>
+</tbody>
+</table>
+<h4 id="audio-audio-configuration">audio — Audio Configuration</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ref_audio_path</code></td>
+<td>str</td>
+<td><code>assets/ref_audio/ref_minicpm_signature.wav</code></td>
+<td>Default TTS reference audio path</td>
+</tr>
+<tr>
+<td><code>playback_delay_ms</code></td>
+<td>int</td>
+<td>200</td>
+<td>Frontend audio playback delay (ms); higher values are smoother but add latency</td>
+</tr>
+</tbody>
+</table>
+<h4 id="service-service-configuration">service — Service Configuration</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gateway_port</code></td>
+<td>int</td>
+<td>8006</td>
+<td>Gateway listening port</td>
+</tr>
+<tr>
+<td><code>worker_base_port</code></td>
+<td>int</td>
+<td>22400</td>
+<td>Worker base port (Worker N = base + N)</td>
+</tr>
+<tr>
+<td><code>max_queue_size</code></td>
+<td>int</td>
+<td>1000</td>
+<td>Maximum queued requests</td>
+</tr>
+<tr>
+<td><code>request_timeout</code></td>
+<td>float</td>
+<td>300.0</td>
+<td>Request timeout (seconds)</td>
+</tr>
+<tr>
+<td><code>compile</code></td>
+<td>bool</td>
+<td>false</td>
+<td>Enable torch.compile acceleration</td>
+</tr>
+<tr>
+<td><code>data_dir</code></td>
+<td>str</td>
+<td><code>"data"</code></td>
+<td>Data storage directory</td>
+</tr>
+<tr>
+<td><code>eta_chat_s</code></td>
+<td>float</td>
+<td>15.0</td>
+<td>Chat task baseline ETA (seconds)</td>
+</tr>
+<tr>
+<td><code>eta_streaming_s</code></td>
+<td>float</td>
+<td>20.0</td>
+<td>Streaming task baseline ETA (seconds)</td>
+</tr>
+<tr>
+<td><code>eta_audio_duplex_s</code></td>
+<td>float</td>
+<td>120.0</td>
+<td>Audio Duplex task baseline ETA (seconds)</td>
+</tr>
+<tr>
+<td><code>eta_omni_duplex_s</code></td>
+<td>float</td>
+<td>90.0</td>
+<td>Omni Duplex task baseline ETA (seconds)</td>
+</tr>
+<tr>
+<td><code>eta_ema_alpha</code></td>
+<td>float</td>
+<td>0.3</td>
+<td>ETA EMA smoothing coefficient</td>
+</tr>
+<tr>
+<td><code>eta_ema_min_samples</code></td>
+<td>int</td>
+<td>3</td>
+<td>ETA EMA minimum sample count</td>
+</tr>
+</tbody>
+</table>
+<h4 id="duplex-duplex-configuration">duplex — Duplex Configuration</h4>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pause_timeout</code></td>
+<td>float</td>
+<td>60.0</td>
+<td>Duplex pause timeout (seconds); the Worker is automatically released after timeout</td>
+</tr>
+</tbody>
+</table>
+<h3 id="minimal-configuration">Minimal Configuration</h3>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;model_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;openbmb/MiniCPM-o-4_5&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="full-configuration-example">Full Configuration Example</h3>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;model_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;openbmb/MiniCPM-o-4_5&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;pt_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;attn_implementation&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;auto&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;audio&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;ref_audio_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;assets/ref_audio/ref_minicpm_signature.wav&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;playback_delay_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;chat_vocoder&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;token2wav&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;service&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;gateway_port&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">8006</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;worker_base_port&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">22400</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;max_queue_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;request_timeout&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">300.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;compile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;data_dir&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;data&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;eta_chat_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">15.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;eta_streaming_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">20.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;eta_audio_duplex_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">120.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;eta_omni_duplex_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">90.0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;eta_ema_alpha&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;eta_ema_min_samples&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;duplex&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;pause_timeout&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">60.0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<hr />
+<h2 id="attention-backend">Attention Backend</h2>
+<p>Controls the Attention implementation used for model inference, configured via the <code>attn_implementation</code> field.</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Behavior</th>
+<th>Use Case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>"auto"</code> (default)</td>
+<td>Detects flash-attn → <code>flash_attention_2</code>; otherwise → <code>sdpa</code></td>
+<td>Recommended</td>
+</tr>
+<tr>
+<td><code>"flash_attention_2"</code></td>
+<td>Forces Flash Attention 2</td>
+<td>When flash-attn is confirmed installed</td>
+</tr>
+<tr>
+<td><code>"sdpa"</code></td>
+<td>PyTorch built-in SDPA</td>
+<td>When flash-attn cannot be compiled</td>
+</tr>
+<tr>
+<td><code>"eager"</code></td>
+<td>Naive Attention</td>
+<td>Debug only</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Performance Comparison</strong> (A100): <code>flash_attention_2</code> is ~5-15% faster than <code>sdpa</code>; <code>sdpa</code> is several times faster than <code>eager</code>.</p>
+<p><strong>Note</strong>: The Audio (Whisper) submodule always uses SDPA (incompatible with flash_attention_2). Vision / LLM / TTS follow the configuration.</p>
+<hr />
+<h2 id="starting-stopping">Starting &amp; Stopping</h2>
+<h3 id="one-command-start-start_allsh">One-Command Start (start_all.sh)</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Use all available GPUs</span>
+<span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span>,1,2,3<span class="w"> </span>bash<span class="w"> </span>start_all.sh
+
+<span class="c1"># Specify GPUs</span>
+<span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span>,1<span class="w"> </span>bash<span class="w"> </span>start_all.sh
+
+<span class="c1"># Enable torch.compile (experimental)</span>
+bash<span class="w"> </span>start_all.sh<span class="w"> </span>--compile
+
+<span class="c1"># Downgrade to HTTP (not recommended; microphone/camera APIs require HTTPS)</span>
+bash<span class="w"> </span>start_all.sh<span class="w"> </span>--http
+</code></pre></div>
+
+<p><code>start_all.sh</code> execution flow:
+1. Parses command-line arguments (<code>--http</code>, <code>--compile</code>)
+2. Reads port configuration from <code>config.py</code>
+3. Detects the number of available GPUs
+4. Launches one Worker process per GPU (<code>nohup</code>)
+5. Waits for all Workers to pass health checks
+6. Starts the Gateway process
+7. Outputs the access URL and log paths</p>
+<h3 id="manual-start">Manual Start</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Worker (one per GPU)</span>
+<span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>worker.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--worker-index<span class="w"> </span><span class="m">0</span><span class="w"> </span>--gpu-id<span class="w"> </span><span class="m">0</span>
+
+<span class="c1"># Gateway</span>
+<span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>gateway.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--port<span class="w"> </span><span class="m">8006</span><span class="w"> </span>--workers<span class="w"> </span>localhost:22400
+</code></pre></div>
+
+<h3 id="cli-arguments">CLI Arguments</h3>
+<p><strong>Worker Arguments</strong>:</p>
+<div class="codehilite"><pre><span></span><code>python<span class="w"> </span>worker.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--model-path<span class="w"> </span>/path/to/model<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--pt-path<span class="w"> </span>/path/to/weights.pt<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--ref-audio-path<span class="w"> </span>/path/to/ref.wav<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--worker-index<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--gpu-id<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--compile
+</code></pre></div>
+
+<p><strong>Gateway Arguments</strong>:</p>
+<div class="codehilite"><pre><span></span><code>python<span class="w"> </span>gateway.py<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--port<span class="w"> </span><span class="m">8006</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--workers<span class="w"> </span>localhost:22400,localhost:22401<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--http
+</code></pre></div>
+
+<h3 id="stopping-the-service">Stopping the Service</h3>
+<div class="codehilite"><pre><span></span><code>pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;gateway.py|worker.py&quot;</span>
+</code></pre></div>
+
+<hr />
+<h2 id="model-download">Model Download</h2>
+<h3 id="automatic-download-default">Automatic Download (Default)</h3>
+<p>When <code>model_path</code> is set to <code>openbmb/MiniCPM-o-4_5</code>, the model is automatically downloaded from HuggingFace on first startup.</p>
+<h3 id="manual-download">Manual Download</h3>
+<p><strong>HuggingFace CLI</strong>:</p>
+<div class="codehilite"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span>huggingface_hub
+huggingface-cli<span class="w"> </span>download<span class="w"> </span>openbmb/MiniCPM-o-4_5<span class="w"> </span>--local-dir<span class="w"> </span>/path/to/MiniCPM-o-4_5
+</code></pre></div>
+
+<p><strong>hf-mirror (China)</strong>:</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">export</span><span class="w"> </span><span class="nv">HF_ENDPOINT</span><span class="o">=</span>https://hf-mirror.com
+huggingface-cli<span class="w"> </span>download<span class="w"> </span>openbmb/MiniCPM-o-4_5<span class="w"> </span>--local-dir<span class="w"> </span>/path/to/MiniCPM-o-4_5
+</code></pre></div>
+
+<p><strong>ModelScope (China)</strong>:</p>
+<div class="codehilite"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>modelscope
+modelscope<span class="w"> </span>download<span class="w"> </span>--model<span class="w"> </span>OpenBMB/MiniCPM-o-4_5<span class="w"> </span>--local_dir<span class="w"> </span>/path/to/MiniCPM-o-4_5
+</code></pre></div>
+
+<hr />
+<h2 id="testing">Testing</h2>
+<h3 id="schema-unit-tests-no-gpu-required">Schema Unit Tests (No GPU Required)</h3>
+<div class="codehilite"><pre><span></span><code><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/test_schemas.py<span class="w"> </span>-v
+</code></pre></div>
+
+<h3 id="processor-tests-gpu-required">Processor Tests (GPU Required)</h3>
+<div class="codehilite"><pre><span></span><code><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>tests/test_chat.py<span class="w"> </span>tests/test_streaming.py<span class="w"> </span>tests/test_duplex.py<span class="w"> </span>-v<span class="w"> </span>-s
+</code></pre></div>
+
+<h3 id="api-integration-tests-service-must-be-running">API Integration Tests (Service Must Be Running)</h3>
+<div class="codehilite"><pre><span></span><code><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/test_api.py<span class="w"> </span>-v<span class="w"> </span>-s
+</code></pre></div>
+
+<h3 id="test-file-reference">Test File Reference</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>test_schemas.py</code></td>
+<td>Schema unit tests</td>
+</tr>
+<tr>
+<td><code>test_chat.py</code></td>
+<td>Chat inference tests</td>
+</tr>
+<tr>
+<td><code>test_streaming.py</code></td>
+<td>Streaming inference tests</td>
+</tr>
+<tr>
+<td><code>test_duplex.py</code></td>
+<td>Duplex inference tests</td>
+</tr>
+<tr>
+<td><code>test_api.py</code></td>
+<td>API integration tests</td>
+</tr>
+<tr>
+<td><code>test_queue.py</code></td>
+<td>Queue logic tests</td>
+</tr>
+<tr>
+<td><code>test_queue_stress.py</code></td>
+<td>Queue stress tests</td>
+</tr>
+<tr>
+<td><code>test_integration.py</code></td>
+<td>Integration tests</td>
+</tr>
+<tr>
+<td><code>test_e2e.py</code></td>
+<td>End-to-end tests</td>
+</tr>
+<tr>
+<td><code>bench_duplex_ws.py</code></td>
+<td>Duplex WebSocket performance benchmark</td>
+</tr>
+<tr>
+<td><code>mock_worker.py</code></td>
+<td>Mock Worker (for GPU-free testing)</td>
+</tr>
+<tr>
+<td><code>js/queue-scenario.test.js</code></td>
+<td>Frontend queue scenario tests (Vitest)</td>
+</tr>
+<tr>
+<td><code>js/countdown-timer.test.js</code></td>
+<td>Countdown component tests (Vitest)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="runtime-directory-structure">Runtime Directory Structure</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">data</span><span class="o">/</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">sessions</span><span class="o">/</span><span class="w">                  </span><span class="c1"># Session recording data</span>
+<span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">omni_abc123</span><span class="o">/</span>
+<span class="err">│</span><span class="w">   </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">meta</span><span class="o">.</span><span class="n">json</span>
+<span class="err">│</span><span class="w">   </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">recording</span><span class="o">.</span><span class="n">json</span>
+<span class="err">│</span><span class="w">   </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">user_audio</span><span class="o">/</span>
+<span class="err">│</span><span class="w">   </span><span class="err">│</span><span class="w">   </span><span class="err">├──</span><span class="w"> </span><span class="n">ai_audio</span><span class="o">/</span>
+<span class="err">│</span><span class="w">   </span><span class="err">│</span><span class="w">   </span><span class="err">└──</span><span class="w"> </span><span class="o">...</span>
+<span class="err">│</span><span class="w">   </span><span class="err">└──</span><span class="w"> </span><span class="o">...</span>
+<span class="err">└──</span><span class="w"> </span><span class="n">ref_audio</span><span class="o">/</span><span class="w">                 </span><span class="c1"># Uploaded reference audios</span>
+<span class="w">    </span><span class="err">├──</span><span class="w"> </span><span class="n">registry</span><span class="o">.</span><span class="n">json</span>
+<span class="w">    </span><span class="err">└──</span><span class="w"> </span><span class="o">*.</span><span class="n">wav</span>
+
+<span class="n">tmp</span><span class="o">/</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">gateway</span><span class="o">.</span><span class="n">pid</span><span class="w">                </span><span class="c1"># Gateway process PID</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">gateway</span><span class="o">.</span><span class="n">log</span><span class="w">                </span><span class="c1"># Gateway log</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">worker_0</span><span class="o">.</span><span class="n">pid</span><span class="w">               </span><span class="c1"># Worker 0 PID</span>
+<span class="err">├──</span><span class="w"> </span><span class="n">worker_0</span><span class="o">.</span><span class="n">log</span><span class="w">               </span><span class="c1"># Worker 0 log</span>
+<span class="err">└──</span><span class="w"> </span><span class="n">diag_omni_</span><span class="o">*.</span><span class="n">jsonl</span><span class="w">          </span><span class="c1"># Diagnostic logs</span>
+</code></pre></div></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; Generated by build_docs.py</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>
