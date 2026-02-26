@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">架构概述</a></li>
-        <li><a href="architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="architecture/streaming.html">Chat 模式</a></li>
         <li><a href="architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="architecture/internals.html">内部机制</a></li>
       </ul>
@@ -108,7 +108,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </nav>
 <main class="content" id="content">
   <article><h1 id="minicpmo45">MiniCPMO45 模型模块详解</h1>
-<p>MiniCPMO45 是系统的核心模型模块，实现了多模态大语言模型的推理能力，支持文本、图像、音频输入和文本、音频输出。</p>
+<p>MiniCPMO45 是系统的核心模型模块，实现了多模态大语言模型的推理能力，支持文本、图像、音频、视频输入和文本、音频输出。</p>
 <h2 id="_1">模块结构</h2>
 <div class="codehilite"><pre><span></span><code>MiniCPMO45/
 ├── configuration_minicpmo.py       # 模型配置定义
@@ -132,6 +132,7 @@ graph TB
         TextIn["文本输入"]
         ImageIn["图像输入"]
         AudioIn["音频输入\n(16kHz)"]
+        VideoIn["视频输入\n(自动提取帧+音频)"]
     end
 
     subgraph encoderLayer [编码器层]
@@ -160,6 +161,8 @@ graph TB
     TextIn --> Tokenizer --> Embedding
     ImageIn --> VPM --> Resampler --> Embedding
     AudioIn --> APM --> AudioProj --> Embedding
+    VideoIn -->|"帧"| VPM
+    VideoIn -->|"音频段"| APM
     Embedding --> LLM
     LLM --> TextOut
     LLM --> TTSBlock

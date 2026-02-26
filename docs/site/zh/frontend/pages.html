@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="../architecture/index.html">架构概述</a></li>
-        <li><a href="../architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="../architecture/streaming.html">Chat 模式</a></li>
         <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="../architecture/internals.html">内部机制</a></li>
       </ul>
@@ -119,57 +119,58 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </ul>
 <hr />
 <h2 id="turnbasedhtml">turnbased.html — 轮次对话</h2>
-<p>最复杂的非双工页面，支持 Chat 和 Streaming 两种模式。</p>
-<h3 id="_2">全局状态对象</h3>
+<p>Turn-based Chat 页面，统一通过 <code>/ws/chat</code> WebSocket 与后端通信。</p>
+<h3 id="_2">状态管理</h3>
 <div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nx">messages</span><span class="o">:</span><span class="w"> </span><span class="p">[],</span><span class="w">                </span><span class="c1">// 消息列表 {role, content, displayText}</span>
-<span class="w">    </span><span class="nx">systemContentList</span><span class="o">:</span><span class="w"> </span><span class="p">[],</span><span class="w">       </span><span class="c1">// 系统内容列表 (text + audio + image)</span>
+<span class="w">    </span><span class="nx">systemContentList</span><span class="o">:</span><span class="w"> </span><span class="p">[],</span><span class="w">       </span><span class="c1">// 系统内容列表 (text + audio + image + video)</span>
 <span class="w">    </span><span class="nx">isGenerating</span><span class="o">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w">         </span><span class="c1">// 是否正在生成</span>
-<span class="w">    </span><span class="nx">generationPhase</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;idle&#39;</span><span class="p">,</span><span class="w">     </span><span class="c1">// &#39;idle&#39; | &#39;queuing&#39; | &#39;generating&#39;</span>
-<span class="w">    </span><span class="nx">currentTicketId</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">       </span><span class="c1">// 排队 ticket ID（仅 streaming）</span>
-<span class="w">    </span><span class="nx">abortController</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">       </span><span class="c1">// Fetch abort（仅 chat）</span>
-<span class="w">    </span><span class="nx">streamingWs</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">           </span><span class="c1">// WebSocket 连接（仅 streaming）</span>
-<span class="w">    </span><span class="nx">requestId</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;req_&#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Date</span><span class="p">.</span><span class="nx">now</span><span class="p">(),</span>
-<span class="w">    </span><span class="nx">currentView</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;initial&#39;</span><span class="p">,</span><span class="w">      </span><span class="c1">// &#39;initial&#39; | &#39;conversation&#39;</span>
-<span class="w">    </span><span class="nx">editingIndex</span><span class="o">:</span><span class="w"> </span><span class="o">-</span><span class="mf">1</span><span class="p">,</span><span class="w">            </span><span class="c1">// 正在编辑的消息索引</span>
-<span class="w">    </span><span class="nx">ttsRefAudioMode</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;extract&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">// &#39;extract&#39; | &#39;independent&#39;</span>
-<span class="w">    </span><span class="nx">ttsRefAudioData</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">       </span><span class="c1">// TTS 参考音频 base64</span>
+<span class="w">    </span><span class="nx">generationPhase</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;idle&#39;</span><span class="p">,</span><span class="w">     </span><span class="c1">// &#39;idle&#39; | &#39;generating&#39;</span>
 <span class="p">};</span>
 </code></pre></div>
 
-<h3 id="streaming">Streaming 模式</h3>
-<p>通过 WebSocket (<code>WS /ws/streaming/{request_id}</code>) 进行流式对话：</p>
-<ol>
-<li>建立 WebSocket 连接</li>
-<li>发送 <code>prefill</code> 消息（含消息历史 + ref_audio_base64）</li>
-<li>收到 <code>prefill_done</code> 后发送 <code>generate</code></li>
-<li>逐 chunk 接收 <code>StreamingChunk</code>（text_delta + audio_data）</li>
-<li>收到 <code>done</code> 后渲染完整结果</li>
-<li>排队时显示 <code>CountdownTimer</code></li>
-</ol>
 <h3 id="_3">消息构建流程</h3>
 <ol>
-<li>从 <code>UserContentEditor</code> 获取用户输入 items</li>
+<li>用户输入文本 / 录音 / 上传图片、视频</li>
 <li>音频 Blob → 重采样到 16kHz mono → Base64 PCM float32</li>
 <li>图片 File → Base64</li>
-<li>构建 <code>content list</code> 格式：<code>[{type:"text", text:...}, {type:"audio", data:...}, ...]</code></li>
+<li>视频 File → Base64（后端自动提取帧和音频，需 <code>omni_mode: true</code>）</li>
+<li>构建 <code>content list</code> 格式：<code>[{type:"text", text:...}, {type:"audio", data:...}, {type:"video", data:...}, ...]</code></li>
 <li><code>buildRequestMessages()</code> 组装完整消息列表（含 system prompt）</li>
 </ol>
-<h3 id="tts">TTS 参考音频</h3>
-<p>两种模式：
-- <strong>extract</strong>：从系统内容中提取（需恰好 1 个音频且 &lt;20s）
-- <strong>independent</strong>：独立上传参考音频</p>
-<p>在 Streaming 的 <code>prefill</code> 消息中通过 <code>tts_ref_audio_base64</code> 字段发送给 Worker。</p>
-<h3 id="_4">响应渲染</h3>
-<ul>
-<li><code>addMessageUI()</code> — 添加消息气泡到对话区</li>
-<li><code>updateLastAssistantMessage()</code> — 流式更新最后一条助手消息</li>
-<li>音频播放：响应中的 <code>audio_data</code> 通过 <code>createMiniPlayer()</code> 创建内联播放器</li>
-</ul>
+<h3 id="_4">通信模式</h3>
+<p>所有请求通过 <code>/ws/chat</code> WebSocket 发送，协议：</p>
+<ol>
+<li>连接 WebSocket</li>
+<li>发送 JSON（含 <code>messages</code>、<code>streaming</code>、<code>tts</code> 等参数）</li>
+<li>收到 <code>prefill_done</code> 后等待生成结果</li>
+<li><code>streaming=true</code>：逐 chunk 收到 <code>{type:"chunk", text_delta, audio_data}</code>，实时渲染</li>
+<li><code>streaming=false</code>：收到 <code>{type:"done", text, audio_data}</code>，一次性渲染</li>
+<li>音频通过 <code>StreamingAudioPlayer</code>（流式）或 <code>createMiniPlayer</code>（非流式）播放</li>
+</ol>
+<h3 id="_5">前端开关</h3>
+<table>
+<thead>
+<tr>
+<th>开关</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Streaming</td>
+<td>实时逐字输出 vs 一次性返回</td>
+</tr>
+<tr>
+<td>Voice Response</td>
+<td>生成语音回复；开启时抑制特殊字符输出</td>
+</tr>
+</tbody>
+</table>
 <hr />
 <h2 id="omnihtml-omni">omni.html — Omni 全双工</h2>
 <p>视频 + 音频全双工交互页面。</p>
-<h3 id="_5">媒体提供者</h3>
+<h3 id="_6">媒体提供者</h3>
 <p><strong>LiveMediaProvider</strong>（摄像头模式）：
 - <code>getUserMedia({video, audio})</code> 获取摄像头和麦克风
 - 支持前后摄像头切换（<code>flipCamera()</code>）
@@ -180,7 +181,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 - 预提取帧：<code>_extractFrames()</code> 按时间点提取
 - 音频解码并重采样到 16kHz
 - 三种音频源：<code>video</code>（文件音频）/ <code>mic</code>（麦克风）/ <code>mixed</code>（混合）</p>
-<h3 id="_6">数据发送</h3>
+<h3 id="_7">数据发送</h3>
 <p>每秒发送一个 chunk：</p>
 <div class="codehilite"><pre><span></span><code><span class="nx">media</span><span class="p">.</span><span class="nx">onChunk</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">chunk</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="kd">const</span><span class="w"> </span><span class="nx">msg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
@@ -237,7 +238,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </tr>
 </tbody>
 </table>
-<h3 id="_7">波形可视化</h3>
+<h3 id="_8">波形可视化</h3>
 <p>使用 <code>AnalyserNode</code> 获取时域数据，通过 <code>requestAnimationFrame</code> 循环绘制实时波形。</p>
 <h3 id="fileaudioprovider">FileAudioProvider</h3>
 <p>处理音频文件输入：

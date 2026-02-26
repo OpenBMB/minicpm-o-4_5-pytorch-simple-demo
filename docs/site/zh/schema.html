@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">架构概述</a></li>
-        <li><a href="architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="architecture/streaming.html">Chat 模式</a></li>
         <li><a href="architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="architecture/internals.html">内部机制</a></li>
       </ul>
@@ -154,7 +154,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </tr>
 <tr>
 <td><code>ContentType</code></td>
-<td><code>text</code>, <code>image</code>, <code>audio</code></td>
+<td><code>text</code>, <code>image</code>, <code>audio</code>, <code>video</code></td>
 <td>内容类型</td>
 </tr>
 </tbody>
@@ -184,11 +184,16 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <td><code>type="audio"</code>, <code>data: str</code>, <code>sample_rate: int = 16000</code></td>
 <td>音频内容（Base64 PCM float32）</td>
 </tr>
+<tr>
+<td><code>VideoContent</code></td>
+<td><code>type="video"</code>, <code>data: str</code>, <code>stack_frames: int = 1</code></td>
+<td>视频内容（Base64 视频文件，自动提取帧和音频）</td>
+</tr>
 </tbody>
 </table>
-<p>类型别名：<code>ContentItem = Union[TextContent, ImageContent, AudioContent]</code></p>
+<p>类型别名：<code>ContentItem = Union[TextContent, ImageContent, AudioContent, VideoContent]</code></p>
 <h4 id="message">Message 模型</h4>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">Message</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Message</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
     <span class="n">role</span><span class="p">:</span> <span class="n">Role</span>
     <span class="n">content</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">ContentItem</span><span class="p">]]</span>
 </code></pre></div>
@@ -226,132 +231,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </tr>
 </tbody>
 </table>
-<h3 id="streamingpy-streaming-schema">streaming.py — Streaming 模式 Schema</h3>
-<h4 id="streamingconfig">StreamingConfig</h4>
-<table>
-<thead>
-<tr>
-<th>字段</th>
-<th>默认值</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>generate_audio</code></td>
-<td><code>True</code></td>
-<td>是否生成音频</td>
-</tr>
-<tr>
-<td><code>audio_token_chunk_size</code></td>
-<td><code>25</code></td>
-<td>音频 token 块大小</td>
-</tr>
-<tr>
-<td><code>ref_audio_path</code></td>
-<td><code>None</code></td>
-<td>参考音频路径</td>
-</tr>
-<tr>
-<td><code>ref_audio_data</code></td>
-<td><code>None</code></td>
-<td>参考音频 Base64</td>
-</tr>
-<tr>
-<td><code>enable_speculative_snapshot</code></td>
-<td><code>False</code></td>
-<td>启用 VAD 抢跑快照</td>
-</tr>
-<tr>
-<td><code>tts_sampling</code></td>
-<td><code>TTSSamplingParams</code></td>
-<td>TTS 采样参数</td>
-</tr>
-</tbody>
-</table>
-<h4 id="streamingrequest">StreamingRequest</h4>
-<table>
-<thead>
-<tr>
-<th>字段</th>
-<th>类型</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>session_id</code></td>
-<td><code>str</code></td>
-<td>会话 ID</td>
-</tr>
-<tr>
-<td><code>messages</code></td>
-<td><code>List[Message]</code></td>
-<td>消息列表</td>
-</tr>
-<tr>
-<td><code>is_last_chunk</code></td>
-<td><code>bool</code></td>
-<td>是否最后一个 chunk</td>
-</tr>
-<tr>
-<td><code>generation</code></td>
-<td><code>GenerationConfig</code></td>
-<td>生成配置</td>
-</tr>
-<tr>
-<td><code>streaming</code></td>
-<td><code>StreamingConfig</code></td>
-<td>Streaming 配置</td>
-</tr>
-<tr>
-<td><code>use_tts_template</code></td>
-<td><code>bool</code></td>
-<td>TTS 模板</td>
-</tr>
-<tr>
-<td><code>enable_thinking</code></td>
-<td><code>bool</code></td>
-<td>思考链</td>
-</tr>
-</tbody>
-</table>
-<h4 id="streamingchunk">StreamingChunk</h4>
-<p>流式输出的单个 chunk：</p>
-<table>
-<thead>
-<tr>
-<th>字段</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>chunk_index</code></td>
-<td>Chunk 序号</td>
-</tr>
-<tr>
-<td><code>text_delta</code></td>
-<td>增量文本</td>
-</tr>
-<tr>
-<td><code>audio_data</code></td>
-<td>Base64 音频（24kHz）</td>
-</tr>
-<tr>
-<td><code>is_final</code></td>
-<td>是否最后一个 chunk</td>
-</tr>
-<tr>
-<td><code>duration_ms</code></td>
-<td>该 chunk 耗时</td>
-</tr>
-</tbody>
-</table>
-<h4 id="streamingresponse">StreamingResponse</h4>
-<p>完整 Streaming 响应汇总：<code>session_id</code>, <code>full_text</code>, <code>audio_data</code>, <code>total_chunks</code>, <code>total_duration_ms</code>。</p>
-<h4 id="rollbackresult">RollbackResult</h4>
-<p>回溯结果：<code>success</code>, <code>reason</code>, <code>restored_position</code>。</p>
+<h3 id="streamingpy-streaming-schema">streaming.py — Streaming Schema</h3>
+<p>流式生成使用的数据结构（<code>StreamingChunk</code> 等），被 ChatView 的 <code>streaming_generate()</code> 复用。</p>
 <h3 id="duplexpy-duplex-schema">duplex.py — Duplex 模式 Schema</h3>
 <h4 id="duplexconfig">DuplexConfig</h4>
 <table>
@@ -475,23 +356,23 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <h2 id="processors">processors/ — 推理处理器</h2>
 <h3 id="basepy">base.py — 基类</h3>
 <h4 id="baseprocessor">BaseProcessor（抽象基类）</h4>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">BaseProcessor</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">BaseProcessor</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
 
     <span class="nd">@property</span>
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span> <span class="nf">mode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorMode</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorMode</span><span class="p">:</span> <span class="o">...</span>
 
     <span class="nd">@property</span>
-    <span class="k">def</span> <span class="nf">capabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorCapabilities</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">capabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorCapabilities</span><span class="p">:</span> <span class="o">...</span>
 
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span> <span class="nf">_load_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span> <span class="nf">_release_resources</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_release_resources</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 
-    <span class="k">def</span> <span class="nf">is_ready</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_ready</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
 </code></pre></div>
 
 <h4 id="minicpmoprocessormixin">MiniCPMOProcessorMixin</h4>
@@ -529,8 +410,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <h3 id="unifiedpy">unified.py — 统一处理器</h3>
 <h4 id="unifiedprocessor">UnifiedProcessor</h4>
 <p>统一处理器，一次加载模型，支持 Streaming / Duplex 两种模式毫秒级热切换。</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">UnifiedProcessor</span><span class="p">(</span><span class="n">BaseProcessor</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">UnifiedProcessor</span><span class="p">(</span><span class="n">BaseProcessor</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">,</span> <span class="n">pt_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">,</span>
         <span class="n">ref_audio_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">duplex_config</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">preload_both_tts</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="nb">compile</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
@@ -576,46 +457,35 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </tr>
 </tbody>
 </table>
-<h4 id="streamingview">StreamingView</h4>
+<h4 id="chatview">ChatView</h4>
+<p>ChatView 提供 Turn-based Chat 的专用 API，支持流式和非流式两种生成模式。</p>
 <table>
 <thead>
 <tr>
-<th>方法</th>
+<th>方法/属性</th>
 <th>说明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>init_ref_audio(ref_audio_path)</code></td>
-<td>初始化参考音频</td>
+<td><code>prefill(session_id, msgs, ...)</code></td>
+<td>一次性 prefill 所有消息到 KV Cache</td>
 </tr>
 <tr>
-<td><code>init_ref_audio_from_data(ref_audio)</code></td>
-<td>从 ndarray 初始化参考音频</td>
+<td><code>generate(session_id, ...)</code></td>
+<td>非流式生成（HF generate + TTS）</td>
 </tr>
 <tr>
-<td><code>reset_session(session_id)</code></td>
-<td>重置会话</td>
-</tr>
-<tr>
-<td><code>prefill(request)</code></td>
-<td>预填充（支持 KV Cache 复用）</td>
-</tr>
-<tr>
-<td><code>generate(...)</code></td>
+<td><code>streaming_generate(session_id, ...)</code></td>
 <td>流式生成，返回 <code>Generator[StreamingChunk]</code></td>
 </tr>
 <tr>
-<td><code>can_rollback()</code></td>
-<td>是否可回溯</td>
+<td><code>kv_cache_length</code></td>
+<td>当前 KV Cache 长度</td>
 </tr>
 <tr>
-<td><code>rollback()</code></td>
-<td>回溯到上一状态</td>
-</tr>
-<tr>
-<td><code>complete_turn(...)</code></td>
-<td>完成当前 turn</td>
+<td><code>chat(request)</code></td>
+<td>兼容旧接口（一体式 prefill + generate）</td>
 </tr>
 </tbody>
 </table>
@@ -669,14 +539,14 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <hr />
 <h2 id="capabilitiespy">capabilities.py — 能力声明系统</h2>
 <h3 id="processormode">ProcessorMode 枚举</h3>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">ProcessorMode</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">ProcessorMode</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
     <span class="n">STREAMING</span> <span class="o">=</span> <span class="s2">&quot;streaming&quot;</span>
     <span class="n">DUPLEX</span> <span class="o">=</span> <span class="s2">&quot;duplex&quot;</span>
 </code></pre></div>
 
 <h3 id="processorcapabilities">ProcessorCapabilities 数据类</h3>
 <div class="codehilite"><pre><span></span><code><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="k">class</span> <span class="nc">ProcessorCapabilities</span><span class="p">:</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProcessorCapabilities</span><span class="p">:</span>
     <span class="n">mode</span><span class="p">:</span> <span class="n">ProcessorMode</span>
     <span class="c1"># 输入能力</span>
     <span class="n">supports_text</span><span class="p">:</span> <span class="nb">bool</span>
@@ -724,7 +594,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <tr>
 <td>KV Cache 复用</td>
 <td>支持</td>
-<td>--</td>
+<td>支持</td>
 </tr>
 <tr>
 <td>独占 Worker</td>

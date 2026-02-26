@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">架构概述</a></li>
-        <li><a href="architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="architecture/streaming.html">Chat 模式</a></li>
         <li><a href="architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="architecture/internals.html">内部机制</a></li>
       </ul>
@@ -180,13 +180,17 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <span class="w">      </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">        </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;描述这张图片&quot;</span><span class="p">},</span>
 <span class="w">        </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;image&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;base64&gt;&quot;</span><span class="p">},</span>
-<span class="w">        </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;audio&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;base64 PCM float32&gt;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;sample_rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">16000</span><span class="p">}</span>
+<span class="w">        </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;audio&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;base64 PCM float32&gt;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;sample_rate&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">16000</span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;video&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;base64 video file&gt;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;stack_frames&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">}</span>
 <span class="w">      </span><span class="p">]</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">  </span><span class="p">]</span>
 <span class="p">}</span>
 </code></pre></div>
 
+<blockquote>
+<p><strong>注意</strong>：包含视频内容时需设置 <code>omni_mode: true</code>，且仅支持 Chat 模式（不支持 Streaming）。</p>
+</blockquote>
 <p><strong>响应</strong>：</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;你好！有什么可以帮你的？&quot;</span><span class="p">,</span>
@@ -355,101 +359,56 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 
 <hr />
 <h2 id="websocket">WebSocket 协议</h2>
-<h3 id="streaming">Streaming 协议</h3>
-<p><strong>连接</strong>：<code>wss://localhost:8006/ws/streaming/{session_id}</code></p>
-<h4 id="_7">客户端 → 服务端</h4>
-<table>
-<thead>
-<tr>
-<th>消息类型</th>
-<th>字段</th>
-<th>说明</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>prefill</code></td>
-<td><code>messages</code>, <code>generation</code>, <code>streaming</code>, <code>use_tts_template</code>, <code>enable_thinking</code></td>
-<td>预填充，发送消息历史</td>
-</tr>
-<tr>
-<td><code>generate</code></td>
-<td>—</td>
-<td>开始流式生成</td>
-</tr>
-<tr>
-<td><code>stop</code></td>
-<td>—</td>
-<td>停止生成</td>
-</tr>
-</tbody>
-</table>
-<p><strong>prefill 示例</strong>：</p>
+<h3 id="chat-websocket">Chat WebSocket</h3>
+<p><strong>连接</strong>：<code>wss://host/ws/chat</code></p>
+<p>统一的 Turn-based Chat 接口，支持流式和非流式两种模式。</p>
+<p><strong>请求</strong>（Client → Server，连接后发送一次）：</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;prefill&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;messages&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;system&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;You are a helpful assistant.&quot;</span><span class="p">},</span>
-<span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Hello!&quot;</span><span class="p">}</span>
-<span class="w">  </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">&quot;generation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;max_new_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">512</span><span class="p">},</span>
-<span class="w">  </span><span class="nt">&quot;streaming&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;generate_audio&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;ref_audio_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;assets/ref_audio/ref_minicpm_signature.wav&quot;</span>
-<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="nt">&quot;messages&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="err">...</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;streaming&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;generation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;max_new_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;length_penalty&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.1</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;tts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;ref_audio_data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;base64&gt;&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;image&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;max_slice_nums&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;omni_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="p">}</span>
 </code></pre></div>
 
-<h4 id="_8">服务端 → 客户端</h4>
+<p><strong>响应</strong>（Server → Client）：</p>
 <table>
 <thead>
 <tr>
 <th>消息类型</th>
-<th>字段</th>
+<th>关键字段</th>
 <th>说明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>queued</code></td>
-<td><code>ticket_id</code>, <code>position</code>, <code>eta_seconds</code></td>
-<td>排入队列</td>
-</tr>
-<tr>
-<td><code>queue_update</code></td>
-<td><code>position</code>, <code>eta_seconds</code></td>
-<td>队列位置更新</td>
-</tr>
-<tr>
-<td><code>queue_done</code></td>
-<td>—</td>
-<td>离开队列，开始处理</td>
-</tr>
-<tr>
 <td><code>prefill_done</code></td>
-<td><code>prompt</code></td>
-<td>预填充完成</td>
+<td><code>input_tokens</code></td>
+<td>Prefill 完成</td>
 </tr>
 <tr>
 <td><code>chunk</code></td>
-<td><code>chunk_index</code>, <code>text_delta</code>, <code>audio_data</code>, <code>is_final</code></td>
-<td>流式输出 chunk</td>
+<td><code>text_delta</code>, <code>audio_data</code></td>
+<td>流式 chunk（仅 streaming=true）</td>
 </tr>
 <tr>
 <td><code>done</code></td>
-<td><code>full_text</code>, <code>total_chunks</code>, <code>total_duration_ms</code></td>
+<td><code>text</code>, <code>generated_tokens</code>, <code>input_tokens</code>, <code>audio_data</code></td>
 <td>生成完成</td>
 </tr>
 <tr>
 <td><code>error</code></td>
-<td><code>message</code></td>
-<td>错误</td>
+<td><code>error</code></td>
+<td>错误信息</td>
 </tr>
 </tbody>
 </table>
 <hr />
 <h3 id="duplex">Duplex 协议</h3>
 <p><strong>连接</strong>：<code>wss://localhost:8006/ws/duplex/{session_id}</code></p>
-<h4 id="_9">客户端 → 服务端</h4>
+<h4 id="_7">客户端 → 服务端</h4>
 <table>
 <thead>
 <tr>
@@ -517,7 +476,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <span class="p">}</span>
 </code></pre></div>
 
-<h4 id="_10">服务端 → 客户端</h4>
+<h4 id="_8">服务端 → 客户端</h4>
 <table>
 <thead>
 <tr>
@@ -596,7 +555,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </code></pre></div>
 
 <hr />
-<h2 id="_11">音频格式规范</h2>
+<h2 id="_9">音频格式规范</h2>
 <table>
 <thead>
 <tr>

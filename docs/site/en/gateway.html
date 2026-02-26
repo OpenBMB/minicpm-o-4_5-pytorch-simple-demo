@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">Overview</a></li>
-        <li><a href="architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="architecture/streaming.html">Chat Mode</a></li>
         <li><a href="architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="architecture/internals.html">Internals</a></li>
       </ul>
@@ -261,8 +261,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </thead>
 <tbody>
 <tr>
-<td><code>/ws/streaming/{session_id}</code></td>
-<td>Streaming conversational proxy</td>
+<td><code>/ws/chat</code></td>
+<td>Chat WebSocket proxy</td>
 </tr>
 <tr>
 <td><code>/ws/duplex/{session_id}</code></td>
@@ -273,7 +273,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <h3 id="websocket-proxy-mechanism">WebSocket Proxy Mechanism</h3>
 <p><strong>Streaming Proxy</strong>:
 1. Accepts client WebSocket connection
-2. Enqueues the request via <code>WorkerPool.enqueue("streaming", history_hash)</code>
+2. Enqueues the request via <code>WorkerPool.enqueue("chat")</code>
 3. While queued, pushes <code>queued</code> / <code>queue_update</code> messages to the client
 4. Once a Worker is obtained, establishes a WebSocket connection to the Worker
 5. Forwards messages bidirectionally (client ↔ worker)
@@ -411,22 +411,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 3. If found → immediately calls <code>mark_busy()</code> + <code>future.set_result(worker)</code> + removes the head
 4. Loops until no idle Workers remain or the queue is empty</p>
 <p><strong>Trigger points</strong>: <code>_dispatch_next()</code> is triggered when a Worker is released, a queue entry is cancelled, or a health check restores a Worker to IDLE.</p>
-<p><strong>Gateway ↔ Worker communication</strong>: The queue is only responsible for Worker assignment (deciding which Worker handles which request) and does not participate in data transfer. After the Gateway obtains a Worker reference, it communicates directly with the Worker's internal port (22400+) via HTTP (Chat: <code>POST /chat</code>) or WebSocket (Streaming: <code>/ws/streaming</code>, Duplex: <code>/ws/duplex</code>).</p>
-<h3 id="lru-cache-routing-streaming-only">LRU Cache Routing (Streaming Only)</h3>
-<p>The purpose of LRU routing is to ensure that multiple turns of the same session hit the same Worker whenever possible, reusing its GPU KV Cache to skip redundant computation of historical messages.</p>
-<p><strong>Implementation location</strong>: <code>WorkerPool._route_streaming_worker()</code> (<code>gateway_modules/worker_pool.py</code>)</p>
-<p><strong>Cache state maintained per Worker</strong> (on the Gateway-side <code>WorkerConnection</code>):
-- <code>cached_hash: Optional[str]</code> — The message history hash corresponding to the KV Cache on this Worker
-- <code>last_cache_used_at: Optional[datetime]</code> — Last time the cache was used (LRU eviction basis)</p>
-<p><strong>Routing priority</strong> (4-level fallback):
-1. <strong>Cache hit</strong> — Iterates idle Workers, finds one with <code>cached_hash == history_hash</code> → incremental prefill
-2. <strong>No-cache Worker</strong> — Finds an idle Worker with <code>cached_hash == None</code> → no cache eviction
-3. <strong>LRU eviction</strong> — When all idle Workers have caches, selects the one with the oldest <code>last_cache_used_at</code> → overwrites its cache
-4. <strong>No idle Workers</strong> — Returns None, request enters the FIFO queue to wait</p>
-<p><strong>Hash computation</strong>: <code>compute_history_hash()</code> serializes the message list's <code>[{role, content}]</code> and computes SHA-256.</p>
-<p><strong>Cache update</strong>: The Gateway writes the current request's <code>history_hash</code> to <code>cached_hash</code> and <code>last_cache_used_at</code> during <code>release_worker()</code>.</p>
-<p><strong>How Gateway notifies Worker on cache hit</strong>: The Gateway includes a <code>clear_kv_cache</code> field when forwarding the <code>prefill</code> message — set to <code>false</code> on cache hit (Worker retains existing KV Cache and only incrementally prefills new messages), or <code>true</code> on cache miss (Worker calls <code>reset_session()</code> to clear old cache and fully re-prefills).</p>
-<p><strong>Non-Streaming also considers cache</strong>: When allocating for Chat/Duplex, <code>_get_idle_worker()</code> preferentially selects Workers without cache to avoid unnecessarily evicting Streaming caches.</p>
+<p><strong>Gateway ↔ Worker communication</strong>: The queue is only responsible for Worker assignment (deciding which Worker handles which request) and does not participate in data transfer. After the Gateway obtains a Worker reference, it communicates directly with the Worker's internal port (22400+) via HTTP (Chat: <code>POST /chat</code>) or WebSocket (Chat: <code>/ws/chat</code>, Duplex: <code>/ws/duplex</code>).</p>
 <h3 id="eta-estimation">ETA Estimation</h3>
 <p><code>EtaTracker</code> combines Admin-configured baseline values with runtime EMA (Exponential Moving Average) for dynamic wait time estimation:</p>
 <ul>

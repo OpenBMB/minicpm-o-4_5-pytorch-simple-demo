@@ -60,14 +60,14 @@ The `lifespan()` async context manager is responsible for:
 
 | Endpoint | Function |
 |----------|----------|
-| `/ws/streaming/{session_id}` | Streaming conversational proxy |
+| `/ws/chat` | Chat WebSocket proxy |
 | `/ws/duplex/{session_id}` | Duplex full-duplex session proxy |
 
 ### WebSocket Proxy Mechanism
 
 **Streaming Proxy**:
 1. Accepts client WebSocket connection
-2. Enqueues the request via `WorkerPool.enqueue("streaming", history_hash)`
+2. Enqueues the request via `WorkerPool.enqueue("chat")`
 3. While queued, pushes `queued` / `queue_update` messages to the client
 4. Once a Worker is obtained, establishes a WebSocket connection to the Worker
 5. Forwards messages bidirectionally (client ↔ worker)
@@ -156,31 +156,7 @@ The queue is implemented using `OrderedDict`. All request types (Chat / Streamin
 
 **Trigger points**: `_dispatch_next()` is triggered when a Worker is released, a queue entry is cancelled, or a health check restores a Worker to IDLE.
 
-**Gateway ↔ Worker communication**: The queue is only responsible for Worker assignment (deciding which Worker handles which request) and does not participate in data transfer. After the Gateway obtains a Worker reference, it communicates directly with the Worker's internal port (22400+) via HTTP (Chat: `POST /chat`) or WebSocket (Streaming: `/ws/streaming`, Duplex: `/ws/duplex`).
-
-### LRU Cache Routing (Streaming Only)
-
-The purpose of LRU routing is to ensure that multiple turns of the same session hit the same Worker whenever possible, reusing its GPU KV Cache to skip redundant computation of historical messages.
-
-**Implementation location**: `WorkerPool._route_streaming_worker()` (`gateway_modules/worker_pool.py`)
-
-**Cache state maintained per Worker** (on the Gateway-side `WorkerConnection`):
-- `cached_hash: Optional[str]` — The message history hash corresponding to the KV Cache on this Worker
-- `last_cache_used_at: Optional[datetime]` — Last time the cache was used (LRU eviction basis)
-
-**Routing priority** (4-level fallback):
-1. **Cache hit** — Iterates idle Workers, finds one with `cached_hash == history_hash` → incremental prefill
-2. **No-cache Worker** — Finds an idle Worker with `cached_hash == None` → no cache eviction
-3. **LRU eviction** — When all idle Workers have caches, selects the one with the oldest `last_cache_used_at` → overwrites its cache
-4. **No idle Workers** — Returns None, request enters the FIFO queue to wait
-
-**Hash computation**: `compute_history_hash()` serializes the message list's `[{role, content}]` and computes SHA-256.
-
-**Cache update**: The Gateway writes the current request's `history_hash` to `cached_hash` and `last_cache_used_at` during `release_worker()`.
-
-**How Gateway notifies Worker on cache hit**: The Gateway includes a `clear_kv_cache` field when forwarding the `prefill` message — set to `false` on cache hit (Worker retains existing KV Cache and only incrementally prefills new messages), or `true` on cache miss (Worker calls `reset_session()` to clear old cache and fully re-prefills).
-
-**Non-Streaming also considers cache**: When allocating for Chat/Duplex, `_get_idle_worker()` preferentially selects Workers without cache to avoid unnecessarily evicting Streaming caches.
+**Gateway ↔ Worker communication**: The queue is only responsible for Worker assignment (deciding which Worker handles which request) and does not participate in data transfer. After the Gateway obtains a Worker reference, it communicates directly with the Worker's internal port (22400+) via HTTP (Chat: `POST /chat`) or WebSocket (Chat: `/ws/chat`, Duplex: `/ws/duplex`).
 
 ### ETA Estimation
 

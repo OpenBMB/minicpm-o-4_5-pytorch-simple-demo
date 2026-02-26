@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">架构概述</a></li>
-        <li><a href="architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="architecture/streaming.html">Chat 模式</a></li>
         <li><a href="architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="architecture/internals.html">内部机制</a></li>
       </ul>
@@ -261,8 +261,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </thead>
 <tbody>
 <tr>
-<td><code>/ws/streaming/{session_id}</code></td>
-<td>Streaming 流式对话代理</td>
+<td><code>/ws/chat</code></td>
+<td>Chat WebSocket 代理</td>
 </tr>
 <tr>
 <td><code>/ws/duplex/{session_id}</code></td>
@@ -273,7 +273,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <h3 id="websocket_1">WebSocket 代理机制</h3>
 <p><strong>Streaming 代理</strong>：
 1. 接收客户端 WebSocket 连接
-2. 将请求入队 <code>WorkerPool.enqueue("streaming", history_hash)</code>
+2. 将请求入队 <code>WorkerPool.enqueue("chat")</code>
 3. 排队期间向客户端推送 <code>queued</code> / <code>queue_update</code> 消息
 4. 获取到 Worker 后，建立到 Worker 的 WebSocket 连接
 5. 双向转发消息（client ↔ worker）
@@ -411,22 +411,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 3. 找到 → 立即 <code>mark_busy()</code> + <code>future.set_result(worker)</code> + 移除队头
 4. 循环直到无空闲 Worker 或队列为空</p>
 <p><strong>触发时机</strong>：Worker 释放、排队取消、健康检查恢复 IDLE 后均触发 <code>_dispatch_next()</code>。</p>
-<p><strong>Gateway ↔ Worker 通信</strong>：队列只负责 Worker 分配（决定哪个 Worker 处理哪个请求），不参与数据传输。Gateway 获得 Worker 引用后，直接通过 HTTP（Chat: <code>POST /chat</code>）或 WebSocket（Streaming: <code>/ws/streaming</code>、Duplex: <code>/ws/duplex</code>）连接 Worker 的内部端口（22400+）进行通信。</p>
-<h3 id="lru-streaming">LRU 缓存路由（Streaming 专用）</h3>
-<p>LRU 路由的目的是让同一个会话的多轮对话尽量命中同一个 Worker，复用其 GPU 上的 KV Cache，从而跳过历史消息的重复计算。</p>
-<p><strong>实现位置</strong>：<code>WorkerPool._route_streaming_worker()</code>（<code>gateway_modules/worker_pool.py</code>）</p>
-<p><strong>每个 Worker 维护的缓存状态</strong>（在 Gateway 侧的 <code>WorkerConnection</code> 上）：
-- <code>cached_hash: Optional[str]</code> — 当前 Worker 上 KV Cache 对应的消息历史 hash
-- <code>last_cache_used_at: Optional[datetime]</code> — 上次缓存被使用的时间（LRU 淘汰依据）</p>
-<p><strong>路由优先级</strong>（4 级 fallback）：
-1. <strong>缓存命中</strong> — 遍历空闲 Worker，找 <code>cached_hash == history_hash</code> 的 → 增量 prefill
-2. <strong>无缓存 Worker</strong> — 找 <code>cached_hash == None</code> 的空闲 Worker → 不淘汰任何缓存
-3. <strong>LRU 淘汰</strong> — 所有空闲 Worker 都有缓存时，选 <code>last_cache_used_at</code> 最旧的 → 覆盖其缓存
-4. <strong>无空闲</strong> — 返回 None，请求入 FIFO 队列等待</p>
-<p><strong>hash 计算</strong>：<code>compute_history_hash()</code> 将消息列表的 <code>[{role, content}]</code> 序列化后做 SHA-256。</p>
-<p><strong>缓存更新</strong>：Gateway 在 <code>release_worker()</code> 时将本次请求的 <code>history_hash</code> 写入 <code>cached_hash</code> 和 <code>last_cache_used_at</code>。</p>
-<p><strong>缓存命中时 Gateway 如何通知 Worker</strong>：Gateway 在转发 <code>prefill</code> 消息时附带 <code>clear_kv_cache</code> 字段 —— 命中时为 <code>false</code>（Worker 保留已有 KV Cache，仅增量预填充新消息），未命中时为 <code>true</code>（Worker 调用 <code>reset_session()</code> 清除旧缓存后全量重新预填充）。</p>
-<p><strong>Non-Streaming 也考虑缓存</strong>：Chat/Duplex 分配时 <code>_get_idle_worker()</code> 优先选无缓存的 Worker，避免不必要地淘汰 Streaming 的缓存。</p>
+<p><strong>Gateway ↔ Worker 通信</strong>：队列只负责 Worker 分配（决定哪个 Worker 处理哪个请求），不参与数据传输。Gateway 获得 Worker 引用后，直接通过 HTTP（Chat: <code>POST /chat</code>）或 WebSocket（Chat: <code>/ws/chat</code>、Duplex: <code>/ws/duplex</code>）连接 Worker 的内部端口（22400+）进行通信。</p>
 <h3 id="eta">ETA 估算</h3>
 <p><code>EtaTracker</code> 结合 Admin 配置的基准值和运行时 EMA（指数移动平均）动态估算等待时间：</p>
 <ul>

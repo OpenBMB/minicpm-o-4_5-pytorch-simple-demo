@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">架构概述</a></li>
-        <li><a href="architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="architecture/streaming.html">Chat 模式</a></li>
         <li><a href="architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="architecture/internals.html">内部机制</a></li>
       </ul>
@@ -108,7 +108,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </nav>
 <main class="content" id="content">
   <article><h1 id="worker-api">Worker API 参考</h1>
-<p>Worker 是系统的推理执行单元，每个 Worker 独占一张 GPU，持有一个 <code>UnifiedProcessor</code> 实例。详细的处理流程和实现细节见 <a href="architecture/streaming.html">Streaming 模式详解</a> 和 <a href="architecture/duplex.html">Duplex 模式详解</a>。</p>
+<p>Worker 是系统的推理执行单元，每个 Worker 独占一张 GPU，持有一个 <code>UnifiedProcessor</code> 实例。详细的处理流程和实现细节见 <a href="architecture/streaming.html">ChatView 模式详解</a> 和 <a href="architecture/duplex.html">Duplex 模式详解</a>。</p>
 <h2 id="workerstatus">WorkerStatus 枚举</h2>
 <table>
 <thead>
@@ -165,24 +165,16 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <td>同步加载模型，初始化 UnifiedProcessor</td>
 </tr>
 <tr>
-<td><code>streaming_prefill(request)</code></td>
-<td>Streaming 预填充</td>
+<td><code>chat_prefill(session_id, msgs, ...)</code></td>
+<td>Chat prefill（一次性 KV Cache 填充）</td>
 </tr>
 <tr>
-<td><code>streaming_init_tts(ref_audio_data)</code></td>
-<td>初始化 Streaming TTS</td>
+<td><code>chat_non_streaming_generate(session_id, ...)</code></td>
+<td>Chat 非流式生成（HF generate + TTS）</td>
 </tr>
 <tr>
-<td><code>streaming_generate(session_id, ...)</code></td>
-<td>Streaming 流式生成（Generator）</td>
-</tr>
-<tr>
-<td><code>streaming_complete_turn(...)</code></td>
-<td>完成一轮 Streaming</td>
-</tr>
-<tr>
-<td><code>reset_streaming_session()</code></td>
-<td>重置 KV Cache（Gateway 指示 clear_kv_cache 时调用）</td>
+<td><code>chat_streaming_generate(session_id, ...)</code></td>
+<td>Chat 流式生成（yield StreamingChunk）</td>
 </tr>
 <tr>
 <td><code>duplex_prepare(...)</code></td>
@@ -231,9 +223,9 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <td>停止 Streaming</td>
 </tr>
 <tr>
-<td><code>/ws/streaming</code></td>
+<td><code>/ws/chat</code></td>
 <td>WS</td>
-<td>Streaming 流式对话</td>
+<td>Chat 统一接口（流式/非流式）</td>
 </tr>
 <tr>
 <td><code>/ws/duplex</code></td>
