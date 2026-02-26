@@ -23,7 +23,7 @@
 ```javascript
 const state = {
     messages: [],                // 消息列表 {role, content, displayText}
-    systemContentList: [],       // 系统内容列表 (text + audio + image)
+    systemContentList: [],       // 系统内容列表 (text + audio + image + video)
     isGenerating: false,         // 是否正在生成
     generationPhase: 'idle',     // 'idle' | 'queuing' | 'generating'
     currentTicketId: null,       // 排队 ticket ID（仅 streaming）
@@ -53,8 +53,9 @@ const state = {
 1. 从 `UserContentEditor` 获取用户输入 items
 2. 音频 Blob → 重采样到 16kHz mono → Base64 PCM float32
 3. 图片 File → Base64
-4. 构建 `content list` 格式：`[{type:"text", text:...}, {type:"audio", data:...}, ...]`
-5. `buildRequestMessages()` 组装完整消息列表（含 system prompt）
+4. 视频 File → Base64（后端自动提取帧和音频，需 `omni_mode: true`）
+5. 构建 `content list` 格式：`[{type:"text", text:...}, {type:"audio", data:...}, {type:"video", data:...}, ...]`
+6. `buildRequestMessages()` 组装完整消息列表（含 system prompt）
 
 ### TTS 参考音频
 

@@ -15,6 +15,7 @@
    - TextContent: 文本内容
    - ImageContent: 图像内容（base64 编码）
    - AudioContent: 音频内容（base64 PCM float32，必须 16kHz 单声道）
+   - VideoContent: 视频内容（base64 编码的视频文件，自动提取帧和音频）
 
 3. **消息结构（Message）**
    ```python
@@ -42,7 +43,7 @@
 ```python
 from core.schemas.common import (
     Message, Role,
-    TextContent, ImageContent, AudioContent,
+    TextContent, ImageContent, AudioContent, VideoContent,
     TTSConfig, TTSMode, TTSSamplingParams,
 )
 
@@ -164,10 +165,12 @@ class ContentType(str, Enum):
     - TEXT: 文本内容
     - IMAGE: 图像内容
     - AUDIO: 音频内容
+    - VIDEO: 视频内容
     """
     TEXT = "text"
     IMAGE = "image"
     AUDIO = "audio"
+    VIDEO = "video"
 
 
 # =============================================================================
@@ -267,14 +270,46 @@ class AudioContent(BaseModel):
         return v
 
 
+class VideoContent(BaseModel):
+    """视频内容
+    
+    表示对话中的视频输入，通过 Base64 编码提供整个视频文件。
+    
+    处理流程：
+    - Processor 层会将 base64 视频解码为临时文件
+    - 使用 ``get_video_frame_audio_segments`` 提取帧和音频片段
+    - 按交错顺序（frame, audio, [stacked_frame], ...）送入模型
+    
+    Attributes:
+        type: 固定为 "video"
+        data: Base64 编码的视频文件数据（MP4 等常见格式）
+        stack_frames: 高刷帧率模式的帧数，1 为标准（每秒 1 帧），
+                      >1 时额外提取中间帧拼接为 stacked frame
+    
+    示例：
+        >>> import base64
+        >>> with open("video.mp4", "rb") as f:
+        ...     data = base64.b64encode(f.read()).decode()
+        >>> video = VideoContent(data=data, stack_frames=1)
+    """
+    type: Literal["video"] = "video"
+    data: str = Field(..., description="Base64 编码的视频文件数据")
+    stack_frames: int = Field(
+        1,
+        ge=1,
+        description="高刷帧率模式帧数，1=标准（每秒 1 帧）"
+    )
+
+
 # 内容项的联合类型
-ContentItem = Union[TextContent, ImageContent, AudioContent]
+ContentItem = Union[TextContent, ImageContent, AudioContent, VideoContent]
 """多模态内容项
 
 可以是以下任意一种：
 - TextContent: 文本
 - ImageContent: 图像
 - AudioContent: 音频
+- VideoContent: 视频
 
 用于 Message.content 字段的类型注解。
 """

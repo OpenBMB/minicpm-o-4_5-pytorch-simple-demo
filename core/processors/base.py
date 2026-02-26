@@ -285,11 +285,13 @@ class MiniCPMOProcessorMixin:
         Returns:
             模型可接受的内容格式（列表）
         """
-        from core.schemas import TextContent, ImageContent, AudioContent
+        from core.schemas import TextContent, ImageContent, AudioContent, VideoContent
         import numpy as np
         from PIL import Image
         import base64
         import io
+        import tempfile
+        import os
         
         if isinstance(content, str):
             return [content]
@@ -306,6 +308,23 @@ class MiniCPMOProcessorMixin:
                 audio_bytes = base64.b64decode(item.data)
                 audio = np.frombuffer(audio_bytes, dtype=np.float32)
                 result.append(audio)
+            elif isinstance(item, VideoContent):
+                video_bytes = base64.b64decode(item.data)
+                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+                    tmp.write(video_bytes)
+                    tmp_path = tmp.name
+                try:
+                    from minicpmo.utils import get_video_frame_audio_segments
+                    video_frames, audio_segments, stacked_frames = \
+                        get_video_frame_audio_segments(tmp_path, stack_frames=item.stack_frames)
+                    for i in range(len(video_frames)):
+                        result.append(video_frames[i])
+                        if audio_segments is not None:
+                            result.append(audio_segments[i])
+                        if stacked_frames is not None and stacked_frames[i] is not None:
+                            result.append(stacked_frames[i])
+                finally:
+                    os.unlink(tmp_path)
             else:
                 raise ValueError(f"未知的内容类型: {type(item)}")
         

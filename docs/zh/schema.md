@@ -36,7 +36,7 @@ core/
 |------|-----|------|
 | `Role` | `system`, `user`, `assistant` | 消息角色 |
 | `TTSMode` | `default`, `audio_assistant`, `omni`, `audio_roleplay`, `voice_cloning` | TTS 模式 |
-| `ContentType` | `text`, `image`, `audio` | 内容类型 |
+| `ContentType` | `text`, `image`, `audio`, `video` | 内容类型 |
 
 #### 内容模型
 
@@ -45,8 +45,9 @@ core/
 | `TextContent` | `type="text"`, `text: str` | 文本内容 |
 | `ImageContent` | `type="image"`, `data: str` | 图像内容（Base64） |
 | `AudioContent` | `type="audio"`, `data: str`, `sample_rate: int = 16000` | 音频内容（Base64 PCM float32） |
+| `VideoContent` | `type="video"`, `data: str`, `stack_frames: int = 1` | 视频内容（Base64 视频文件，自动提取帧和音频） |
 
-类型别名：`ContentItem = Union[TextContent, ImageContent, AudioContent]`
+类型别名：`ContentItem = Union[TextContent, ImageContent, AudioContent, VideoContent]`
 
 #### Message 模型
 

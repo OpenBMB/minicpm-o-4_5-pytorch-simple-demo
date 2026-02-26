@@ -92,12 +92,15 @@ Worker 列表。
       "content": [
         {"type": "text", "text": "描述这张图片"},
         {"type": "image", "data": "<base64>"},
-        {"type": "audio", "data": "<base64 PCM float32>", "sample_rate": 16000}
+        {"type": "audio", "data": "<base64 PCM float32>", "sample_rate": 16000},
+        {"type": "video", "data": "<base64 video file>", "stack_frames": 1}
       ]
     }
   ]
 }
 ```
+
+> **注意**：包含视频内容时需设置 `omni_mode: true`，且仅支持 Chat 模式（不支持 Streaming）。
 
 **响应**：
 ```json

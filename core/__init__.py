@@ -116,6 +116,7 @@ from core.schemas import (
     TextContent,
     ImageContent,
     AudioContent,
+    VideoContent,
     ContentItem,
     
     # 消息
@@ -179,6 +180,7 @@ __all__ = [
     "TextContent",
     "ImageContent",
     "AudioContent",
+    "VideoContent",
     "ContentItem",
     
     # Schema - 消息

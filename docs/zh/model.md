@@ -1,6 +1,6 @@
 # MiniCPMO45 模型模块详解
 
-MiniCPMO45 是系统的核心模型模块，实现了多模态大语言模型的推理能力，支持文本、图像、音频输入和文本、音频输出。
+MiniCPMO45 是系统的核心模型模块，实现了多模态大语言模型的推理能力，支持文本、图像、音频、视频输入和文本、音频输出。
 
 ## 模块结构
 
@@ -28,6 +28,7 @@ graph TB
         TextIn["文本输入"]
         ImageIn["图像输入"]
         AudioIn["音频输入\n(16kHz)"]
+        VideoIn["视频输入\n(自动提取帧+音频)"]
     end
 
     subgraph encoderLayer [编码器层]
@@ -56,6 +57,8 @@ graph TB
     TextIn --> Tokenizer --> Embedding
     ImageIn --> VPM --> Resampler --> Embedding
     AudioIn --> APM --> AudioProj --> Embedding
+    VideoIn -->|"帧"| VPM
+    VideoIn -->|"音频段"| APM
     Embedding --> LLM
     LLM --> TextOut
     LLM --> TTSBlock

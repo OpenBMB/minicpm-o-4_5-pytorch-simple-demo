@@ -92,12 +92,15 @@ Stateless Chat inference. Each request performs a full prefill without reusing t
       "content": [
         {"type": "text", "text": "Describe this image"},
         {"type": "image", "data": "<base64>"},
-        {"type": "audio", "data": "<base64 PCM float32>", "sample_rate": 16000}
+        {"type": "audio", "data": "<base64 PCM float32>", "sample_rate": 16000},
+        {"type": "video", "data": "<base64 video file>", "stack_frames": 1}
       ]
     }
   ]
 }
 ```
+
+> **Note**: When video content is present, `omni_mode: true` must be set, and only Chat mode is supported (Streaming is not supported).
 
 **Response**:
 ```json

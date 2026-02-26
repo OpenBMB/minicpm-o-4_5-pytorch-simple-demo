@@ -58,7 +58,7 @@ The system provides three interaction modes, sharing **two WebSocket endpoints**
 
 | Mode | Features | Input Modalities | Output Modalities | Interaction Paradigm | Endpoint |
 |------|----------|------------------|-------------------|---------------------|----------|
-| **Turn-based Chat** | Low-latency streaming interaction, reply triggered by button or VAD, strong base capabilities | Audio + Text + Image | Audio + Text | Turn-based dialogue | Streaming |
+| **Turn-based Chat** | Low-latency streaming interaction, reply triggered by button or VAD, strong base capabilities | Audio + Text + Image + Video | Audio + Text | Turn-based dialogue | Streaming |
 | **Omnimodal Full-Duplex** | Full-modality full-duplex, vision + voice input and voice output occur simultaneously | Vision + Voice | Text + Voice | Full-duplex | Duplex |
 | **Audio Full-Duplex** | Voice full-duplex, voice input and output occur simultaneously | Voice | Text + Voice | Full-duplex | Duplex |
 

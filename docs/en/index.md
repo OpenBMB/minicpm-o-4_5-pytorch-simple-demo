@@ -10,7 +10,7 @@ The system supports three interaction modes, sharing a single model instance wit
 
 | Mode | Features | Input/Output Modalities | Paradigm |
 |------|----------|------------------------|----------|
-| **Turn-based Chat** | Low-latency streaming interaction, reply triggered by button or VAD, strong baseline capabilities | Audio + text input, audio + text output | Turn-based dialogue |
+| **Turn-based Chat** | Low-latency streaming interaction, reply triggered by button or VAD, strong baseline capabilities | Audio + text + video input, audio + text output | Turn-based dialogue |
 | **Omnimodal Full-Duplex** | Omnimodal full-duplex with simultaneous vision + voice input and voice output | Vision + voice input, text + voice output | Full-duplex |
 | **Audio Full-Duplex** | Voice full-duplex with simultaneous voice input and output | Voice input, text + voice output | Full-duplex |
 

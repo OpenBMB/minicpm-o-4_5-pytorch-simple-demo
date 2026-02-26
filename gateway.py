@@ -292,6 +292,84 @@ async def chat(request: Request):
         worker_pool.release_worker(worker, request_type="chat", duration_s=duration)
 
 
+# ============ Chat Streaming SSE（HTTP 流式代理到 Worker） ============
+
+@app.post("/api/chat_streaming")
+async def chat_streaming(request: Request):
+    """Chat Streaming 推理（SSE 流式返回）"""
+    if not app_registry.is_enabled("turnbased"):
+        raise HTTPException(status_code=403, detail="Turn-based Chat is currently disabled")
+    if worker_pool is None:
+        raise HTTPException(status_code=503, detail="Service not ready")
+
+    request_body = await request.json()
+    queue_start = datetime.now()
+
+    try:
+        ticket, future = worker_pool.enqueue("chat")
+    except WorkerPool.QueueFullError:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Queue full ({worker_pool.max_queue_size} requests)",
+        )
+
+    worker: Optional[WorkerConnection] = None
+    try:
+        if future.done():
+            worker = future.result()
+        else:
+            while not future.done():
+                if await request.is_disconnected():
+                    worker_pool.cancel(ticket.ticket_id)
+                    return
+                try:
+                    worker = await asyncio.wait_for(
+                        asyncio.shield(future), timeout=2.0
+                    )
+                    break
+                except asyncio.TimeoutError:
+                    continue
+                except asyncio.CancelledError:
+                    raise HTTPException(status_code=503, detail="Request cancelled")
+            if worker is None and future.done():
+                worker = future.result()
+    except asyncio.CancelledError:
+        raise HTTPException(status_code=503, detail="Request cancelled")
+
+    if worker is None:
+        raise HTTPException(status_code=503, detail="No worker available")
+
+    worker.mark_busy(GatewayWorkerStatus.BUSY_CHAT, "chat_streaming")
+    worker.cached_hash = None
+    worker.last_cache_used_at = None
+    task_start = datetime.now()
+
+    async def _stream_proxy():
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST",
+                    f"{worker.url}/chat_streaming",
+                    json=request_body,
+                    timeout=None,
+                ) as resp:
+                    async for chunk in resp.aiter_bytes():
+                        yield chunk
+        except Exception as e:
+            logger.error(f"Chat streaming proxy error: {e}", exc_info=True)
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n".encode()
+        finally:
+            duration = (datetime.now() - task_start).total_seconds()
+            worker_pool.release_worker(worker, request_type="chat_streaming", duration_s=duration)
+
+    from starlette.responses import StreamingResponse as StarletteStreamingResponse
+    return StarletteStreamingResponse(
+        _stream_proxy(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 # ============ Streaming Stop（HTTP，转发到 Worker） ============
 
 @app.post("/api/streaming/stop")

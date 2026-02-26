@@ -23,7 +23,7 @@ The most complex non-duplex page, supporting both Chat and Streaming modes.
 ```javascript
 const state = {
     messages: [],                // Message list {role, content, displayText}
-    systemContentList: [],       // System content list (text + audio + image)
+    systemContentList: [],       // System content list (text + audio + image + video)
     isGenerating: false,         // Whether generation is in progress
     generationPhase: 'idle',     // 'idle' | 'queuing' | 'generating'
     currentTicketId: null,       // Queue ticket ID (streaming only)
@@ -53,8 +53,9 @@ Streaming chat via WebSocket (`WS /ws/streaming/{request_id}`):
 1. Get user input items from `UserContentEditor`
 2. Audio Blob → resample to 16kHz mono → Base64 PCM float32
 3. Image File → Base64
-4. Build `content list` format: `[{type:"text", text:...}, {type:"audio", data:...}, ...]`
-5. `buildRequestMessages()` assembles the complete message list (including system prompt)
+4. Video File → Base64 (backend auto-extracts frames and audio, requires `omni_mode: true`)
+5. Build `content list` format: `[{type:"text", text:...}, {type:"audio", data:...}, {type:"video", data:...}, ...]`
+6. `buildRequestMessages()` assembles the complete message list (including system prompt)
 
 ### TTS Reference Audio
 

@@ -36,7 +36,7 @@ core/
 |------|--------|-------------|
 | `Role` | `system`, `user`, `assistant` | Message role |
 | `TTSMode` | `default`, `audio_assistant`, `omni`, `audio_roleplay`, `voice_cloning` | TTS mode |
-| `ContentType` | `text`, `image`, `audio` | Content type |
+| `ContentType` | `text`, `image`, `audio`, `video` | Content type |
 
 #### Content Models
 
@@ -45,8 +45,9 @@ core/
 | `TextContent` | `type="text"`, `text: str` | Text content |
 | `ImageContent` | `type="image"`, `data: str` | Image content (Base64) |
 | `AudioContent` | `type="audio"`, `data: str`, `sample_rate: int = 16000` | Audio content (Base64 PCM float32) |
+| `VideoContent` | `type="video"`, `data: str`, `stack_frames: int = 1` | Video content (Base64 video file, auto-extracts frames and audio) |
 
-Type alias: `ContentItem = Union[TextContent, ImageContent, AudioContent]`
+Type alias: `ContentItem = Union[TextContent, ImageContent, AudioContent, VideoContent]`
 
 #### Message Model
 

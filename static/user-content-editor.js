@@ -96,6 +96,43 @@
 }
 .uce-image-remove-btn:hover { color: #cf222e; }
 
+/* ── Video UI ── */
+.uce-video-action-zone {
+    display: flex; gap: 6px; align-items: stretch;
+}
+.uce-video-action-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px;
+    border: 1px dashed #d5d5d0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-size: 12px;
+    color: #999;
+    background: transparent;
+    flex: 1;
+    justify-content: center;
+}
+.uce-video-action-btn:hover { border-color: #6a5acd; color: #6a5acd; background: #f8f5ff; }
+.uce-video-info {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: #888;
+}
+.uce-video-thumb {
+    width: 80px; height: 48px;
+    object-fit: cover;
+    border-radius: 4px;
+    border: 1px solid #e5e5e0;
+    flex-shrink: 0;
+}
+.uce-video-info .name { color: #2d2d2d; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uce-video-remove-btn {
+    background: none; border: none; color: #ccc; cursor: pointer;
+    font-size: 11px; padding: 2px; transition: color 0.12s;
+}
+.uce-video-remove-btn:hover { color: #cf222e; }
+.uce-badge-video { background: #e8ddf0; color: #6a5acd; }
+
 /* ── Recording UI ── */
 .uce-recording-inline {
     display: flex; align-items: center; gap: 10px;
@@ -697,6 +734,80 @@ function _uceCreateImageUI(item, idx, onChange) {
 }
 
 
+/**
+ * Create video UI for an item.
+ * States: has-video (thumbnail + info) → empty (upload)
+ */
+function _uceCreateVideoUI(item, idx, onChange) {
+    const wrap = document.createElement('div');
+
+    if (item.name || item.data || item.objectUrl) {
+        wrap.className = 'uce-video-info';
+
+        const thumb = document.createElement('video');
+        thumb.className = 'uce-video-thumb';
+        thumb.muted = true;
+        thumb.preload = 'metadata';
+        if (item.objectUrl) {
+            thumb.src = item.objectUrl;
+        } else if (item.data) {
+            thumb.src = 'data:video/mp4;base64,' + item.data;
+        }
+        thumb.addEventListener('loadeddata', () => {
+            thumb.currentTime = 0.5;
+        });
+        wrap.appendChild(thumb);
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'name';
+        nameSpan.textContent = item.name || 'video';
+        wrap.appendChild(nameSpan);
+
+        if (item.duration) {
+            const durSpan = document.createElement('span');
+            durSpan.style.color = '#bbb';
+            durSpan.textContent = item.duration.toFixed(1) + 's';
+            wrap.appendChild(durSpan);
+        }
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'uce-video-remove-btn';
+        removeBtn.innerHTML = '&#10005;';
+        removeBtn.title = 'Remove video';
+        removeBtn.addEventListener('click', () => {
+            item.file = null; item.name = ''; item.objectUrl = null; item.data = null; item.duration = 0;
+            onChange();
+        });
+        wrap.appendChild(removeBtn);
+    } else {
+        wrap.className = 'uce-video-action-zone';
+
+        const uploadBtn = document.createElement('button');
+        uploadBtn.className = 'uce-video-action-btn';
+        uploadBtn.innerHTML = '<span>🎬</span> Upload Video';
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file'; fileInput.accept = 'video/*';
+        fileInput.style.display = 'none';
+        fileInput.addEventListener('change', (e) => {
+            const f = e.target.files[0];
+            if (!f) return;
+            item.file = f;
+            item.name = f.name;
+            item.objectUrl = URL.createObjectURL(f);
+            const videoEl = document.createElement('video');
+            videoEl.preload = 'metadata';
+            videoEl.src = item.objectUrl;
+            videoEl.addEventListener('loadedmetadata', () => { item.duration = videoEl.duration; onChange(); });
+            videoEl.addEventListener('error', () => { item.duration = 0; onChange(); });
+        });
+        uploadBtn.appendChild(fileInput);
+        uploadBtn.addEventListener('click', () => fileInput.click());
+        wrap.appendChild(uploadBtn);
+    }
+    return wrap;
+}
+
+
 // ═══════════════════════════════════════════════════════════════
 // UserContentEditor (public API)
 // ═══════════════════════════════════════════════════════════════
@@ -857,6 +968,17 @@ class UserContentEditor {
             });
             adds.appendChild(addImageBtn);
         }
+
+        const addVideoBtn = document.createElement('button');
+        addVideoBtn.className = 'uce-empty-add-btn';
+        addVideoBtn.textContent = '+ Video';
+        addVideoBtn.addEventListener('click', () => {
+            this.items.push({ type: 'video', file: null, name: '', objectUrl: null, data: null, duration: 0 });
+            this.render();
+            this.onChange(this.getItems());
+        });
+        adds.appendChild(addVideoBtn);
+
         bottom.appendChild(adds);
 
         const recZone = document.createElement('div');
@@ -920,7 +1042,7 @@ class UserContentEditor {
             // Badge
             const badge = document.createElement('span');
             badge.className = `uce-badge uce-badge-${item.type}`;
-            badge.textContent = item.type === 'text' ? 'T' : item.type === 'audio' ? 'A' : 'I';
+            badge.textContent = item.type === 'text' ? 'T' : item.type === 'audio' ? 'A' : item.type === 'video' ? 'V' : 'I';
             row.appendChild(badge);
 
             // Content
@@ -962,6 +1084,11 @@ class UserContentEditor {
                 requestAnimationFrame(() => _uceAutoResize(ta));
             } else if (item.type === 'image') {
                 content.appendChild(_uceCreateImageUI(item, idx, () => {
+                    this.render();
+                    this.onChange(this.getItems());
+                }));
+            } else if (item.type === 'video') {
+                content.appendChild(_uceCreateVideoUI(item, idx, () => {
                     this.render();
                     this.onChange(this.getItems());
                 }));
@@ -1057,6 +1184,12 @@ class UserContentEditor {
             addGroup.appendChild(addImage);
         }
 
+        const addVideo = document.createElement('button');
+        addVideo.className = 'uce-add-btn';
+        addVideo.textContent = '+ Video';
+        addVideo.addEventListener('click', () => this._add('video'));
+        addGroup.appendChild(addVideo);
+
         const recBtn = document.createElement('button');
         recBtn.className = 'uce-add-btn uce-rec-btn-add';
         recBtn.textContent = '🎤';
@@ -1094,6 +1227,7 @@ class UserContentEditor {
     _add(type) {
         if (type === 'text') this.items.push({ type: 'text', text: '' });
         else if (type === 'image') this.items.push({ type: 'image', file: null, name: '', objectUrl: null, data: null });
+        else if (type === 'video') this.items.push({ type: 'video', file: null, name: '', objectUrl: null, data: null, duration: 0 });
         else this.items.push({ type: 'audio', file: null, name: '', duration: 0, objectUrl: null });
         this.render();
         this.onChange(this.getItems());
