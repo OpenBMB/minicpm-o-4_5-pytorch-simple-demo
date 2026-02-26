@@ -607,6 +607,22 @@
         }
         .input-actions input[type="file"] { display: none; }
 
+        /* Toggle switch */
+        .toggle-switch { position: relative; display: inline-block; width: 32px; height: 18px; flex-shrink: 0; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute; cursor: pointer; inset: 0;
+            background: #d5d5d0; border-radius: 18px; transition: 0.2s;
+        }
+        .toggle-slider::before {
+            content: ""; position: absolute; width: 14px; height: 14px;
+            left: 2px; bottom: 2px; background: #fff; border-radius: 50%; transition: 0.2s;
+        }
+        .toggle-switch input:checked + .toggle-slider { background: #2d2d2d; }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(14px); }
+        .toggle-row { display: flex; align-items: center; gap: 6px; }
+        .toggle-label { font-size: 12px; color: #666; line-height: 18px; cursor: default; }
+
         /* Mic / Attach action buttons */
         .input-actions .btn-mic {
             width: auto;
@@ -892,26 +908,6 @@
                     </div>
                 </div>
             </details>
-            <div style="margin-top:10px; padding:0 2px;">
-                <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
-                    <div style="display:flex; align-items:center; gap:6px;">
-                        <input type="checkbox" id="enableStreamingInit" checked>
-                        <label for="enableStreamingInit" style="font-size:12px; color:#666;">Streaming Response</label>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:6px;">
-                        <input type="checkbox" id="enableTtsInit" checked>
-                        <label for="enableTtsInit" style="font-size:12px; color:#666;">Audio Response</label>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:4px;">
-                        <label style="font-size:12px; color:#888;">tokens</label>
-                        <input type="number" id="maxTokensInit" value="256" min="1" max="2048" style="width:52px; font-size:12px; padding:3px; border:1px solid #e5e5e0; border-radius:4px;">
-                    </div>
-                    <div style="display:flex; align-items:center; gap:4px;">
-                        <label style="font-size:12px; color:#888;" data-tooltip="Higher value = longer AI responses. EOS logit divided by this value.">len_pen</label>
-                        <input type="number" id="lengthPenaltyInit" value="1.1" min="0.1" max="5.0" step="0.05" style="width:52px; font-size:12px; padding:3px; border:1px solid #e5e5e0; border-radius:4px;">
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- 快捷键提示 -->
@@ -937,10 +933,26 @@
             <div class="drag-overlay" id="dragOverlayInit">📎 Drop image, audio or video here</div>
             <div id="composeEditorInit"></div>
             <div class="input-bottom">
-                <div class="input-options"></div>
+                <div class="input-options">
+                    <div class="toggle-row" data-tooltip="Get text and voice response in real time.">
+                        <label class="toggle-switch"><input type="checkbox" id="enableStreamingInit" checked><span class="toggle-slider"></span></label>
+                        <span class="toggle-label">Streaming</span>
+                    </div>
+                    <div class="toggle-row" data-tooltip="Generate voice reply. Best for spoken conversations. Bad for Markdown-style response. Enabling this will also affects text output.">
+                        <label class="toggle-switch"><input type="checkbox" id="enableTtsInit"><span class="toggle-slider"></span></label>
+                        <span class="toggle-label">Voice Response</span>
+                    </div>
+                    <div class="opt-group" style="display:flex; align-items:center; gap:3px;">
+                        <label style="font-size:11px; color:#bbb;">new tokens</label>
+                        <input type="number" id="maxTokensInit" value="1024" min="1" max="2048" style="width:48px; font-size:11px; padding:2px 4px; border:1px solid #e5e5e0; border-radius:4px; color:#888;">
+                    </div>
+                    <div class="opt-group" style="display:flex; align-items:center; gap:3px;">
+                        <label style="font-size:11px; color:#bbb;" data-tooltip="Higher value = longer responses. EOS logit divided by this value.">len_pen</label>
+                        <input type="number" id="lengthPenaltyInit" value="1.1" min="0.1" max="5.0" step="0.05" style="width:48px; font-size:11px; padding:2px 4px; border:1px solid #e5e5e0; border-radius:4px; color:#888;">
+                    </div>
+                </div>
                 <div class="input-actions">
                     <button class="btn-mic" id="micBtnInit" title="Record audio (Space key)">🎤 <span class="kbd-hint">Space</span></button>
-                    <!-- <button class="btn-attach" id="attachBtnInit" title="Attach image or audio (drag &amp; drop / paste also supported)">📎</button> -->
                     <button class="btn-send" id="sendBtnInit" onclick="sendFirstMessage()">&#8593;</button>
                 </div>
             </div>
@@ -973,26 +985,6 @@
                 </div>
             </div>
         </details>
-        <div style="padding:6px 12px;">
-            <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <input type="checkbox" id="enableStreaming" checked>
-                    <label for="enableStreaming" style="font-size:12px; color:#666;">Streaming Response</label>
-                </div>
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <input type="checkbox" id="enableTts" checked>
-                    <label for="enableTts" style="font-size:12px; color:#666;">Audio Response</label>
-                </div>
-                <div style="display:flex; align-items:center; gap:4px;">
-                    <label style="font-size:12px; color:#888;">tokens</label>
-                    <input type="number" id="maxTokens" value="256" min="1" max="2048" style="width:52px; font-size:12px; padding:3px; border:1px solid #e5e5e0; border-radius:4px;">
-                </div>
-                <div style="display:flex; align-items:center; gap:4px;">
-                    <label style="font-size:12px; color:#888;" data-tooltip="Higher value = longer AI responses. EOS logit divided by this value.">len_pen</label>
-                    <input type="number" id="lengthPenalty" value="1.1" min="0.1" max="5.0" step="0.05" style="width:52px; font-size:12px; padding:3px; border:1px solid #e5e5e0; border-radius:4px;">
-                </div>
-            </div>
-        </div>
 
         <div class="chat-toolbar">
             <button class="btn-export" onclick="exportConversation()" data-tip="Export conversation as .msgpack — MessagePack is a JSON-like binary format that can store raw bytes (audio, images). Open .msgpack files in Cursor/VS Code with the msgpack-audio-viewer extension. You can also read .msgpack programmatically with any msgpack library (Python, JS, etc.).">
@@ -1029,10 +1021,26 @@
                 <div class="drag-overlay" id="dragOverlayChat">📎 Drop image, audio or video here</div>
                 <div id="composeEditorChat"></div>
                 <div class="input-bottom">
-                    <div class="input-options"></div>
+                    <div class="input-options">
+                        <div class="toggle-row" data-tooltip="Stream tokens in real time, ideal for long responses">
+                            <label class="toggle-switch"><input type="checkbox" id="enableStreaming" checked><span class="toggle-slider"></span></label>
+                            <span class="toggle-label">Streaming</span>
+                        </div>
+                        <div class="toggle-row" data-tooltip="Generate voice reply. Best for spoken conversations. Enabling this affects text output — special characters (Markdown, code, etc.) will be suppressed.">
+                            <label class="toggle-switch"><input type="checkbox" id="enableTts"><span class="toggle-slider"></span></label>
+                            <span class="toggle-label">Voice Response</span>
+                        </div>
+                        <div class="opt-group" style="display:flex; align-items:center; gap:3px;">
+                            <label style="font-size:11px; color:#bbb;">tokens</label>
+                            <input type="number" id="maxTokens" value="256" min="1" max="2048" style="width:48px; font-size:11px; padding:2px 4px; border:1px solid #e5e5e0; border-radius:4px; color:#888;">
+                        </div>
+                        <div class="opt-group" style="display:flex; align-items:center; gap:3px;">
+                            <label style="font-size:11px; color:#bbb;" data-tooltip="Higher value = longer responses. EOS logit divided by this value.">len_pen</label>
+                            <input type="number" id="lengthPenalty" value="1.1" min="0.1" max="5.0" step="0.05" style="width:48px; font-size:11px; padding:2px 4px; border:1px solid #e5e5e0; border-radius:4px; color:#888;">
+                        </div>
+                    </div>
                     <div class="input-actions">
                         <button class="btn-mic" id="micBtnChat" title="Record audio (Space key)">🎤 <span class="kbd-hint">Space</span></button>
-                        <!-- <button class="btn-attach" id="attachBtnChat" title="Attach image or audio (drag &amp; drop / paste also supported)">📎</button> -->
                         <button class="btn-send" id="sendBtn" onclick="sendMessage()">&#8593;</button>
                     </div>
                 </div>
