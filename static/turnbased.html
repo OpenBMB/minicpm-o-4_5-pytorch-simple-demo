@@ -2431,105 +2431,91 @@ async function sendMessage() {
     }
 }
 
-// ============ Chat 模式 ============
+// ============ 统一 Chat WebSocket 通信 ============
+function _buildChatWSBody(maxTokens, streaming) {
+    const allMessages = buildRequestMessages();
+    const hasVideo = allMessages.some(m =>
+        Array.isArray(m.content) && m.content.some(it => it.type === 'video' && it.data)
+    );
+    const enableTts = getEnableTts();
+
+    const body = {
+        messages: allMessages,
+        streaming: streaming,
+        generation: {
+            max_new_tokens: maxTokens,
+            do_sample: true,
+            length_penalty: parseFloat(document.getElementById('lengthPenalty').value) || 1.1,
+        },
+        image: { max_slice_nums: hasVideo ? 1 : getHDMaxSliceNums() },
+        omni_mode: hasVideo,
+    };
+
+    if (enableTts) {
+        body.tts = { enabled: true, mode: hasVideo ? 'omni' : 'audio_assistant' };
+        body.use_tts_template = true;
+        const refAudio = getTtsRefAudioBase64();
+        if (refAudio) body.tts.ref_audio_data = refAudio;
+    }
+
+    return { body, enableTts };
+}
+
+// ============ Chat 模式（非流式，走 /ws/chat） ============
 async function sendChatMessage(maxTokens) {
     setGenerating(true);
-    state.generationPhase = 'queuing';
+    state.generationPhase = 'generating';
     updateCancelStopButton();
     addMessageUI('assistant', '...', '', [], -1);
     const reqId = state.requestId;
-
-    const enableTts = getEnableTts();
-    const requestStartTime = Date.now();
-
-    // 排队标记：由 checkServiceStatus 轮询驱动倒计时（每 3s）
-    _chatPending = true;
-
-    state.abortController = new AbortController();
+    const startTime = Date.now();
 
     try {
-        const allMsgs = buildRequestMessages();
-        const hasVideo = allMsgs.some(m =>
-            Array.isArray(m.content) && m.content.some(it => it.type === 'video' && it.data)
-        );
-        const body = {
-            messages: allMsgs,
-            generation: { max_new_tokens: maxTokens, do_sample: true },
-            image: { max_slice_nums: hasVideo ? 1 : getHDMaxSliceNums() },
+        const { body, enableTts } = _buildChatWSBody(maxTokens, false);
+
+        const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${wsProto}://${window.location.host}/ws/chat`);
+
+        ws.onopen = () => ws.send(JSON.stringify(body));
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'prefill_done') {
+                // prefill 完成，等待 generate 结果
+            } else if (msg.type === 'done') {
+                const elapsed = Date.now() - startTime;
+                state.messages.push({ role: 'assistant', content: msg.text, displayText: msg.text });
+                updateLastAssistantMessage(msg.text);
+                updateLastAssistantMeta({
+                    mode: 'chat',
+                    totalMs: elapsed,
+                    processMs: elapsed,
+                    inputTokens: msg.input_tokens || 0,
+                    generatedTokens: msg.generated_tokens || 0,
+                    hasAudio: !!msg.audio_data,
+                    requestId: reqId,
+                });
+
+                const lastMsg = document.querySelectorAll('.message.assistant');
+                const last = lastMsg[lastMsg.length - 1];
+                if (last) last.dataset.msgIndex = state.messages.length - 1;
+
+                if (msg.audio_data) appendAudioPlayer(msg.audio_data);
+                ws.close();
+                setGenerating(false);
+            } else if (msg.type === 'error') {
+                updateLastAssistantMessage(`Error: ${msg.error}`, 'error');
+                ws.close();
+                setGenerating(false);
+            }
         };
 
-        if (hasVideo) {
-            body.omni_mode = true;
-        }
+        ws.onerror = () => { updateLastAssistantMessage('WebSocket error', 'error'); setGenerating(false); };
+        ws.onclose = () => { if (state.isGenerating) setGenerating(false); };
 
-        if (enableTts) {
-            const tts = {
-                enabled: true,
-                mode: hasVideo ? 'omni' : 'audio_assistant',
-            };
-            // TTS ref audio（从 TTS Ref Audio 控件获取，可能独立于系统 prompt 中的 audio）
-            const chatRefAudio = getTtsRefAudioBase64();
-            if (chatRefAudio) {
-                tts.ref_audio_data = chatRefAudio;
-            }
-            body.tts = tts;
-            body.use_tts_template = true;
-        }
-
-        const resp = await fetch(`${API_BASE}/api/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: state.abortController.signal,
-        });
-
-        const data = await resp.json();
-
-        if (data.success) {
-            if (data.recording_session_id && typeof _saveShareUI !== 'undefined') {
-                _saveShareUI.setSessionId(data.recording_session_id);
-            }
-            const totalWaitMs = Date.now() - requestStartTime;
-            state.messages.push({ role: 'assistant', content: data.text, displayText: data.text });
-            updateLastAssistantMessage(data.text);
-            const ts = data.token_stats || {};
-            updateLastAssistantMeta({
-                mode: 'chat',
-                totalMs: totalWaitMs,
-                queueEstS: data.estimated_queue_wait_s ?? null,
-                queueActualMs: data.queue_wait_ms ?? null,
-                processMs: Math.round(data.duration_ms || 0),
-                inputTokens: ts.input_tokens || 0,
-                generatedTokens: ts.generated_tokens || 0,
-                hasAudio: !!data.audio_data,
-                requestId: reqId,
-            });
-            // 更新 edit 按钮
-            const lastMsg = document.querySelectorAll('.message.assistant');
-            const last = lastMsg[lastMsg.length - 1];
-            if (last) {
-                last.dataset.msgIndex = state.messages.length - 1;
-                if (!last.querySelector('.msg-edit-btn')) {
-                    const editBtn = document.createElement('span');
-                    editBtn.className = 'msg-edit-btn';
-                    editBtn.textContent = 'Edit';
-                    editBtn.onclick = () => startEditMessage(state.messages.length - 1);
-                    last.appendChild(editBtn);
-                }
-            }
-
-            if (data.audio_data) {
-                appendAudioPlayer(data.audio_data);
-            }
-        } else {
-            updateLastAssistantMessage(`Error: ${data.error}`, 'error');
-        }
     } catch (e) {
-        if (e.name === 'AbortError') return; // cancelled by user
-        updateLastAssistantMessage(`Network error: ${e.message}`, 'error');
-    } finally {
-        state.abortController = null;
-        queueCountdownStop();
+        updateLastAssistantMessage(`Connection error: ${e.message}`, 'error');
         setGenerating(false);
     }
 }
@@ -3051,7 +3037,7 @@ function appendStreamingAudioControl(player) {
     body.appendChild(wrap);
 }
 
-// ============ Streaming 模式（SSE via POST /chat_streaming） ============
+// ============ Streaming 模式（走 /ws/chat） ============
 async function sendStreamingMessage(maxTokens) {
     setGenerating(true);
     state.generationPhase = 'generating';
@@ -3062,125 +3048,74 @@ async function sendStreamingMessage(maxTokens) {
     const startTime = Date.now();
     let ttfsTime = null;
     let fullText = '';
-    const enableTts = getEnableTts();
+
+    const { body, enableTts } = _buildChatWSBody(maxTokens, true);
+
     let streamAudioPlayer = null;
     let controlCreated = false;
-
     if (enableTts) {
         streamAudioPlayer = new StreamingAudioPlayer(24000);
     }
 
     try {
-        const allMessages = buildRequestMessages();
-        const hasVideo = allMessages.some(m =>
-            Array.isArray(m.content) && m.content.some(it => it.type === 'video' && it.data)
-        );
+        const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${wsProto}://${window.location.host}/ws/chat`);
 
-        const body = {
-            messages: allMessages,
-            generation: {
-                max_new_tokens: maxTokens,
-                do_sample: true,
-                length_penalty: parseFloat(document.getElementById('lengthPenalty').value) || 1.1,
-            },
-            image: { max_slice_nums: hasVideo ? 1 : getHDMaxSliceNums() },
-            omni_mode: hasVideo,
-            enable_thinking: false,
+        ws.onopen = () => ws.send(JSON.stringify(body));
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'prefill_done') {
+                // prefill 完成
+            } else if (msg.type === 'chunk') {
+                if (ttfsTime === null) ttfsTime = Date.now() - startTime;
+                if (msg.text_delta) {
+                    fullText += msg.text_delta;
+                    updateLastAssistantMessage(fullText);
+                }
+                if (msg.audio_data && streamAudioPlayer) {
+                    streamAudioPlayer.pushChunk(msg.audio_data, null);
+                    if (!controlCreated) {
+                        appendStreamingAudioControl(streamAudioPlayer);
+                        streamAudioPlayer.play(0);
+                        controlCreated = true;
+                    }
+                }
+            } else if (msg.type === 'done') {
+                const elapsed = Date.now() - startTime;
+                state.messages.push({ role: 'assistant', content: fullText || msg.text, displayText: fullText || msg.text });
+                if (fullText) {
+                    updateLastAssistantMeta({
+                        mode: 'streaming',
+                        totalMs: elapsed,
+                        ttfsMs: ttfsTime,
+                        processMs: elapsed,
+                        inputTokens: msg.input_tokens || 0,
+                        generatedTokens: msg.generated_tokens || 0,
+                        requestId: reqId,
+                    });
+                }
+                if (streamAudioPlayer) streamAudioPlayer.markStreamFinished();
+
+                const lastMsg = document.querySelectorAll('.message.assistant');
+                const last = lastMsg[lastMsg.length - 1];
+                if (last) last.dataset.msgIndex = state.messages.length - 1;
+
+                ws.close();
+                setGenerating(false);
+            } else if (msg.type === 'error') {
+                updateLastAssistantMessage(`Error: ${msg.error}`, 'error');
+                ws.close();
+                setGenerating(false);
+            }
         };
 
-        if (enableTts) {
-            body.tts = { enabled: true, mode: hasVideo ? 'omni' : 'audio_assistant' };
-            body.use_tts_template = true;
-            const refAudio = getTtsRefAudioBase64();
-            if (refAudio) body.tts.ref_audio_data = refAudio;
-        }
+        ws.onerror = () => { updateLastAssistantMessage('WebSocket error', 'error'); setGenerating(false); };
+        ws.onclose = () => { if (state.isGenerating) setGenerating(false); };
 
-        state.abortController = new AbortController();
-
-        const resp = await fetch(`${API_BASE}/api/chat_streaming`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: state.abortController.signal,
-        });
-
-        if (!resp.ok) {
-            const errText = await resp.text();
-            updateLastAssistantMessage(`Error ${resp.status}: ${errText}`, 'error');
-            setGenerating(false);
-            return;
-        }
-
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let prefillInfo = {};
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-
-            let eventType = null;
-            for (const line of lines) {
-                if (line.startsWith('event: ')) {
-                    eventType = line.slice(7).trim();
-                } else if (line.startsWith('data: ') && eventType) {
-                    const data = JSON.parse(line.slice(6));
-
-                    if (eventType === 'prefill_done') {
-                        prefillInfo = { inputTokens: data.input_tokens || 0 };
-                    } else if (eventType === 'chunk') {
-                        if (ttfsTime === null) ttfsTime = Date.now() - startTime;
-                        if (data.text_delta) {
-                            fullText += data.text_delta;
-                            updateLastAssistantMessage(fullText);
-                        }
-                        if (data.audio_data && streamAudioPlayer) {
-                            streamAudioPlayer.pushChunk(data.audio_data, null);
-                            if (!controlCreated) {
-                                appendStreamingAudioControl(streamAudioPlayer);
-                                streamAudioPlayer.play(0);
-                                controlCreated = true;
-                            }
-                        }
-                    } else if (eventType === 'done') {
-                        const elapsed = Date.now() - startTime;
-                        state.messages.push({ role: 'assistant', content: fullText, displayText: fullText });
-                        updateLastAssistantMeta({
-                            mode: 'streaming',
-                            totalMs: elapsed,
-                            ttfsMs: ttfsTime,
-                            processMs: elapsed,
-                            inputTokens: data.input_tokens || prefillInfo.inputTokens || 0,
-                            generatedTokens: data.generated_tokens || 0,
-                            requestId: reqId,
-                        });
-                        if (streamAudioPlayer) streamAudioPlayer.markStreamFinished();
-
-                        const lastMsg = document.querySelectorAll('.message.assistant');
-                        const last = lastMsg[lastMsg.length - 1];
-                        if (last) {
-                            last.dataset.msgIndex = state.messages.length - 1;
-                        }
-                    } else if (eventType === 'error') {
-                        updateLastAssistantMessage(`Error: ${data.error}`, 'error');
-                    }
-                    eventType = null;
-                }
-            }
-        }
     } catch (e) {
-        if (e.name === 'AbortError') {
-            updateLastAssistantMessage(fullText || '(cancelled)');
-            state.messages.push({ role: 'assistant', content: fullText, displayText: fullText });
-        } else {
-            updateLastAssistantMessage(`Connection error: ${e.message}`, 'error');
-        }
-    } finally {
+        updateLastAssistantMessage(`Connection error: ${e.message}`, 'error');
         setGenerating(false);
     }
 }

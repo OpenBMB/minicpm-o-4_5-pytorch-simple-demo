@@ -690,18 +690,7 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ========== Chat Streaming (SSE) ==========
-
-class ChatStreamingRequest(BaseModel):
-    """Chat Streaming 请求（prefill + streaming generate 一体）"""
-    messages: List[dict] = Field(..., description="消息列表")
-    generation: Optional[dict] = Field(None, description="生成参数")
-    image: Optional[dict] = Field(None, description="图像配置")
-    tts: Optional[dict] = Field(None, description="TTS 配置")
-    use_tts_template: bool = Field(False, description="是否使用 TTS 模板")
-    omni_mode: bool = Field(False, description="Omni 模式")
-    enable_thinking: bool = Field(False, description="思考模式")
-
+# ========== Chat WebSocket（统一流式/非流式） ==========
 
 def _parse_raw_messages(raw_messages: List[dict]) -> List[Message]:
     """将前端原始消息列表解析为 Schema Message 列表"""
@@ -731,142 +720,230 @@ def _parse_raw_messages(raw_messages: List[dict]) -> List[Message]:
     return messages
 
 
-@app.post("/chat_streaming")
-async def chat_streaming(request: ChatStreamingRequest):
-    """Chat Streaming：prefill + streaming generate，SSE 返回"""
+def _convert_to_model_msgs(schema_messages: List[Message]) -> list:
+    """将 Schema Message 列表转为模型格式 msgs"""
+    from core.processors.base import MiniCPMOProcessorMixin
+    _mixin = MiniCPMOProcessorMixin()
+    model_msgs = []
+    for m in schema_messages:
+        content = _mixin._convert_content_to_model_format(m.content)
+        if len(content) == 1 and isinstance(content[0], str):
+            content = content[0]
+        model_msgs.append({"role": m.role.value, "content": content})
+    return model_msgs
+
+
+@app.websocket("/ws/chat")
+async def chat_ws(ws: WebSocket):
+    """Chat WebSocket — 统一流式/非流式
+
+    协议：
+    1. Client → JSON:
+       {
+         "messages": [...],
+         "streaming": true/false,
+         "generation": {"max_new_tokens": 256, "length_penalty": 1.1},
+         "image": {"max_slice_nums": null},
+         "tts": {"enabled": false, "ref_audio_data": "..."},
+         "use_tts_template": false,
+         "omni_mode": false,
+       }
+    2. Server → {"type": "prefill_done", "input_tokens": N}
+    3a. streaming=true:
+        Server → {"type": "chunk", "text_delta": "...", "audio_data": "..."} × N
+        Server → {"type": "done", "text": "...", "generated_tokens": N, "input_tokens": N}
+    3b. streaming=false:
+        Server → {"type": "done", "text": "...", "audio_data": "...", "generated_tokens": N, "input_tokens": N}
+    4. Error:
+        Server → {"type": "error", "error": "..."}
+    """
     if worker is None or worker.processor is None:
-        raise HTTPException(status_code=503, detail="Worker not ready")
+        await ws.close(code=1013, reason="Worker not ready")
+        return
 
-    if not worker.state.is_idle:
-        for _ in range(10):
-            await asyncio.sleep(0.5)
-            if worker.state.is_idle:
-                break
-        else:
-            raise HTTPException(
-                status_code=429,
-                detail=f"Worker busy after waiting 5s, status: {worker.state.status.value}",
-            )
+    await ws.accept()
+    logger.info("Chat WebSocket connected")
 
-    async def event_generator():
-        session_id = "chat_streaming_" + uuid.uuid4().hex[:8]
+    try:
+        raw = await ws.receive_text()
+        msg = json.loads(raw)
+
+        # 等待 Worker 空闲
+        if not worker.state.is_idle:
+            for _ in range(10):
+                await asyncio.sleep(0.5)
+                if worker.state.is_idle:
+                    break
+            else:
+                await ws.send_json({"type": "error", "error": "Worker busy"})
+                await ws.close()
+                return
+
+        session_id = "chat_ws_" + uuid.uuid4().hex[:8]
         worker.state.status = WorkerStatus.BUSY_STREAMING
         worker.state.current_session_id = session_id
 
         try:
-            # 1. 解析消息
-            messages = _parse_raw_messages(request.messages)
+            # 1. 解析消息和参数
+            messages = _parse_raw_messages(msg.get("messages", []))
+            model_msgs = _convert_to_model_msgs(messages)
+            streaming = msg.get("streaming", True)
 
-            from core.processors.base import MiniCPMOProcessorMixin
-            _mixin = MiniCPMOProcessorMixin()
-            model_msgs = []
-            for m_schema in messages:
-                content = _mixin._convert_content_to_model_format(m_schema.content)
-                if len(content) == 1 and isinstance(content[0], str):
-                    content = content[0]
-                model_msgs.append({"role": m_schema.role.value, "content": content})
-
-            # 2. 解析参数
-            max_new_tokens = 256
-            length_penalty = 1.1
-            if request.generation:
-                max_new_tokens = request.generation.get("max_new_tokens", 256)
-                length_penalty = request.generation.get("length_penalty", 1.1)
+            gen_cfg = msg.get("generation", {})
+            max_new_tokens = gen_cfg.get("max_new_tokens", 256)
+            length_penalty = gen_cfg.get("length_penalty", 1.1)
 
             max_slice_nums = None
-            if request.image and request.image.get("max_slice_nums") is not None:
-                max_slice_nums = int(request.image["max_slice_nums"])
+            img_cfg = msg.get("image", {})
+            if img_cfg and img_cfg.get("max_slice_nums") is not None:
+                max_slice_nums = int(img_cfg["max_slice_nums"])
 
             generate_audio = False
             tts_ref_audio_ndarray = None
-            use_tts_template = request.use_tts_template
-            if request.tts and request.tts.get("enabled"):
+            use_tts_template = msg.get("use_tts_template", False)
+            tts_cfg = msg.get("tts", {})
+            if tts_cfg and tts_cfg.get("enabled"):
                 generate_audio = True
                 use_tts_template = True
-                ref_b64 = request.tts.get("ref_audio_data")
+                ref_b64 = tts_cfg.get("ref_audio_data")
                 if ref_b64:
                     tts_ref_bytes = base64.b64decode(ref_b64)
                     tts_ref_audio_ndarray = np.frombuffer(tts_ref_bytes, dtype=np.float32)
 
-            # 3. Prefill
+            omni_mode = msg.get("omni_mode", False)
+            enable_thinking = msg.get("enable_thinking", False)
+
+            # 2. Prefill
             def _do_prefill():
                 return worker.chat_prefill(
                     session_id=session_id,
                     msgs=model_msgs,
-                    omni_mode=request.omni_mode,
+                    omni_mode=omni_mode,
                     max_slice_nums=max_slice_nums,
                     use_tts_template=use_tts_template,
-                    enable_thinking=request.enable_thinking,
+                    enable_thinking=enable_thinking,
                 )
 
-            prompt = await asyncio.to_thread(_do_prefill)
+            await asyncio.to_thread(_do_prefill)
             pre_kv = worker.processor.kv_cache_length
+            await ws.send_json({"type": "prefill_done", "input_tokens": pre_kv})
 
-            yield f"event: prefill_done\ndata: {json.dumps({'input_tokens': pre_kv})}\n\n"
-
-            # 4. TTS init
+            # 3. TTS init
             if generate_audio:
-                if tts_ref_audio_ndarray is not None:
-                    await asyncio.to_thread(worker.streaming_init_tts, tts_ref_audio_ndarray)
-                elif worker.ref_audio_path:
-                    await asyncio.to_thread(worker.streaming_init_tts)
+                def _init_tts():
+                    if tts_ref_audio_ndarray is not None:
+                        worker.processor.model.init_token2wav_cache(prompt_speech_16k=tts_ref_audio_ndarray)
+                    elif worker.ref_audio_path:
+                        import librosa
+                        ref_audio, _ = librosa.load(worker.ref_audio_path, sr=16000, mono=True)
+                        worker.processor.model.init_token2wav_cache(prompt_speech_16k=ref_audio)
+                await asyncio.to_thread(_init_tts)
 
-            # 5. Streaming generate
-            chunk_queue: asyncio.Queue = asyncio.Queue()
-            loop = asyncio.get_event_loop()
+            # 4. Generate
+            if streaming:
+                # 流式：chunk queue 模式
+                chunk_queue: asyncio.Queue = asyncio.Queue()
+                loop = asyncio.get_event_loop()
 
-            def _run_generate():
+                def _run_generate():
+                    try:
+                        for chunk in worker.chat_streaming_generate(
+                            session_id=session_id,
+                            generate_audio=generate_audio,
+                            max_new_tokens=max_new_tokens,
+                            length_penalty=length_penalty,
+                        ):
+                            loop.call_soon_threadsafe(chunk_queue.put_nowait, ("chunk", chunk))
+                        loop.call_soon_threadsafe(chunk_queue.put_nowait, ("done", None))
+                    except Exception as e:
+                        loop.call_soon_threadsafe(chunk_queue.put_nowait, ("error", e))
+
+                gen_task = loop.run_in_executor(None, _run_generate)
+
+                full_text = ""
+                chunk_count = 0
+                while True:
+                    tag, payload = await chunk_queue.get()
+                    if tag == "chunk":
+                        chunk_data = {"type": "chunk"}
+                        if payload.text_delta:
+                            chunk_data["text_delta"] = payload.text_delta
+                            full_text += payload.text_delta
+                        if payload.audio_data:
+                            chunk_data["audio_data"] = payload.audio_data
+                        if len(chunk_data) > 1:
+                            await ws.send_json(chunk_data)
+                        chunk_count += 1
+                    elif tag == "done":
+                        _gen_ids = getattr(worker.processor.model, '_streaming_generated_token_ids', None)
+                        generated_tokens = len(_gen_ids) if _gen_ids else chunk_count
+                        await ws.send_json({
+                            "type": "done",
+                            "text": full_text,
+                            "generated_tokens": generated_tokens,
+                            "input_tokens": pre_kv,
+                        })
+                        break
+                    elif tag == "error":
+                        await ws.send_json({"type": "error", "error": str(payload)})
+                        break
+
                 try:
-                    for chunk in worker.chat_streaming_generate(
+                    await asyncio.wait_for(gen_task, timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
+
+            else:
+                # 非流式
+                def _run_non_streaming():
+                    return worker.chat_non_streaming_generate(
                         session_id=session_id,
-                        generate_audio=generate_audio,
                         max_new_tokens=max_new_tokens,
+                        generate_audio=generate_audio,
+                        use_tts_template=use_tts_template,
+                        enable_thinking=enable_thinking,
+                        tts_ref_audio=tts_ref_audio_ndarray,
                         length_penalty=length_penalty,
-                    ):
-                        loop.call_soon_threadsafe(chunk_queue.put_nowait, ("chunk", chunk))
-                    loop.call_soon_threadsafe(chunk_queue.put_nowait, ("done", None))
-                except Exception as e:
-                    loop.call_soon_threadsafe(chunk_queue.put_nowait, ("error", e))
+                    )
 
-            gen_task = asyncio.get_event_loop().run_in_executor(None, _run_generate)
+                result = await asyncio.to_thread(_run_non_streaming)
 
-            full_text = ""
-            chunk_count = 0
-            while True:
-                tag, payload = await chunk_queue.get()
-                if tag == "chunk":
-                    chunk_data = {}
-                    if payload.text_delta:
-                        chunk_data["text_delta"] = payload.text_delta
-                        full_text += payload.text_delta
-                    if payload.audio_data:
-                        chunk_data["audio_data"] = payload.audio_data
-                    if chunk_data:
-                        yield f"event: chunk\ndata: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
-                    chunk_count += 1
-                elif tag == "done":
-                    _gen_ids = getattr(worker.processor.model, '_streaming_generated_token_ids', None)
-                    generated_tokens = len(_gen_ids) if _gen_ids else chunk_count
-                    yield f"event: done\ndata: {json.dumps({'generated_tokens': generated_tokens, 'text': full_text, 'input_tokens': pre_kv}, ensure_ascii=False)}\n\n"
-                    break
-                elif tag == "error":
-                    yield f"event: error\ndata: {json.dumps({'error': str(payload)})}\n\n"
-                    break
+                text = result
+                audio_data = None
+                if isinstance(result, tuple):
+                    text, waveform = result
+                    if waveform is not None:
+                        audio_bytes = waveform.astype(np.float32).tobytes()
+                        audio_data = base64.b64encode(audio_bytes).decode('utf-8')
 
-            await gen_task
+                stats = getattr(worker.processor.model, '_last_chat_token_stats', {})
+                await ws.send_json({
+                    "type": "done",
+                    "text": text or "",
+                    "audio_data": audio_data,
+                    "generated_tokens": stats.get("generated_tokens", 0),
+                    "input_tokens": pre_kv,
+                })
 
         except Exception as e:
-            logger.error(f"Chat streaming error: {e}", exc_info=True)
-            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+            logger.error(f"Chat WS error: {e}", exc_info=True)
+            try:
+                await ws.send_json({"type": "error", "error": str(e)})
+            except Exception:
+                pass
         finally:
             worker.state.status = WorkerStatus.IDLE
             worker.state.current_session_id = None
 
-    return FastAPIStreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    except WebSocketDisconnect:
+        logger.info("Chat WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"Chat WebSocket error: {e}", exc_info=True)
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 # ========== Streaming Stop 信号（每连接独立） ==========
