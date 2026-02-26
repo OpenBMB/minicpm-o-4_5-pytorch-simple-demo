@@ -30,9 +30,9 @@ graph TB
 
     subgraph modelLayer [模型层]
         UP["UnifiedProcessor"]
-        StreamV["StreamingView"]
+        ChatV["ChatView"]
         DuplexV["DuplexView"]
-        UP --> StreamV
+        UP --> ChatV
         UP --> DuplexV
     end
 
@@ -58,7 +58,7 @@ graph TB
 
 | 模式 | 特点 | 输入模态 | 输出模态 | 交互范式 | 对应接口 |
 |------|------|---------|---------|---------|---------|
-| **Turn-based Chat** | 低延迟流式交互，按钮或 VAD 触发回复，基础能力强 | 音频 + 文本 + 图像 | 音频 + 文本 | 轮次对话 | Streaming |
+| **Turn-based Chat** | 低延迟流式交互，按钮或 VAD 触发回复，基础能力强 | 音频 + 文本 + 图像 + 视频 | 音频 + 文本 | 轮次对话 | ChatView |
 | **Omnimodal Full-Duplex** | 全模态全双工，视觉 + 语音输入与语音输出同时进行 | 视觉 + 语音 | 文本 + 语音 | 全双工 | Duplex |
 | **Audio Full-Duplex** | 语音全双工，语音输入和输出同时进行 | 语音 | 文本 + 语音 | 全双工 | Duplex |
 
@@ -71,22 +71,22 @@ graph LR
     end
 
     subgraph apis [两个 WebSocket 接口]
-        StreamAPI["/ws/streaming/{session_id}\nStreamingView"]
+        ChatAPI["/ws/chat\nChatView"]
         DuplexAPI["/ws/duplex/{session_id}\nDuplexView"]
     end
 
-    TB --> StreamAPI
+    TB --> ChatAPI
     OD --> DuplexAPI
     AD --> DuplexAPI
 ```
 
-### Streaming 接口 — Turn-based Chat
+### Chat 接口 — Turn-based Chat
 
-Turn-based Chat 通过 **Streaming 接口** (`/ws/streaming/{session_id}`) 实现轮次式多模态对话。
+Turn-based Chat 通过 **ChatView**（`/ws/chat` WebSocket）实现轮次式多模态对话。
 
-用户发送完整消息后，模型流式返回文本 + 音频。支持 KV Cache 跨轮复用，多轮对话无需重新 prefill 历史。前端可通过按钮或 VAD（语音活动检测）触发回复。
+ChatView 将推理分为 prefill 和 generate 两个阶段：prefill 一次性将所有消息填充到 KV Cache，generate 支持流式和非流式两种模式。前端可通过 Streaming 开关选择实时逐字输出或一次性返回。
 
-详见 [Streaming 模式详解](streaming.html)。
+详见 [ChatView 模式详解](streaming.html)。
 
 ### Duplex 接口 — Full-Duplex
 

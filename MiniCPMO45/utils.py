@@ -129,6 +129,7 @@ class ChunkPrefillChunkGenerate:
         repetition_penalty: float = 1.05,
         length_penalty: float = 1.0,
         all_input_ids: Optional[torch.Tensor] = None,
+        suppress_forbidden_tokens: bool = True,
     ) -> GenerateChunkOutput:
         """
         Args:
@@ -176,7 +177,7 @@ class ChunkPrefillChunkGenerate:
             logits = outputs.logits[:, -1, :].to(copy=True, dtype=torch.float32, device=inputs_embeds.device)
 
             # forbid specific tokens decoding = model.generate@suppress_tokens
-            if self.forbidden_token_ids:
+            if suppress_forbidden_tokens and self.forbidden_token_ids:
                 logits[:, self.forbidden_token_ids] = float("-inf")
 
             past_key_values = outputs.past_key_values

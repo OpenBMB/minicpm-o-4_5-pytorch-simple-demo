@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">Overview</a></li>
-        <li><a href="architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="architecture/streaming.html">Chat Mode</a></li>
         <li><a href="architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="architecture/internals.html">Internals</a></li>
       </ul>
@@ -154,7 +154,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </tr>
 <tr>
 <td><code>ContentType</code></td>
-<td><code>text</code>, <code>image</code>, <code>audio</code></td>
+<td><code>text</code>, <code>image</code>, <code>audio</code>, <code>video</code></td>
 <td>Content type</td>
 </tr>
 </tbody>
@@ -184,11 +184,16 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <td><code>type="audio"</code>, <code>data: str</code>, <code>sample_rate: int = 16000</code></td>
 <td>Audio content (Base64 PCM float32)</td>
 </tr>
+<tr>
+<td><code>VideoContent</code></td>
+<td><code>type="video"</code>, <code>data: str</code>, <code>stack_frames: int = 1</code></td>
+<td>Video content (Base64 video file, auto-extracts frames and audio)</td>
+</tr>
 </tbody>
 </table>
-<p>Type alias: <code>ContentItem = Union[TextContent, ImageContent, AudioContent]</code></p>
+<p>Type alias: <code>ContentItem = Union[TextContent, ImageContent, AudioContent, VideoContent]</code></p>
 <h4 id="message-model">Message Model</h4>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">Message</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Message</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
     <span class="n">role</span><span class="p">:</span> <span class="n">Role</span>
     <span class="n">content</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">ContentItem</span><span class="p">]]</span>
 </code></pre></div>
@@ -226,132 +231,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </tr>
 </tbody>
 </table>
-<h3 id="streamingpy-streaming-mode-schema">streaming.py — Streaming Mode Schema</h3>
-<h4 id="streamingconfig">StreamingConfig</h4>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>generate_audio</code></td>
-<td><code>True</code></td>
-<td>Whether to generate audio</td>
-</tr>
-<tr>
-<td><code>audio_token_chunk_size</code></td>
-<td><code>25</code></td>
-<td>Audio token chunk size</td>
-</tr>
-<tr>
-<td><code>ref_audio_path</code></td>
-<td><code>None</code></td>
-<td>Reference audio path</td>
-</tr>
-<tr>
-<td><code>ref_audio_data</code></td>
-<td><code>None</code></td>
-<td>Reference audio Base64</td>
-</tr>
-<tr>
-<td><code>enable_speculative_snapshot</code></td>
-<td><code>False</code></td>
-<td>Enable VAD speculative snapshot</td>
-</tr>
-<tr>
-<td><code>tts_sampling</code></td>
-<td><code>TTSSamplingParams</code></td>
-<td>TTS sampling parameters</td>
-</tr>
-</tbody>
-</table>
-<h4 id="streamingrequest">StreamingRequest</h4>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Type</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>session_id</code></td>
-<td><code>str</code></td>
-<td>Session ID</td>
-</tr>
-<tr>
-<td><code>messages</code></td>
-<td><code>List[Message]</code></td>
-<td>Message list</td>
-</tr>
-<tr>
-<td><code>is_last_chunk</code></td>
-<td><code>bool</code></td>
-<td>Whether this is the last chunk</td>
-</tr>
-<tr>
-<td><code>generation</code></td>
-<td><code>GenerationConfig</code></td>
-<td>Generation configuration</td>
-</tr>
-<tr>
-<td><code>streaming</code></td>
-<td><code>StreamingConfig</code></td>
-<td>Streaming configuration</td>
-</tr>
-<tr>
-<td><code>use_tts_template</code></td>
-<td><code>bool</code></td>
-<td>TTS template</td>
-</tr>
-<tr>
-<td><code>enable_thinking</code></td>
-<td><code>bool</code></td>
-<td>Chain-of-thought</td>
-</tr>
-</tbody>
-</table>
-<h4 id="streamingchunk">StreamingChunk</h4>
-<p>A single chunk of streaming output:</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>chunk_index</code></td>
-<td>Chunk index</td>
-</tr>
-<tr>
-<td><code>text_delta</code></td>
-<td>Incremental text</td>
-</tr>
-<tr>
-<td><code>audio_data</code></td>
-<td>Base64 audio (24kHz)</td>
-</tr>
-<tr>
-<td><code>is_final</code></td>
-<td>Whether this is the final chunk</td>
-</tr>
-<tr>
-<td><code>duration_ms</code></td>
-<td>Duration of this chunk in ms</td>
-</tr>
-</tbody>
-</table>
-<h4 id="streamingresponse">StreamingResponse</h4>
-<p>Complete Streaming response summary: <code>session_id</code>, <code>full_text</code>, <code>audio_data</code>, <code>total_chunks</code>, <code>total_duration_ms</code>.</p>
-<h4 id="rollbackresult">RollbackResult</h4>
-<p>Rollback result: <code>success</code>, <code>reason</code>, <code>restored_position</code>.</p>
+<h3 id="streamingpy-streaming-schema">streaming.py — Streaming Schema</h3>
+<p>Data structures for streaming generation (<code>StreamingChunk</code>, etc.), reused by ChatView's <code>streaming_generate()</code>.</p>
 <h3 id="duplexpy-duplex-mode-schema">duplex.py — Duplex Mode Schema</h3>
 <h4 id="duplexconfig">DuplexConfig</h4>
 <table>
@@ -475,23 +356,23 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <h2 id="processors-inference-processors">processors/ — Inference Processors</h2>
 <h3 id="basepy-base-class">base.py — Base Class</h3>
 <h4 id="baseprocessor-abstract-base-class">BaseProcessor (Abstract Base Class)</h4>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">BaseProcessor</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">BaseProcessor</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
 
     <span class="nd">@property</span>
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span> <span class="nf">mode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorMode</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">mode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorMode</span><span class="p">:</span> <span class="o">...</span>
 
     <span class="nd">@property</span>
-    <span class="k">def</span> <span class="nf">capabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorCapabilities</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">capabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorCapabilities</span><span class="p">:</span> <span class="o">...</span>
 
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span> <span class="nf">_load_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_load_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span> <span class="nf">_release_resources</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_release_resources</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 
-    <span class="k">def</span> <span class="nf">is_ready</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">is_ready</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
 </code></pre></div>
 
 <h4 id="minicpmoprocessormixin">MiniCPMOProcessorMixin</h4>
@@ -529,8 +410,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <h3 id="unifiedpy-unified-processor">unified.py — Unified Processor</h3>
 <h4 id="unifiedprocessor">UnifiedProcessor</h4>
 <p>A unified processor that loads the model once and supports millisecond-level hot-switching between Streaming and Duplex modes.</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">UnifiedProcessor</span><span class="p">(</span><span class="n">BaseProcessor</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">UnifiedProcessor</span><span class="p">(</span><span class="n">BaseProcessor</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">,</span> <span class="n">pt_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">,</span>
         <span class="n">ref_audio_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">duplex_config</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">preload_both_tts</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="nb">compile</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
@@ -576,46 +457,35 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </tr>
 </tbody>
 </table>
-<h4 id="streamingview">StreamingView</h4>
+<h4 id="chatview">ChatView</h4>
+<p>ChatView provides the dedicated API for Turn-based Chat, supporting both streaming and non-streaming generation modes.</p>
 <table>
 <thead>
 <tr>
-<th>Method</th>
+<th>Method/Property</th>
 <th>Description</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>init_ref_audio(ref_audio_path)</code></td>
-<td>Initialize reference audio</td>
+<td><code>prefill(session_id, msgs, ...)</code></td>
+<td>Prefill all messages into KV Cache in one shot</td>
 </tr>
 <tr>
-<td><code>init_ref_audio_from_data(ref_audio)</code></td>
-<td>Initialize reference audio from ndarray</td>
+<td><code>generate(session_id, ...)</code></td>
+<td>Non-streaming generation (HF generate + TTS)</td>
 </tr>
 <tr>
-<td><code>reset_session(session_id)</code></td>
-<td>Reset session</td>
-</tr>
-<tr>
-<td><code>prefill(request)</code></td>
-<td>Prefill (supports KV Cache reuse)</td>
-</tr>
-<tr>
-<td><code>generate(...)</code></td>
+<td><code>streaming_generate(session_id, ...)</code></td>
 <td>Streaming generation, returns <code>Generator[StreamingChunk]</code></td>
 </tr>
 <tr>
-<td><code>can_rollback()</code></td>
-<td>Whether rollback is available</td>
+<td><code>kv_cache_length</code></td>
+<td>Current KV Cache length</td>
 </tr>
 <tr>
-<td><code>rollback()</code></td>
-<td>Rollback to previous state</td>
-</tr>
-<tr>
-<td><code>complete_turn(...)</code></td>
-<td>Complete current turn</td>
+<td><code>chat(request)</code></td>
+<td>Legacy interface (combined prefill + generate)</td>
 </tr>
 </tbody>
 </table>
@@ -669,14 +539,14 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <hr />
 <h2 id="capabilitiespy-capability-declaration-system">capabilities.py — Capability Declaration System</h2>
 <h3 id="processormode-enum">ProcessorMode Enum</h3>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">ProcessorMode</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">ProcessorMode</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
     <span class="n">STREAMING</span> <span class="o">=</span> <span class="s2">&quot;streaming&quot;</span>
     <span class="n">DUPLEX</span> <span class="o">=</span> <span class="s2">&quot;duplex&quot;</span>
 </code></pre></div>
 
 <h3 id="processorcapabilities-data-class">ProcessorCapabilities Data Class</h3>
 <div class="codehilite"><pre><span></span><code><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="k">class</span> <span class="nc">ProcessorCapabilities</span><span class="p">:</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProcessorCapabilities</span><span class="p">:</span>
     <span class="n">mode</span><span class="p">:</span> <span class="n">ProcessorMode</span>
     <span class="c1"># Input capabilities</span>
     <span class="n">supports_text</span><span class="p">:</span> <span class="nb">bool</span>
@@ -724,7 +594,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <tr>
 <td>KV Cache reuse</td>
 <td>Supported</td>
-<td>--</td>
+<td>Supported</td>
 </tr>
 <tr>
 <td>Exclusive Worker</td>

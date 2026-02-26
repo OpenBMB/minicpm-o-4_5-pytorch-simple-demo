@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="../architecture/index.html" class="active">Overview</a></li>
-        <li><a href="../architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="../architecture/streaming.html">Chat Mode</a></li>
         <li><a href="../architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="../architecture/internals.html">Internals</a></li>
       </ul>
@@ -136,9 +136,9 @@ graph TB
 
     subgraph modelLayer [Model Layer]
         UP["UnifiedProcessor"]
-        StreamV["StreamingView"]
+        ChatV["ChatView"]
         DuplexV["DuplexView"]
-        UP --> StreamV
+        UP --> ChatV
         UP --> DuplexV
     end
 
@@ -198,10 +198,10 @@ graph TB
 <tr>
 <td><strong>Turn-based Chat</strong></td>
 <td>Low-latency streaming interaction, reply triggered by button or VAD, strong base capabilities</td>
-<td>Audio + Text + Image</td>
+<td>Audio + Text + Image + Video</td>
 <td>Audio + Text</td>
 <td>Turn-based dialogue</td>
-<td>Streaming</td>
+<td>ChatView</td>
 </tr>
 <tr>
 <td><strong>Omnimodal Full-Duplex</strong></td>
@@ -230,19 +230,19 @@ graph LR
     end
 
     subgraph apis [Two WebSocket Endpoints]
-        StreamAPI["/ws/streaming/{session_id}\nStreamingView"]
+        ChatAPI["/ws/chat\nChatView"]
         DuplexAPI["/ws/duplex/{session_id}\nDuplexView"]
     end
 
-    TB --> StreamAPI
+    TB --> ChatAPI
     OD --> DuplexAPI
     AD --> DuplexAPI
 </pre>
 
-<h3 id="streaming-endpoint-turn-based-chat">Streaming Endpoint — Turn-based Chat</h3>
-<p>Turn-based Chat uses the <strong>Streaming endpoint</strong> (<code>/ws/streaming/{session_id}</code>) to implement turn-based multimodal dialogue.</p>
-<p>After the user sends a complete message, the model streams back text + audio. It supports KV Cache reuse across turns, so multi-turn conversations do not need to re-prefill history. The frontend can trigger replies via a button or VAD (Voice Activity Detection).</p>
-<p>See <a href="streaming.html">Streaming Mode Details</a> for more information.</p>
+<h3 id="chat-endpoint-turn-based-chat">Chat Endpoint — Turn-based Chat</h3>
+<p>Turn-based Chat uses <strong>ChatView</strong> (<code>/ws/chat</code> WebSocket) to implement turn-based multimodal dialogue.</p>
+<p>ChatView splits inference into prefill and generate stages: prefill fills all messages into the KV Cache in one shot, and generate supports both streaming and non-streaming modes. The frontend can toggle the Streaming switch to choose between real-time token-by-token output or one-shot response.</p>
+<p>See <a href="streaming.html">ChatView Mode Details</a> for more information.</p>
 <h3 id="duplex-endpoint-full-duplex">Duplex Endpoint — Full-Duplex</h3>
 <p>Omnimodal Full-Duplex and Audio Full-Duplex share the <strong>Duplex endpoint</strong> (<code>/ws/duplex/{session_id}</code>), differing only in whether video frames are sent:</p>
 <ul>

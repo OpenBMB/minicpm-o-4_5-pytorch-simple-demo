@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">Overview</a></li>
-        <li><a href="architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="architecture/streaming.html">Chat Mode</a></li>
         <li><a href="architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="architecture/internals.html">Internals</a></li>
       </ul>
@@ -108,7 +108,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </nav>
 <main class="content" id="content">
   <article><h1 id="minicpmo45-model-module-details">MiniCPMO45 Model Module Details</h1>
-<p>MiniCPMO45 is the system's core model module, implementing multimodal large language model inference capabilities with support for text, image, and audio input, as well as text and audio output.</p>
+<p>MiniCPMO45 is the system's core model module, implementing multimodal large language model inference capabilities with support for text, image, audio, and video input, as well as text and audio output.</p>
 <h2 id="module-structure">Module Structure</h2>
 <div class="codehilite"><pre><span></span><code><span class="nx">MiniCPMO45</span><span class="o">/</span>
 <span class="err">├──</span><span class="w"> </span><span class="nx">configuration_minicpmo</span><span class="p">.</span><span class="nx">py</span><span class="w">       </span><span class="err">#</span><span class="w"> </span><span class="nx">Model</span><span class="w"> </span><span class="nx">configuration</span><span class="w"> </span><span class="nx">definitions</span>
@@ -132,6 +132,7 @@ graph TB
         TextIn["Text Input"]
         ImageIn["Image Input"]
         AudioIn["Audio Input\n(16kHz)"]
+        VideoIn["Video Input\n(auto-extract frames+audio)"]
     end
 
     subgraph encoderLayer [Encoder Layer]
@@ -160,6 +161,8 @@ graph TB
     TextIn --> Tokenizer --> Embedding
     ImageIn --> VPM --> Resampler --> Embedding
     AudioIn --> APM --> AudioProj --> Embedding
+    VideoIn -->|"frames"| VPM
+    VideoIn -->|"audio segments"| APM
     Embedding --> LLM
     LLM --> TextOut
     LLM --> TTSBlock

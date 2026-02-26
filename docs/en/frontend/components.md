@@ -56,6 +56,7 @@ A multimodal user input editor:
 | Text | Text input field |
 | Audio | Recording / file upload / drag-and-drop |
 | Image | File upload / drag-and-drop / paste |
+| Video | File upload / drag-and-drop (Chat mode only, auto-enables omni_mode) |
 
 **Keyboard shortcuts**: `Space` to record (click to toggle / long press for push-to-talk), `ESC` to cancel.
 

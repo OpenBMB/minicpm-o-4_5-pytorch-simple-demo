@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">Overview</a></li>
-        <li><a href="architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="architecture/streaming.html">Chat Mode</a></li>
         <li><a href="architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="architecture/internals.html">Internals</a></li>
       </ul>
@@ -231,7 +231,7 @@ flowchart TB
 </table>
 <h2 id="apply_torch_compile-implementation">apply_torch_compile() Implementation</h2>
 <p>Located in <code>MiniCPMO45/modeling_minicpmo_unified.py</code>.</p>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">apply_torch_compile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">apply_torch_compile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
     <span class="n">compile_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="n">mode</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="n">dynamic</span><span class="p">)</span>
 
     <span class="bp">self</span><span class="o">.</span><span class="n">vpm</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vpm</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>

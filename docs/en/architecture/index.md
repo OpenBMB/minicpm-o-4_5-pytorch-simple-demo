@@ -30,9 +30,9 @@ graph TB
 
     subgraph modelLayer [Model Layer]
         UP["UnifiedProcessor"]
-        StreamV["StreamingView"]
+        ChatV["ChatView"]
         DuplexV["DuplexView"]
-        UP --> StreamV
+        UP --> ChatV
         UP --> DuplexV
     end
 
@@ -58,7 +58,7 @@ The system provides three interaction modes, sharing **two WebSocket endpoints**
 
 | Mode | Features | Input Modalities | Output Modalities | Interaction Paradigm | Endpoint |
 |------|----------|------------------|-------------------|---------------------|----------|
-| **Turn-based Chat** | Low-latency streaming interaction, reply triggered by button or VAD, strong base capabilities | Audio + Text + Image | Audio + Text | Turn-based dialogue | Streaming |
+| **Turn-based Chat** | Low-latency streaming interaction, reply triggered by button or VAD, strong base capabilities | Audio + Text + Image + Video | Audio + Text | Turn-based dialogue | ChatView |
 | **Omnimodal Full-Duplex** | Full-modality full-duplex, vision + voice input and voice output occur simultaneously | Vision + Voice | Text + Voice | Full-duplex | Duplex |
 | **Audio Full-Duplex** | Voice full-duplex, voice input and output occur simultaneously | Voice | Text + Voice | Full-duplex | Duplex |
 
@@ -71,22 +71,22 @@ graph LR
     end
 
     subgraph apis [Two WebSocket Endpoints]
-        StreamAPI["/ws/streaming/{session_id}\nStreamingView"]
+        ChatAPI["/ws/chat\nChatView"]
         DuplexAPI["/ws/duplex/{session_id}\nDuplexView"]
     end
 
-    TB --> StreamAPI
+    TB --> ChatAPI
     OD --> DuplexAPI
     AD --> DuplexAPI
 ```
 
-### Streaming Endpoint — Turn-based Chat
+### Chat Endpoint — Turn-based Chat
 
-Turn-based Chat uses the **Streaming endpoint** (`/ws/streaming/{session_id}`) to implement turn-based multimodal dialogue.
+Turn-based Chat uses **ChatView** (`/ws/chat` WebSocket) to implement turn-based multimodal dialogue.
 
-After the user sends a complete message, the model streams back text + audio. It supports KV Cache reuse across turns, so multi-turn conversations do not need to re-prefill history. The frontend can trigger replies via a button or VAD (Voice Activity Detection).
+ChatView splits inference into prefill and generate stages: prefill fills all messages into the KV Cache in one shot, and generate supports both streaming and non-streaming modes. The frontend can toggle the Streaming switch to choose between real-time token-by-token output or one-shot response.
 
-See [Streaming Mode Details](streaming.html) for more information.
+See [ChatView Mode Details](streaming.html) for more information.
 
 ### Duplex Endpoint — Full-Duplex
 

@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="../architecture/index.html">Overview</a></li>
-        <li><a href="../architecture/streaming.html">Streaming Mode</a></li>
+        <li><a href="../architecture/streaming.html">Chat Mode</a></li>
         <li><a href="../architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="../architecture/internals.html">Internals</a></li>
       </ul>
@@ -119,53 +119,54 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </ul>
 <hr />
 <h2 id="turnbasedhtml-turn-based-chat">turnbased.html — Turn-based Chat</h2>
-<p>The most complex non-duplex page, supporting both Chat and Streaming modes.</p>
-<h3 id="global-state-object">Global State Object</h3>
+<p>The Turn-based Chat page communicates with the backend through the <code>/ws/chat</code> WebSocket.</p>
+<h3 id="state-management">State Management</h3>
 <div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nx">messages</span><span class="o">:</span><span class="w"> </span><span class="p">[],</span><span class="w">                </span><span class="c1">// Message list {role, content, displayText}</span>
-<span class="w">    </span><span class="nx">systemContentList</span><span class="o">:</span><span class="w"> </span><span class="p">[],</span><span class="w">       </span><span class="c1">// System content list (text + audio + image)</span>
+<span class="w">    </span><span class="nx">systemContentList</span><span class="o">:</span><span class="w"> </span><span class="p">[],</span><span class="w">       </span><span class="c1">// System content list (text + audio + image + video)</span>
 <span class="w">    </span><span class="nx">isGenerating</span><span class="o">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span><span class="w">         </span><span class="c1">// Whether generation is in progress</span>
-<span class="w">    </span><span class="nx">generationPhase</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;idle&#39;</span><span class="p">,</span><span class="w">     </span><span class="c1">// &#39;idle&#39; | &#39;queuing&#39; | &#39;generating&#39;</span>
-<span class="w">    </span><span class="nx">currentTicketId</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">       </span><span class="c1">// Queue ticket ID (streaming only)</span>
-<span class="w">    </span><span class="nx">abortController</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">       </span><span class="c1">// Fetch abort (chat only)</span>
-<span class="w">    </span><span class="nx">streamingWs</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">           </span><span class="c1">// WebSocket connection (streaming only)</span>
-<span class="w">    </span><span class="nx">requestId</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;req_&#39;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nb">Date</span><span class="p">.</span><span class="nx">now</span><span class="p">(),</span>
-<span class="w">    </span><span class="nx">currentView</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;initial&#39;</span><span class="p">,</span><span class="w">      </span><span class="c1">// &#39;initial&#39; | &#39;conversation&#39;</span>
-<span class="w">    </span><span class="nx">editingIndex</span><span class="o">:</span><span class="w"> </span><span class="o">-</span><span class="mf">1</span><span class="p">,</span><span class="w">            </span><span class="c1">// Index of the message being edited</span>
-<span class="w">    </span><span class="nx">ttsRefAudioMode</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;extract&#39;</span><span class="p">,</span><span class="w">  </span><span class="c1">// &#39;extract&#39; | &#39;independent&#39;</span>
-<span class="w">    </span><span class="nx">ttsRefAudioData</span><span class="o">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w">       </span><span class="c1">// TTS reference audio base64</span>
+<span class="w">    </span><span class="nx">generationPhase</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;idle&#39;</span><span class="p">,</span><span class="w">     </span><span class="c1">// &#39;idle&#39; | &#39;generating&#39;</span>
 <span class="p">};</span>
 </code></pre></div>
 
-<h3 id="streaming-mode">Streaming Mode</h3>
-<p>Streaming chat via WebSocket (<code>WS /ws/streaming/{request_id}</code>):</p>
+<h3 id="message-building-flow">Message Building Flow</h3>
 <ol>
-<li>Establish WebSocket connection</li>
-<li>Send <code>prefill</code> message (with message history + ref_audio_base64)</li>
-<li>Send <code>generate</code> after receiving <code>prefill_done</code></li>
-<li>Receive <code>StreamingChunk</code> incrementally (text_delta + audio_data)</li>
-<li>Render the complete result after receiving <code>done</code></li>
-<li>Display <code>CountdownTimer</code> while queuing</li>
-</ol>
-<h3 id="message-construction-flow">Message Construction Flow</h3>
-<ol>
-<li>Get user input items from <code>UserContentEditor</code></li>
+<li>User inputs text / records audio / uploads images, videos</li>
 <li>Audio Blob → resample to 16kHz mono → Base64 PCM float32</li>
 <li>Image File → Base64</li>
-<li>Build <code>content list</code> format: <code>[{type:"text", text:...}, {type:"audio", data:...}, ...]</code></li>
+<li>Video File → Base64 (backend auto-extracts frames and audio, requires <code>omni_mode: true</code>)</li>
+<li>Build <code>content list</code> format: <code>[{type:"text", text:...}, {type:"audio", data:...}, {type:"video", data:...}, ...]</code></li>
 <li><code>buildRequestMessages()</code> assembles the complete message list (including system prompt)</li>
 </ol>
-<h3 id="tts-reference-audio">TTS Reference Audio</h3>
-<p>Two modes:
-- <strong>extract</strong>: Extract from system content (requires exactly 1 audio clip &lt;20s)
-- <strong>independent</strong>: Upload reference audio independently</p>
-<p>Sent to the Worker via the <code>tts_ref_audio_base64</code> field in the Streaming <code>prefill</code> message.</p>
-<h3 id="response-rendering">Response Rendering</h3>
-<ul>
-<li><code>addMessageUI()</code> — Adds a message bubble to the chat area</li>
-<li><code>updateLastAssistantMessage()</code> — Streams updates to the last assistant message</li>
-<li>Audio playback: <code>audio_data</code> in the response is played via an inline player created by <code>createMiniPlayer()</code></li>
-</ul>
+<h3 id="communication-mode">Communication Mode</h3>
+<p>All requests are sent through the <code>/ws/chat</code> WebSocket with the following protocol:</p>
+<ol>
+<li>Connect to WebSocket</li>
+<li>Send JSON (with <code>messages</code>, <code>streaming</code>, <code>tts</code> and other parameters)</li>
+<li>Wait for generation results after receiving <code>prefill_done</code></li>
+<li><code>streaming=true</code>: Receive <code>{type:"chunk", text_delta, audio_data}</code> chunks, render in real time</li>
+<li><code>streaming=false</code>: Receive <code>{type:"done", text, audio_data}</code>, render all at once</li>
+<li>Audio playback via <code>StreamingAudioPlayer</code> (streaming) or <code>createMiniPlayer</code> (non-streaming)</li>
+</ol>
+<h3 id="frontend-toggles">Frontend Toggles</h3>
+<table>
+<thead>
+<tr>
+<th>Toggle</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Streaming</td>
+<td>Real-time token-by-token output vs one-shot response</td>
+</tr>
+<tr>
+<td>Voice Response</td>
+<td>Generate voice reply; suppresses special character output when enabled</td>
+</tr>
+</tbody>
+</table>
 <hr />
 <h2 id="omnihtml-omni-full-duplex">omni.html — Omni Full-Duplex</h2>
 <p>Video + audio full-duplex interaction page.</p>

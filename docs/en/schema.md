@@ -36,7 +36,7 @@ core/
 |------|--------|-------------|
 | `Role` | `system`, `user`, `assistant` | Message role |
 | `TTSMode` | `default`, `audio_assistant`, `omni`, `audio_roleplay`, `voice_cloning` | TTS mode |
-| `ContentType` | `text`, `image`, `audio` | Content type |
+| `ContentType` | `text`, `image`, `audio`, `video` | Content type |
 
 #### Content Models
 
@@ -45,8 +45,9 @@ core/
 | `TextContent` | `type="text"`, `text: str` | Text content |
 | `ImageContent` | `type="image"`, `data: str` | Image content (Base64) |
 | `AudioContent` | `type="audio"`, `data: str`, `sample_rate: int = 16000` | Audio content (Base64 PCM float32) |
+| `VideoContent` | `type="video"`, `data: str`, `stack_frames: int = 1` | Video content (Base64 video file, auto-extracts frames and audio) |
 
-Type alias: `ContentItem = Union[TextContent, ImageContent, AudioContent]`
+Type alias: `ContentItem = Union[TextContent, ImageContent, AudioContent, VideoContent]`
 
 #### Message Model
 
@@ -67,50 +68,9 @@ class Message(BaseModel):
 | `ImageConfig` | `max_slice_nums`, `use_image_id` | Image processing configuration |
 | `GenerationConfig` | `max_new_tokens=512`, `temperature=0.7`, `top_p=0.8` | Generation configuration |
 
-### streaming.py — Streaming Mode Schema
+### streaming.py — Streaming Schema
 
-#### StreamingConfig
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `generate_audio` | `True` | Whether to generate audio |
-| `audio_token_chunk_size` | `25` | Audio token chunk size |
-| `ref_audio_path` | `None` | Reference audio path |
-| `ref_audio_data` | `None` | Reference audio Base64 |
-| `enable_speculative_snapshot` | `False` | Enable VAD speculative snapshot |
-| `tts_sampling` | `TTSSamplingParams` | TTS sampling parameters |
-
-#### StreamingRequest
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `session_id` | `str` | Session ID |
-| `messages` | `List[Message]` | Message list |
-| `is_last_chunk` | `bool` | Whether this is the last chunk |
-| `generation` | `GenerationConfig` | Generation configuration |
-| `streaming` | `StreamingConfig` | Streaming configuration |
-| `use_tts_template` | `bool` | TTS template |
-| `enable_thinking` | `bool` | Chain-of-thought |
-
-#### StreamingChunk
-
-A single chunk of streaming output:
-
-| Field | Description |
-|-------|-------------|
-| `chunk_index` | Chunk index |
-| `text_delta` | Incremental text |
-| `audio_data` | Base64 audio (24kHz) |
-| `is_final` | Whether this is the final chunk |
-| `duration_ms` | Duration of this chunk in ms |
-
-#### StreamingResponse
-
-Complete Streaming response summary: `session_id`, `full_text`, `audio_data`, `total_chunks`, `total_duration_ms`.
-
-#### RollbackResult
-
-Rollback result: `success`, `reason`, `restored_position`.
+Data structures for streaming generation (`StreamingChunk`, etc.), reused by ChatView's `streaming_generate()`.
 
 ### duplex.py — Duplex Mode Schema
 
@@ -220,18 +180,17 @@ class UnifiedProcessor(BaseProcessor):
 | `duplex` | DuplexView property |
 | `kv_cache_length` | Current KV Cache length |
 
-#### StreamingView
+#### ChatView
 
-| Method | Description |
-|--------|-------------|
-| `init_ref_audio(ref_audio_path)` | Initialize reference audio |
-| `init_ref_audio_from_data(ref_audio)` | Initialize reference audio from ndarray |
-| `reset_session(session_id)` | Reset session |
-| `prefill(request)` | Prefill (supports KV Cache reuse) |
-| `generate(...)` | Streaming generation, returns `Generator[StreamingChunk]` |
-| `can_rollback()` | Whether rollback is available |
-| `rollback()` | Rollback to previous state |
-| `complete_turn(...)` | Complete current turn |
+ChatView provides the dedicated API for Turn-based Chat, supporting both streaming and non-streaming generation modes.
+
+| Method/Property | Description |
+|----------------|-------------|
+| `prefill(session_id, msgs, ...)` | Prefill all messages into KV Cache in one shot |
+| `generate(session_id, ...)` | Non-streaming generation (HF generate + TTS) |
+| `streaming_generate(session_id, ...)` | Streaming generation, returns `Generator[StreamingChunk]` |
+| `kv_cache_length` | Current KV Cache length |
+| `chat(request)` | Legacy interface (combined prefill + generate) |
 
 #### DuplexView
 
@@ -290,7 +249,7 @@ class ProcessorCapabilities:
 | Streaming output | Supported | Supported |
 | Interrupt support | -- | Supported |
 | Rollback support | Supported | -- |
-| KV Cache reuse | Supported | -- |
+| KV Cache reuse | Supported | Supported |
 | Exclusive Worker | -- | Required |
 | Multi-turn dialogue | Supported | Supported |
 

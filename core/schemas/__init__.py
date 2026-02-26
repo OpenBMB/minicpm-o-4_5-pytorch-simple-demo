@@ -18,7 +18,7 @@
 from core.schemas import (
     # 通用
     Message, Role,
-    TextContent, ImageContent, AudioContent,
+    TextContent, ImageContent, AudioContent, VideoContent,
     TTSConfig, TTSMode,
     GenerationConfig,
     
@@ -54,6 +54,7 @@ from core.schemas.common import (
     TextContent,
     ImageContent,
     AudioContent,
+    VideoContent,
     ContentItem,
     
     # 消息
@@ -102,6 +103,7 @@ __all__ = [
     "TextContent",
     "ImageContent",
     "AudioContent",
+    "VideoContent",
     "ContentItem",
     
     # 通用 - 消息

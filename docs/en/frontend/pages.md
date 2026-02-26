@@ -16,59 +16,45 @@ The `AppNav` component fetches the list of enabled applications from `/api/apps`
 
 ## turnbased.html — Turn-based Chat
 
-The most complex non-duplex page, supporting both Chat and Streaming modes.
+The Turn-based Chat page communicates with the backend through the `/ws/chat` WebSocket.
 
-### Global State Object
+### State Management
 
 ```javascript
 const state = {
     messages: [],                // Message list {role, content, displayText}
-    systemContentList: [],       // System content list (text + audio + image)
+    systemContentList: [],       // System content list (text + audio + image + video)
     isGenerating: false,         // Whether generation is in progress
-    generationPhase: 'idle',     // 'idle' | 'queuing' | 'generating'
-    currentTicketId: null,       // Queue ticket ID (streaming only)
-    abortController: null,       // Fetch abort (chat only)
-    streamingWs: null,           // WebSocket connection (streaming only)
-    requestId: 'req_' + Date.now(),
-    currentView: 'initial',      // 'initial' | 'conversation'
-    editingIndex: -1,            // Index of the message being edited
-    ttsRefAudioMode: 'extract',  // 'extract' | 'independent'
-    ttsRefAudioData: null,       // TTS reference audio base64
+    generationPhase: 'idle',     // 'idle' | 'generating'
 };
 ```
 
-### Streaming Mode
+### Message Building Flow
 
-Streaming chat via WebSocket (`WS /ws/streaming/{request_id}`):
-
-1. Establish WebSocket connection
-2. Send `prefill` message (with message history + ref_audio_base64)
-3. Send `generate` after receiving `prefill_done`
-4. Receive `StreamingChunk` incrementally (text_delta + audio_data)
-5. Render the complete result after receiving `done`
-6. Display `CountdownTimer` while queuing
-
-### Message Construction Flow
-
-1. Get user input items from `UserContentEditor`
+1. User inputs text / records audio / uploads images, videos
 2. Audio Blob → resample to 16kHz mono → Base64 PCM float32
 3. Image File → Base64
-4. Build `content list` format: `[{type:"text", text:...}, {type:"audio", data:...}, ...]`
-5. `buildRequestMessages()` assembles the complete message list (including system prompt)
+4. Video File → Base64 (backend auto-extracts frames and audio, requires `omni_mode: true`)
+5. Build `content list` format: `[{type:"text", text:...}, {type:"audio", data:...}, {type:"video", data:...}, ...]`
+6. `buildRequestMessages()` assembles the complete message list (including system prompt)
 
-### TTS Reference Audio
+### Communication Mode
 
-Two modes:
-- **extract**: Extract from system content (requires exactly 1 audio clip <20s)
-- **independent**: Upload reference audio independently
+All requests are sent through the `/ws/chat` WebSocket with the following protocol:
 
-Sent to the Worker via the `tts_ref_audio_base64` field in the Streaming `prefill` message.
+1. Connect to WebSocket
+2. Send JSON (with `messages`, `streaming`, `tts` and other parameters)
+3. Wait for generation results after receiving `prefill_done`
+4. `streaming=true`: Receive `{type:"chunk", text_delta, audio_data}` chunks, render in real time
+5. `streaming=false`: Receive `{type:"done", text, audio_data}`, render all at once
+6. Audio playback via `StreamingAudioPlayer` (streaming) or `createMiniPlayer` (non-streaming)
 
-### Response Rendering
+### Frontend Toggles
 
-- `addMessageUI()` — Adds a message bubble to the chat area
-- `updateLastAssistantMessage()` — Streams updates to the last assistant message
-- Audio playback: `audio_data` in the response is played via an inline player created by `createMiniPlayer()`
+| Toggle | Description |
+|--------|-------------|
+| Streaming | Real-time token-by-token output vs one-shot response |
+| Voice Response | Generate voice reply; suppresses special character output when enabled |
 
 ---
 

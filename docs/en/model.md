@@ -1,6 +1,6 @@
 # MiniCPMO45 Model Module Details
 
-MiniCPMO45 is the system's core model module, implementing multimodal large language model inference capabilities with support for text, image, and audio input, as well as text and audio output.
+MiniCPMO45 is the system's core model module, implementing multimodal large language model inference capabilities with support for text, image, audio, and video input, as well as text and audio output.
 
 ## Module Structure
 
@@ -28,6 +28,7 @@ graph TB
         TextIn["Text Input"]
         ImageIn["Image Input"]
         AudioIn["Audio Input\n(16kHz)"]
+        VideoIn["Video Input\n(auto-extract frames+audio)"]
     end
 
     subgraph encoderLayer [Encoder Layer]
@@ -56,6 +57,8 @@ graph TB
     TextIn --> Tokenizer --> Embedding
     ImageIn --> VPM --> Resampler --> Embedding
     AudioIn --> APM --> AudioProj --> Embedding
+    VideoIn -->|"frames"| VPM
+    VideoIn -->|"audio segments"| APM
     Embedding --> LLM
     LLM --> TextOut
     LLM --> TTSBlock

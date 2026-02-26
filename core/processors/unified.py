@@ -156,6 +156,124 @@ class ChatView(MiniCPMOProcessorMixin):
         self._model = model
         self.ref_audio_path = ref_audio_path
         self._ref_audio_cache = None
+        self._session_id = None
+    
+    def prefill(
+        self,
+        session_id: str,
+        msgs,
+        omni_mode: bool = False,
+        max_slice_nums=None,
+        use_image_id=None,
+        use_tts_template: bool = False,
+        enable_thinking: bool = False,
+        max_inp_length: int = 8192,
+    ) -> str:
+        """Prefill 所有消息到 KV cache（不含 generation prompt）"""
+        self._session_id = session_id
+        prompt = self._model.non_streaming_prefill(
+            session_id=session_id,
+            msgs=msgs,
+            omni_mode=omni_mode,
+            max_slice_nums=max_slice_nums,
+            use_image_id=use_image_id,
+            use_tts_template=use_tts_template,
+            enable_thinking=enable_thinking,
+            max_inp_length=max_inp_length,
+        )
+        return prompt
+    
+    def generate(
+        self,
+        session_id: str,
+        max_new_tokens: int = 256,
+        do_sample: bool = True,
+        generate_audio: bool = False,
+        use_tts_template: bool = True,
+        enable_thinking: bool = False,
+        tts_ref_audio=None,
+        tts_sampling_params=None,
+        output_audio_path=None,
+        length_penalty: float = 1.1,
+    ):
+        """基于已有 KV cache 做非流式 generate + 可选 TTS"""
+        result = self._model.non_streaming_generate(
+            session_id=session_id,
+            max_new_tokens=max_new_tokens,
+            do_sample=do_sample,
+            generate_audio=generate_audio,
+            use_tts_template=use_tts_template,
+            enable_thinking=enable_thinking,
+            tts_ref_audio=tts_ref_audio,
+            tts_sampling_params=tts_sampling_params,
+            output_audio_path=output_audio_path,
+            length_penalty=length_penalty,
+        )
+        return result
+    
+    def streaming_generate(
+        self,
+        session_id: str,
+        generate_audio: bool = True,
+        max_new_tokens: int = 256,
+        do_sample: bool = True,
+        length_penalty: float = 1.1,
+    ):
+        """基于已有 KV cache 做流式 generate（yield StreamingChunk）"""
+        import base64
+        start_time = time.time()
+        chunk_index = 0
+        
+        try:
+            iter_gen = self._model.streaming_generate(
+                session_id=session_id,
+                do_sample=do_sample,
+                generate_audio=generate_audio,
+                max_new_tokens=max_new_tokens,
+                use_tts_template=True,
+                length_penalty=length_penalty,
+            )
+            
+            for item in iter_gen:
+                if item is None:
+                    continue
+                if not isinstance(item, (tuple, list)) or len(item) < 2:
+                    continue
+                    
+                item1, item2 = item[0], item[1]
+                
+                if generate_audio:
+                    if item1 is None and item2 is None:
+                        continue
+                    waveform_chunk = item1
+                    text_value = item2 if item2 and isinstance(item2, str) else None
+                    audio_data = None
+                    if waveform_chunk is not None and hasattr(waveform_chunk, 'cpu'):
+                        audio_np = waveform_chunk.cpu().numpy().astype(np.float32)
+                        audio_bytes = audio_np.tobytes()
+                        audio_data = base64.b64encode(audio_bytes).decode('utf-8')
+                else:
+                    text_value = item1 if item1 and isinstance(item1, str) else None
+                    audio_data = None
+                
+                from core.schemas.streaming import StreamingChunk
+                yield StreamingChunk(
+                    chunk_index=chunk_index,
+                    text_delta=text_value,
+                    audio_data=audio_data,
+                    audio_sample_rate=24000,
+                    is_final=False,
+                )
+                chunk_index += 1
+                
+        except Exception as e:
+            logger.error(f"ChatView streaming_generate error: {e}", exc_info=True)
+            raise
+    
+    @property
+    def kv_cache_length(self) -> int:
+        """当前 KV cache 长度"""
+        return self._model._get_kv_cache_length()
     
     def chat(
         self,
@@ -438,6 +556,26 @@ class StreamingView(MiniCPMOProcessorMixin):
             if result:
                 prompt = result
         
+        return prompt
+    
+    def non_streaming_prefill(
+        self,
+        session_id: str,
+        msgs,
+        omni_mode: bool = False,
+        max_slice_nums=None,
+        use_tts_template: bool = True,
+        enable_thinking: bool = False,
+    ) -> str:
+        """非流式预填充：一次性 prefill 所有消息到 KV cache"""
+        prompt = self._model.non_streaming_prefill(
+            session_id=session_id,
+            msgs=msgs,
+            omni_mode=omni_mode,
+            max_slice_nums=max_slice_nums,
+            use_tts_template=use_tts_template,
+            enable_thinking=enable_thinking,
+        )
         return prompt
     
     def generate(

@@ -92,12 +92,15 @@ Stateless Chat inference. Each request performs a full prefill without reusing t
       "content": [
         {"type": "text", "text": "Describe this image"},
         {"type": "image", "data": "<base64>"},
-        {"type": "audio", "data": "<base64 PCM float32>", "sample_rate": 16000}
+        {"type": "audio", "data": "<base64 PCM float32>", "sample_rate": 16000},
+        {"type": "video", "data": "<base64 video file>", "stack_frames": 1}
       ]
     }
   ]
 }
 ```
+
+> **Note**: When video content is present, `omni_mode: true` must be set, and only Chat mode is supported (Streaming is not supported).
 
 **Response**:
 ```json
@@ -335,45 +338,33 @@ Toggle app enabled status.
 
 ## WebSocket Protocol
 
-### Streaming Protocol
+### Chat WebSocket
 
-**Connection**: `wss://localhost:8006/ws/streaming/{session_id}`
+**Connection**: `wss://host/ws/chat`
 
-#### Client → Server
+Unified Turn-based Chat interface supporting both streaming and non-streaming modes.
 
-| Message Type | Fields | Description |
-|---------|------|------|
-| `prefill` | `messages`, `generation`, `streaming`, `use_tts_template`, `enable_thinking` | Prefill: send message history |
-| `generate` | — | Start streaming generation |
-| `stop` | — | Stop generation |
+**Request** (Client → Server, sent once after connection):
 
-**prefill Example**:
 ```json
 {
-  "type": "prefill",
-  "messages": [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Hello!"}
-  ],
-  "generation": {"max_new_tokens": 512},
-  "streaming": {
-    "generate_audio": true,
-    "ref_audio_path": "assets/ref_audio/ref_minicpm_signature.wav"
-  }
+  "messages": [...],
+  "streaming": true,
+  "generation": {"max_new_tokens": 256, "length_penalty": 1.1},
+  "tts": {"enabled": true, "ref_audio_data": "<base64>"},
+  "image": {"max_slice_nums": null},
+  "omni_mode": false
 }
 ```
 
-#### Server → Client
+**Response** (Server → Client):
 
-| Message Type | Fields | Description |
-|---------|------|------|
-| `queued` | `ticket_id`, `position`, `eta_seconds` | Enqueued |
-| `queue_update` | `position`, `eta_seconds` | Queue position update |
-| `queue_done` | — | Left queue, processing started |
-| `prefill_done` | `prompt` | Prefill complete |
-| `chunk` | `chunk_index`, `text_delta`, `audio_data`, `is_final` | Streaming output chunk |
-| `done` | `full_text`, `total_chunks`, `total_duration_ms` | Generation complete |
-| `error` | `message` | Error |
+| Message Type | Key Fields | Description |
+|-------------|-----------|-------------|
+| `prefill_done` | `input_tokens` | Prefill complete |
+| `chunk` | `text_delta`, `audio_data` | Streaming chunk (streaming=true only) |
+| `done` | `text`, `generated_tokens`, `input_tokens`, `audio_data` | Generation complete |
+| `error` | `error` | Error message |
 
 ---
 

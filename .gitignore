@@ -37,3 +37,5 @@ resources/
 *.swp
 *.swo
 playbook/
+
+public/

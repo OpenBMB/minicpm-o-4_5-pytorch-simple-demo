@@ -60,14 +60,14 @@ Gateway 基于 **FastAPI** 构建，使用 **uvicorn** 运行，提供 HTTP REST
 
 | 端点 | 功能 |
 |------|------|
-| `/ws/streaming/{session_id}` | Streaming 流式对话代理 |
+| `/ws/chat` | Chat WebSocket 代理 |
 | `/ws/duplex/{session_id}` | Duplex 全双工会话代理 |
 
 ### WebSocket 代理机制
 
 **Streaming 代理**：
 1. 接收客户端 WebSocket 连接
-2. 将请求入队 `WorkerPool.enqueue("streaming", history_hash)`
+2. 将请求入队 `WorkerPool.enqueue("chat")`
 3. 排队期间向客户端推送 `queued` / `queue_update` 消息
 4. 获取到 Worker 后，建立到 Worker 的 WebSocket 连接
 5. 双向转发消息（client ↔ worker）
@@ -156,31 +156,7 @@ ETA 估算追踪器，结合基准值和 EMA（指数移动平均）动态估算
 
 **触发时机**：Worker 释放、排队取消、健康检查恢复 IDLE 后均触发 `_dispatch_next()`。
 
-**Gateway ↔ Worker 通信**：队列只负责 Worker 分配（决定哪个 Worker 处理哪个请求），不参与数据传输。Gateway 获得 Worker 引用后，直接通过 HTTP（Chat: `POST /chat`）或 WebSocket（Streaming: `/ws/streaming`、Duplex: `/ws/duplex`）连接 Worker 的内部端口（22400+）进行通信。
-
-### LRU 缓存路由（Streaming 专用）
-
-LRU 路由的目的是让同一个会话的多轮对话尽量命中同一个 Worker，复用其 GPU 上的 KV Cache，从而跳过历史消息的重复计算。
-
-**实现位置**：`WorkerPool._route_streaming_worker()`（`gateway_modules/worker_pool.py`）
-
-**每个 Worker 维护的缓存状态**（在 Gateway 侧的 `WorkerConnection` 上）：
-- `cached_hash: Optional[str]` — 当前 Worker 上 KV Cache 对应的消息历史 hash
-- `last_cache_used_at: Optional[datetime]` — 上次缓存被使用的时间（LRU 淘汰依据）
-
-**路由优先级**（4 级 fallback）：
-1. **缓存命中** — 遍历空闲 Worker，找 `cached_hash == history_hash` 的 → 增量 prefill
-2. **无缓存 Worker** — 找 `cached_hash == None` 的空闲 Worker → 不淘汰任何缓存
-3. **LRU 淘汰** — 所有空闲 Worker 都有缓存时，选 `last_cache_used_at` 最旧的 → 覆盖其缓存
-4. **无空闲** — 返回 None，请求入 FIFO 队列等待
-
-**hash 计算**：`compute_history_hash()` 将消息列表的 `[{role, content}]` 序列化后做 SHA-256。
-
-**缓存更新**：Gateway 在 `release_worker()` 时将本次请求的 `history_hash` 写入 `cached_hash` 和 `last_cache_used_at`。
-
-**缓存命中时 Gateway 如何通知 Worker**：Gateway 在转发 `prefill` 消息时附带 `clear_kv_cache` 字段 —— 命中时为 `false`（Worker 保留已有 KV Cache，仅增量预填充新消息），未命中时为 `true`（Worker 调用 `reset_session()` 清除旧缓存后全量重新预填充）。
-
-**Non-Streaming 也考虑缓存**：Chat/Duplex 分配时 `_get_idle_worker()` 优先选无缓存的 Worker，避免不必要地淘汰 Streaming 的缓存。
+**Gateway ↔ Worker 通信**：队列只负责 Worker 分配（决定哪个 Worker 处理哪个请求），不参与数据传输。Gateway 获得 Worker 引用后，直接通过 HTTP（Chat: `POST /chat`）或 WebSocket（Chat: `/ws/chat`、Duplex: `/ws/duplex`）连接 Worker 的内部端口（22400+）进行通信。
 
 ### ETA 估算
 

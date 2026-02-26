@@ -36,7 +36,7 @@ core/
 |------|-----|------|
 | `Role` | `system`, `user`, `assistant` | 消息角色 |
 | `TTSMode` | `default`, `audio_assistant`, `omni`, `audio_roleplay`, `voice_cloning` | TTS 模式 |
-| `ContentType` | `text`, `image`, `audio` | 内容类型 |
+| `ContentType` | `text`, `image`, `audio`, `video` | 内容类型 |
 
 #### 内容模型
 
@@ -45,8 +45,9 @@ core/
 | `TextContent` | `type="text"`, `text: str` | 文本内容 |
 | `ImageContent` | `type="image"`, `data: str` | 图像内容（Base64） |
 | `AudioContent` | `type="audio"`, `data: str`, `sample_rate: int = 16000` | 音频内容（Base64 PCM float32） |
+| `VideoContent` | `type="video"`, `data: str`, `stack_frames: int = 1` | 视频内容（Base64 视频文件，自动提取帧和音频） |
 
-类型别名：`ContentItem = Union[TextContent, ImageContent, AudioContent]`
+类型别名：`ContentItem = Union[TextContent, ImageContent, AudioContent, VideoContent]`
 
 #### Message 模型
 
@@ -67,50 +68,9 @@ class Message(BaseModel):
 | `ImageConfig` | `max_slice_nums`, `use_image_id` | 图像处理配置 |
 | `GenerationConfig` | `max_new_tokens=512`, `temperature=0.7`, `top_p=0.8` | 生成配置 |
 
-### streaming.py — Streaming 模式 Schema
+### streaming.py — Streaming Schema
 
-#### StreamingConfig
-
-| 字段 | 默认值 | 说明 |
-|------|--------|------|
-| `generate_audio` | `True` | 是否生成音频 |
-| `audio_token_chunk_size` | `25` | 音频 token 块大小 |
-| `ref_audio_path` | `None` | 参考音频路径 |
-| `ref_audio_data` | `None` | 参考音频 Base64 |
-| `enable_speculative_snapshot` | `False` | 启用 VAD 抢跑快照 |
-| `tts_sampling` | `TTSSamplingParams` | TTS 采样参数 |
-
-#### StreamingRequest
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `session_id` | `str` | 会话 ID |
-| `messages` | `List[Message]` | 消息列表 |
-| `is_last_chunk` | `bool` | 是否最后一个 chunk |
-| `generation` | `GenerationConfig` | 生成配置 |
-| `streaming` | `StreamingConfig` | Streaming 配置 |
-| `use_tts_template` | `bool` | TTS 模板 |
-| `enable_thinking` | `bool` | 思考链 |
-
-#### StreamingChunk
-
-流式输出的单个 chunk：
-
-| 字段 | 说明 |
-|------|------|
-| `chunk_index` | Chunk 序号 |
-| `text_delta` | 增量文本 |
-| `audio_data` | Base64 音频（24kHz） |
-| `is_final` | 是否最后一个 chunk |
-| `duration_ms` | 该 chunk 耗时 |
-
-#### StreamingResponse
-
-完整 Streaming 响应汇总：`session_id`, `full_text`, `audio_data`, `total_chunks`, `total_duration_ms`。
-
-#### RollbackResult
-
-回溯结果：`success`, `reason`, `restored_position`。
+流式生成使用的数据结构（`StreamingChunk` 等），被 ChatView 的 `streaming_generate()` 复用。
 
 ### duplex.py — Duplex 模式 Schema
 
@@ -220,18 +180,17 @@ class UnifiedProcessor(BaseProcessor):
 | `duplex` | DuplexView 属性 |
 | `kv_cache_length` | 当前 KV Cache 长度 |
 
-#### StreamingView
+#### ChatView
 
-| 方法 | 说明 |
-|------|------|
-| `init_ref_audio(ref_audio_path)` | 初始化参考音频 |
-| `init_ref_audio_from_data(ref_audio)` | 从 ndarray 初始化参考音频 |
-| `reset_session(session_id)` | 重置会话 |
-| `prefill(request)` | 预填充（支持 KV Cache 复用） |
-| `generate(...)` | 流式生成，返回 `Generator[StreamingChunk]` |
-| `can_rollback()` | 是否可回溯 |
-| `rollback()` | 回溯到上一状态 |
-| `complete_turn(...)` | 完成当前 turn |
+ChatView 提供 Turn-based Chat 的专用 API，支持流式和非流式两种生成模式。
+
+| 方法/属性 | 说明 |
+|----------|------|
+| `prefill(session_id, msgs, ...)` | 一次性 prefill 所有消息到 KV Cache |
+| `generate(session_id, ...)` | 非流式生成（HF generate + TTS） |
+| `streaming_generate(session_id, ...)` | 流式生成，返回 `Generator[StreamingChunk]` |
+| `kv_cache_length` | 当前 KV Cache 长度 |
+| `chat(request)` | 兼容旧接口（一体式 prefill + generate） |
 
 #### DuplexView
 
@@ -290,7 +249,7 @@ class ProcessorCapabilities:
 | 流式输出 | 支持 | 支持 |
 | 打断支持 | -- | 支持 |
 | 回溯支持 | 支持 | -- |
-| KV Cache 复用 | 支持 | -- |
+| KV Cache 复用 | 支持 | 支持 |
 | 独占 Worker | -- | 需要 |
 | 多轮对话 | 支持 | 支持 |
 

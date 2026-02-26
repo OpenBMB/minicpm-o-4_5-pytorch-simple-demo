@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Streaming 模式 - MiniCPM-o 4.5 文档</title>
+<title>Chat 模式 - MiniCPM-o 4.5 文档</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="../architecture/index.html">架构概述</a></li>
-        <li><a href="../architecture/streaming.html" class="active">Streaming 模式</a></li>
+        <li><a href="../architecture/streaming.html" class="active">Chat 模式</a></li>
         <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="../architecture/internals.html">内部机制</a></li>
       </ul>
@@ -107,231 +107,225 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </ul>
 </nav>
 <main class="content" id="content">
-  <article><h1 id="streaming">Streaming 模式详解</h1>
-<p>Streaming 模式（<code>/ws/streaming/{session_id}</code>）实现 <strong>Turn-based Chat</strong>：用户发送完整消息后，模型流式返回文本 + 音频。核心优化是 <strong>KV Cache 跨轮复用</strong>。</p>
-<h2 id="_1">基础流程</h2>
-<p>先看最简单的单轮 Streaming 流程——不涉及排队和缓存优化，只关注核心推理链路：</p>
+  <article><h1 id="chat">Chat 模式详解</h1>
+<p>Turn-based Chat 页面的核心推理模式。通过 <code>/ws/chat</code> WebSocket 接口，支持<strong>流式</strong>和<strong>非流式</strong>两种响应方式。</p>
+<h2 id="_1">一句话理解</h2>
+<blockquote>
+<p>先把所有历史消息一次性"喂"给模型（<strong>Prefill</strong>），再让模型基于已有上下文生成回复（<strong>Generate</strong>）。</p>
+</blockquote>
+<h2 id="_2">整体流程</h2>
+<h3 id="_3">简化视角</h3>
+<p>前端和模型之间只有两步交互：</p>
 <pre class="mermaid">
 sequenceDiagram
-    participant C as 客户端
-    participant GW as Gateway
-    participant W as Worker
+    participant FE as 前端
+    participant MD as Model
 
-    C->>GW: WS /ws/streaming/{session_id}
-    C->>GW: prefill (messages=[sys, user])
-    GW->>W: 转发全部消息
-    W->>W: reset_session() 清空旧状态
-    loop 逐条 streaming_prefill(msg)
-        W->>W: 编码消息 → LLM prefill → 累积 KV Cache
-    end
-    W-->>GW: prefill_done
-    GW-->>C: prefill_done
-
-    C->>GW: generate
-    GW->>W: 转发 generate
-    W->>W: streaming_init_tts(ref_audio)
-    loop 流式生成（逐 chunk）
-        W-->>GW: StreamingChunk (text + audio)
-        GW-->>C: 转发 chunk
-    end
-    W-->>GW: done
-    GW-->>C: done
+    FE->>MD: 1. Prefill：所有消息
+    MD-->>FE: 2. Generate：回复（文本 + 可选音频）
 </pre>
 
-<p>Worker 收到消息列表后，<code>StreamingView.prefill()</code> 将其拆分为逐条调用模型的 <code>streaming_prefill()</code>：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># core/processors/unified.py — StreamingView.prefill()</span>
-<span class="k">def</span> <span class="nf">prefill</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">StreamingRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-    <span class="n">prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">msg</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">messages</span><span class="p">):</span>
-        <span class="n">content</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_content_to_model_format</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
-        <span class="n">msgs</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="n">msg</span><span class="o">.</span><span class="n">role</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">content</span><span class="p">}]</span>
-        <span class="n">is_last</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">is_last_chunk</span> <span class="ow">and</span> <span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">messages</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">streaming_prefill</span><span class="p">(</span>
-            <span class="n">session_id</span><span class="o">=</span><span class="n">request</span><span class="o">.</span><span class="n">session_id</span><span class="p">,</span> <span class="n">msgs</span><span class="o">=</span><span class="n">msgs</span><span class="p">,</span>
-            <span class="n">is_last_chunk</span><span class="o">=</span><span class="n">is_last</span><span class="p">,</span> <span class="n">stream_input</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">...</span>
-        <span class="p">)</span>
-        <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
-            <span class="n">prompt</span> <span class="o">=</span> <span class="n">result</span>
-    <span class="k">return</span> <span class="n">prompt</span>
-</code></pre></div>
-
-<p>每次 <code>streaming_prefill()</code> 执行后，模型将新的 KV 对累积到 <code>llm_past_key_values</code> 中，供后续生成使用：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># MiniCPMO45/modeling_minicpmo_unified.py — streaming_prefill()</span>
-<span class="n">cache_length</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_kv_cache_length</span><span class="p">()</span>
-<span class="n">attention_mask</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="n">cache_length</span> <span class="o">+</span> <span class="n">inputs_embeds</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="o">...</span><span class="p">)</span>
-
-<span class="n">outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="p">(</span>
-    <span class="n">past_key_values</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span><span class="p">,</span>  <span class="c1"># 传入已有 KV Cache</span>
-    <span class="n">inputs_embeds</span><span class="o">=</span><span class="n">inputs_embeds</span><span class="p">,</span>                <span class="c1"># 仅当前消息的 embedding</span>
-    <span class="n">attention_mask</span><span class="o">=</span><span class="n">attention_mask</span><span class="p">,</span>
-    <span class="n">use_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span> <span class="o">=</span> <span class="n">as_dynamic_cache</span><span class="p">(</span><span class="n">outputs</span><span class="p">[</span><span class="s2">&quot;past_key_values&quot;</span><span class="p">])</span>  <span class="c1"># 更新缓存</span>
-</code></pre></div>
-
-<h2 id="kv-cache">为什么需要 KV Cache 复用？</h2>
-<p>上面的基础流程有一个问题：<strong>每轮请求都需要从头 prefill 全部历史消息</strong>。</p>
-<pre class="mermaid">
-graph LR
-    subgraph round1 ["第 1 轮"]
-        R1["prefill: sys, user₁\n2 条消息"]
-    end
-    subgraph round2 ["第 2 轮"]
-        R2["prefill: sys, user₁, asst₁, user₂\n4 条（2 条重复）"]
-    end
-    subgraph round3 ["第 3 轮"]
-        R3["prefill: sys, user₁, asst₁, user₂, asst₂, user₃\n6 条（4 条重复）"]
-    end
-    round1 --> round2 --> round3
-</pre>
-
-<p>随着对话轮次增加，重复计算量线性增长。对于包含图像和音频的多模态消息，重复 prefill 的代价尤其高昂。</p>
-<p><strong>KV Cache 复用的核心思路</strong>：Worker 推理完成后 <strong>不清除</strong> <code>llm_past_key_values</code>。当下一轮请求被路由到同一个 Worker 时，直接复用已有缓存，仅对新增消息做增量 prefill。</p>
-<h2 id="kv-cache_1">KV Cache 复用的实现</h2>
-<p>复用机制分布在 <strong>Gateway → Worker → 模型</strong> 三层：</p>
-<h3 id="1-gateway">1. Gateway：缓存命中判断</h3>
-<p>Gateway 计算历史消息（不含最新 user 消息）的 SHA-256 hash，与 Worker 上次保存的 <code>cached_hash</code> 比对，决定是否命中：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># gateway.py — streaming_ws()</span>
-<span class="n">history</span> <span class="o">=</span> <span class="n">raw_messages</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-<span class="n">history_hash</span> <span class="o">=</span> <span class="n">compute_history_hash</span><span class="p">(</span><span class="n">history</span><span class="p">)</span> <span class="k">if</span> <span class="n">history</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
-
-<span class="n">cache_hit</span> <span class="o">=</span> <span class="n">history_hash</span> <span class="ow">and</span> <span class="n">worker</span><span class="o">.</span><span class="n">cached_hash</span> <span class="o">==</span> <span class="n">history_hash</span>
-
-<span class="k">if</span> <span class="n">cache_hit</span><span class="p">:</span>
-    <span class="c1"># 命中：只发最新消息，指示 Worker 保留已有 KV Cache</span>
-    <span class="n">forward_msg</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">msg</span><span class="p">,</span> <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="n">raw_messages</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:],</span> <span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
-<span class="k">else</span><span class="p">:</span>
-    <span class="c1"># 未命中：发全部消息，指示 Worker 清空后全量 prefill</span>
-    <span class="n">forward_msg</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">msg</span><span class="p">,</span> <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="n">raw_messages</span><span class="p">,</span> <span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
-</code></pre></div>
-
-<h3 id="2-worker">2. Worker：按指示清除或保留</h3>
-<p>Worker 收到 Gateway 的 <code>clear_kv_cache</code> 字段后，决定是否重置模型 session：</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># worker.py — streaming_ws()</span>
-<span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
-    <span class="n">worker</span><span class="o">.</span><span class="n">reset_streaming_session</span><span class="p">()</span>
-    <span class="c1"># → streaming_view._model.reset_session(reset_token2wav_cache=False)</span>
-</code></pre></div>
-
-<h3 id="3-llm_past_key_values">3. 模型：清除即置空 <code>llm_past_key_values</code></h3>
-<p><code>reset_session()</code> 将所有缓存状态清零。缓存未命中时，后续 <code>streaming_prefill()</code> 从空缓存开始逐条 prefill；缓存命中时，跳过 reset，新消息直接在已有 KV Cache 上增量 prefill。</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># MiniCPMO45/modeling_minicpmo_unified.py — reset_session()</span>
-<span class="k">def</span> <span class="nf">reset_session</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reset_token2wav_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span> <span class="o">=</span> <span class="kc">None</span>   <span class="c1"># 清除 LLM KV Cache</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">audio_past_key_values</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">session_id</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="o">...</span>
-</code></pre></div>
-
-<h2 id="kv-cache_2">完整流程（含排队 + KV Cache 复用）</h2>
+<h3 id="_4">详细视角</h3>
+<p>加入中间层（Gateway 透传代理 + Worker 调度）后的完整流程：</p>
 <pre class="mermaid">
 sequenceDiagram
-    participant C as 客户端
+    participant FE as 前端
     participant GW as Gateway
-    participant Pool as WorkerPool
-    participant W as Worker
+    participant WK as Worker
+    participant MD as Model
 
-    C->>GW: WS 连接 /ws/streaming/{session_id}
-    GW->>Pool: enqueue("streaming", history_hash)
+    FE->>GW: WebSocket /ws/chat
+    GW->>WK: WebSocket 透传
+    FE->>WK: {messages, streaming, tts, ...}
 
-    alt 有空闲 Worker（立即分配）
-        Pool->>Pool: LRU 缓存路由（见下方详解）
-        Pool-->>GW: Future.resolve(Worker)
-        GW-->>C: queue_done
-    else 无空闲 Worker（入队等待）
-        Pool-->>GW: 入 FIFO 队列
-        GW-->>C: queued (position, eta)
-        loop 等待释放
-            Pool-->>GW: 位置更新
-            GW-->>C: queue_update (position, eta)
+    WK->>MD: Prefill（一次性填充所有消息）
+    MD-->>WK: KV Cache 就绪
+    WK-->>FE: prefill_done
+
+    alt 流式响应
+        loop 逐 chunk 生成
+            MD-->>WK: 文本片段 + 音频片段
+            WK-->>FE: {type: "chunk", text_delta, audio_data}
         end
-        Note over Pool: Worker 释放后 _dispatch_next()
-        Pool-->>GW: Future.resolve(Worker)
-        GW-->>C: queue_done
+    else 非流式响应
+        MD-->>WK: 完整文本 + 完整音频
     end
 
-    GW->>W: 建立到 Worker 的 WS 连接
-
-    alt 缓存未命中（clear_kv_cache=true）
-        GW->>W: prefill (clear_kv_cache=true, 全部消息)
-        W->>W: reset_session() 清除旧 KV Cache
-        W->>W: streaming_prefill() 全量预填充
-    else 缓存命中（clear_kv_cache=false）
-        GW->>W: prefill (clear_kv_cache=false, 仅新消息)
-        W->>W: streaming_prefill() 增量预填充<br/>复用已有 KV Cache
-    end
-    W-->>GW: prefill_done (cached_tokens, input_tokens)
-    GW-->>C: 转发 prefill_done
-
-    C->>GW: generate
-    GW->>W: 转发 generate
-    W->>W: streaming_init_tts(ref_audio)
-    loop 流式生成（逐 chunk）
-        W->>W: streaming_generate() yield chunk
-        W-->>GW: StreamingChunk (text_delta + audio_data)
-        GW-->>C: 转发 chunk
-    end
-    W-->>GW: done (token_stats)
-    GW-->>C: 转发 done
-
-    GW->>Pool: release_worker(cached_hash=当前 hash)
-    Note over Pool: 更新 Worker.cached_hash<br/>下次同 hash 请求可命中
+    WK-->>FE: {type: "done", text, generated_tokens}
 </pre>
 
-<h2 id="lru">LRU 缓存路由详解</h2>
-<p>LRU 缓存路由在 <strong>Gateway 侧</strong>的 <code>WorkerPool._route_streaming_worker()</code> 中实现（位于 <code>gateway_modules/worker_pool.py</code>），而非 Worker 侧。Gateway 通过 <code>WorkerConnection.cached_hash</code> 和 <code>last_cache_used_at</code> 字段追踪每个 Worker 当前缓存的会话历史 hash。</p>
-<p><strong>路由 4 级优先级</strong>：</p>
-<pre class="mermaid">
-flowchart TD
-    Start["收到 Streaming 请求\n计算 history_hash"] --> Check1{"遍历空闲 Worker\nhash == cached_hash ?"}
-    Check1 -->|"命中"| Hit["缓存命中\n分配该 Worker\n增量 prefill"]
-    Check1 -->|"未命中"| Check2{"有 cached_hash==None\n的空闲 Worker ?"}
-    Check2 -->|"有"| NoCache["分配无缓存 Worker\n避免不必要的淘汰"]
-    Check2 -->|"无"| Check3{"有其他空闲 Worker ?"}
-    Check3 -->|"有"| LRU["LRU 淘汰\n选 last_cache_used_at 最旧的\n覆盖其缓存"]
-    Check3 -->|"无"| Enqueue["无空闲 Worker\n入 FIFO 队列等待"]
-</pre>
+<h2 id="prefill">Prefill 阶段</h2>
+<p>Prefill 将对话历史（system prompt + 多轮 user/assistant 消息）一次性填充到模型的 <strong>KV Cache</strong> 中。</p>
+<p>关键行为：
+- 使用 <code>apply_chat_template</code> 构建 prompt，但 <strong>不加 generation prompt</strong>（<code>add_generation_prompt=False</code>）
+- generation prompt（<code>&lt;|im_start|&gt;assistant\n</code>）在 Generate 阶段才注入
+- 支持多模态输入：文本、图片、音频、视频</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 伪代码</span>
+<span class="n">prompt</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">apply_chat_template</span><span class="p">(</span><span class="n">msgs</span><span class="p">,</span> <span class="n">add_generation_prompt</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">inputs</span> <span class="o">=</span> <span class="n">processor</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="n">audios</span><span class="p">)</span>
+<span class="n">inputs_embeds</span> <span class="o">=</span> <span class="n">get_vllm_embedding</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>   <span class="c1"># 视觉编码</span>
+<span class="n">inputs_embeds</span> <span class="o">=</span> <span class="n">get_omni_embedding</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>   <span class="c1"># 音频编码</span>
 
-<ul>
-<li><strong>hash 计算</strong>：<code>compute_history_hash()</code> 将消息列表的 <code>role + content</code> 序列化后做 SHA-256，确保相同对话历史产生相同 hash。</li>
-<li><strong>缓存更新时机</strong>：Gateway 在 <code>release_worker()</code> 时将当前请求的 <code>history_hash</code> 写入 <code>Worker.cached_hash</code> 和 <code>last_cache_used_at</code>，供后续请求匹配。</li>
-<li><strong>Non-Streaming 请求也考虑缓存</strong>：Duplex 分配时也优先选无缓存的 Worker（<code>_get_idle_worker()</code>），避免不必要地淘汰 Streaming 的缓存。</li>
-</ul>
-<h2 id="worker">Worker 侧处理细节</h2>
-<p>Worker 使用固定 <code>session_id="streaming"</code> 管理 KV Cache 状态。以下是 Worker WebSocket handler 中 prefill / generate / stop 三个阶段的具体实现。</p>
-<h3 id="prefill">prefill 阶段</h3>
+<span class="c1"># 填充 KV Cache</span>
+<span class="n">outputs</span> <span class="o">=</span> <span class="n">llm</span><span class="p">(</span><span class="n">inputs_embeds</span><span class="o">=</span><span class="n">inputs_embeds</span><span class="p">,</span> <span class="n">use_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">kv_cache</span> <span class="o">=</span> <span class="n">outputs</span><span class="o">.</span><span class="n">past_key_values</span>
+</code></pre></div>
+
+<h2 id="generate">Generate 阶段</h2>
+<p>Generate 基于已填充的 KV Cache 生成回复。首先注入 bos string，然后分流：</p>
+<h3 id="bos-string">注入 bos string</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">&lt;</span>|im_end|&gt;\n<span class="err">&lt;</span>|im_start|&gt;assistant\n<span class="nt">&lt;think&gt;</span>\n\n<span class="nt">&lt;/think&gt;</span>\n\n<span class="err">&lt;</span>|tts_bos|&gt;
+</code></pre></div>
+
+<p>这与模型在 <code>chat()</code> 和 <code>streaming_generate()</code> 中的行为一致。</p>
+<h3 id="_5">非流式生成</h3>
+<p>使用 HuggingFace 标准的 <code>llm.generate()</code> API：</p>
 <ol>
-<li>检查状态（IDLE 或 BUSY_STREAMING）</li>
-<li>设置状态 → <code>BUSY_STREAMING</code></li>
-<li>检查 Gateway 发来的 <code>clear_kv_cache</code> 标志：</li>
-<li><code>true</code>（缓存未命中）→ <code>reset_streaming_session()</code> 清除 KV Cache</li>
-<li><code>false</code>（缓存命中）→ 保留已有 KV Cache</li>
-<li>解码前端发送的 <code>ref_audio_base64</code> → 缓存到 <code>_streaming_ref_audio_cache</code></li>
-<li>构建消息列表（支持 text / audio / image 多模态内容）</li>
-<li>记录 prefill 前后 KV Cache 长度差 → <code>cached_tokens</code> / <code>input_tokens</code></li>
-<li><code>streaming_prefill(request)</code> 执行预填充</li>
-<li>发送 <code>prefill_done</code>（含 <code>cached_tokens</code>, <code>input_tokens</code>）</li>
+<li>bos string → embedding → KV Cache 前向</li>
+<li><code>llm.generate(past_key_values=kv_cache, ...)</code> 生成完整序列</li>
+<li>解码文本</li>
+<li>可选：调用 <code>_generate_speech_non_streaming()</code> 生成 TTS 音频</li>
 </ol>
-<p><strong>KV Cache 复用关键</strong>：<code>cached_tokens</code> 表示复用的缓存 token 数。缓存命中时 <code>cached_tokens &gt; 0</code>，只需增量处理新消息，首 token 延迟显著降低。</p>
-<h3 id="generate">generate 阶段</h3>
+<p>适合：短回复、不需要实时反馈的场景。</p>
+<h3 id="_6">流式生成</h3>
+<p>使用模型内部的 <code>streaming_generate()</code> 方法：</p>
 <ol>
-<li>从 <code>_streaming_ref_audio_cache</code> 取出 ref audio（prefill 时缓存的）</li>
-<li><code>streaming_init_tts(ref_audio)</code> 初始化 TTS</li>
-<li>在 <code>run_in_executor</code> 中运行 <code>streaming_generate()</code>：</li>
-<li>Generator 逐 chunk yield <code>StreamingChunk</code></li>
-<li>每个 chunk 通过 <code>asyncio.Queue</code> 传到主协程</li>
-<li>主协程逐个发送 chunk 给客户端</li>
-<li>每 yield 一个 chunk 后检查 <code>stop_event</code></li>
-<li>发送 <code>done</code>（含完整 <code>token_stats</code>）</li>
-<li>状态恢复 → <code>IDLE</code></li>
+<li>bos string 自动注入</li>
+<li>每 10 个 token 为一组生成（<code>ChunkPrefillChunkGenerate</code>）</li>
+<li>每组 token 送入 TTS 生成音频 chunk</li>
+<li>逐块 yield (waveform_chunk, text_delta)</li>
 </ol>
-<h3 id="_2">停止控制</h3>
-<ul>
-<li>每个 WS 连接创建独立的 <code>threading.Event</code></li>
-<li><code>threading.Event</code> 跨线程安全（asyncio 线程 ↔ generate 工作线程）</li>
-<li>客户端发 <code>stop</code> 或断开连接时 <code>set()</code> 触发中断</li>
-<li>HTTP <code>POST /streaming/stop</code> 广播到所有活跃 session</li>
-</ul></article>
+<p>适合：长回复、需要实时逐字显示的场景。</p>
+<h2 id="websocket">WebSocket 协议</h2>
+<h3 id="_7">端点</h3>
+<div class="codehilite"><pre><span></span><code>wss://host/ws/chat
+</code></pre></div>
+
+<h3 id="_8">请求格式</h3>
+<p>连接后发送一次 JSON：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;messages&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;system&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">}]},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;你好&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;streaming&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;generation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;max_new_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;length_penalty&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.1</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;tts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;ref_audio_data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;base64&gt;&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;image&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;max_slice_nums&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;omni_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>messages</code></td>
+<td>完整消息历史（含 system prompt）</td>
+</tr>
+<tr>
+<td><code>streaming</code></td>
+<td><code>true</code> 流式 / <code>false</code> 非流式</td>
+</tr>
+<tr>
+<td><code>generation</code></td>
+<td>生成参数（max_new_tokens、length_penalty 等）</td>
+</tr>
+<tr>
+<td><code>tts</code></td>
+<td>Voice Response 配置（enabled、ref_audio_data）</td>
+</tr>
+<tr>
+<td><code>omni_mode</code></td>
+<td>视频输入时为 <code>true</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_9">响应消息</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prefill_done</code></td>
+<td><code>input_tokens</code></td>
+<td>Prefill 完成，返回输入 token 数</td>
+</tr>
+<tr>
+<td><code>chunk</code></td>
+<td><code>text_delta</code>, <code>audio_data</code></td>
+<td>流式生成的一个 chunk（仅 streaming=true）</td>
+</tr>
+<tr>
+<td><code>done</code></td>
+<td><code>text</code>, <code>generated_tokens</code>, <code>input_tokens</code>, <code>audio_data</code></td>
+<td>生成完成</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td><code>error</code></td>
+<td>错误信息</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_10">调用链路</h2>
+<div class="codehilite"><pre><span></span><code>前端 turnbased.html
+  └─ WebSocket /ws/chat
+      └─ Gateway（WS 透传代理）
+          └─ Worker /ws/chat
+              ├─ chat_prefill()
+              │   └─ ChatView.prefill()
+              │       └─ model.non_streaming_prefill()
+              ├─ TTS init
+              │   └─ model.init_token2wav_cache()
+              └─ 生成
+                  ├─ 流式: chat_streaming_generate()
+                  │   └─ ChatView.streaming_generate()
+                  │       └─ model.streaming_generate()
+                  └─ 非流式: chat_non_streaming_generate()
+                      └─ ChatView.generate()
+                          └─ model.non_streaming_generate()
+</code></pre></div>
+
+<h2 id="voice-response">Voice Response</h2>
+<p>前端提供 "Voice Response" 开关：</p>
+<table>
+<thead>
+<tr>
+<th>状态</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>开启</td>
+<td>生成语音回复 + 文本；自动抑制特殊字符（Markdown <code>*</code>、<code>#</code>、代码符号等），确保文本适合语音播报</td>
+</tr>
+<tr>
+<td>关闭</td>
+<td>仅生成文本；不抑制任何字符，可自由输出 Markdown、代码等</td>
+</tr>
+</tbody>
+</table>
+<p>技术实现：<code>ChunkPrefillChunkGenerate.chunk_generate()</code> 的 <code>suppress_forbidden_tokens</code> 参数由 <code>generate_audio</code> 控制。</p>
+<h2 id="_11">视频输入</h2>
+<p>Chat 模式支持视频输入（<code>VideoContent</code>）：</p>
+<ol>
+<li>前端上传视频文件 → Base64 编码</li>
+<li>Processor 解码为临时文件 → <code>get_video_frame_audio_segments()</code> 提取帧和音频</li>
+<li>帧和音频按交错顺序（frame, audio, [stacked_frame], ...）送入模型</li>
+<li>请求中自动设置 <code>omni_mode: true</code>，<code>max_slice_nums: 1</code></li>
+</ol></article>
   <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>

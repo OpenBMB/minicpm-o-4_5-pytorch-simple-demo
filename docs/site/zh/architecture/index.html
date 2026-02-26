@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="../architecture/index.html" class="active">架构概述</a></li>
-        <li><a href="../architecture/streaming.html">Streaming 模式</a></li>
+        <li><a href="../architecture/streaming.html">Chat 模式</a></li>
         <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="../architecture/internals.html">内部机制</a></li>
       </ul>
@@ -136,9 +136,9 @@ graph TB
 
     subgraph modelLayer [模型层]
         UP["UnifiedProcessor"]
-        StreamV["StreamingView"]
+        ChatV["ChatView"]
         DuplexV["DuplexView"]
-        UP --> StreamV
+        UP --> ChatV
         UP --> DuplexV
     end
 
@@ -198,10 +198,10 @@ graph TB
 <tr>
 <td><strong>Turn-based Chat</strong></td>
 <td>低延迟流式交互，按钮或 VAD 触发回复，基础能力强</td>
-<td>音频 + 文本 + 图像</td>
+<td>音频 + 文本 + 图像 + 视频</td>
 <td>音频 + 文本</td>
 <td>轮次对话</td>
-<td>Streaming</td>
+<td>ChatView</td>
 </tr>
 <tr>
 <td><strong>Omnimodal Full-Duplex</strong></td>
@@ -230,19 +230,19 @@ graph LR
     end
 
     subgraph apis [两个 WebSocket 接口]
-        StreamAPI["/ws/streaming/{session_id}\nStreamingView"]
+        ChatAPI["/ws/chat\nChatView"]
         DuplexAPI["/ws/duplex/{session_id}\nDuplexView"]
     end
 
-    TB --> StreamAPI
+    TB --> ChatAPI
     OD --> DuplexAPI
     AD --> DuplexAPI
 </pre>
 
-<h3 id="streaming-turn-based-chat">Streaming 接口 — Turn-based Chat</h3>
-<p>Turn-based Chat 通过 <strong>Streaming 接口</strong> (<code>/ws/streaming/{session_id}</code>) 实现轮次式多模态对话。</p>
-<p>用户发送完整消息后，模型流式返回文本 + 音频。支持 KV Cache 跨轮复用，多轮对话无需重新 prefill 历史。前端可通过按钮或 VAD（语音活动检测）触发回复。</p>
-<p>详见 <a href="streaming.html">Streaming 模式详解</a>。</p>
+<h3 id="chat-turn-based-chat">Chat 接口 — Turn-based Chat</h3>
+<p>Turn-based Chat 通过 <strong>ChatView</strong>（<code>/ws/chat</code> WebSocket）实现轮次式多模态对话。</p>
+<p>ChatView 将推理分为 prefill 和 generate 两个阶段：prefill 一次性将所有消息填充到 KV Cache，generate 支持流式和非流式两种模式。前端可通过 Streaming 开关选择实时逐字输出或一次性返回。</p>
+<p>详见 <a href="streaming.html">ChatView 模式详解</a>。</p>
 <h3 id="duplex-full-duplex">Duplex 接口 — Full-Duplex</h3>
 <p>Omnimodal Full-Duplex 和 Audio Full-Duplex 共用 <strong>Duplex 接口</strong> (<code>/ws/duplex/{session_id}</code>)，区别仅在于是否传入视频帧：</p>
 <ul>

@@ -292,6 +292,91 @@ async def chat(request: Request):
         worker_pool.release_worker(worker, request_type="chat", duration_s=duration)
 
 
+# ============ Chat WebSocket 代理 ============
+
+@app.websocket("/ws/chat")
+async def chat_ws_proxy(ws: WebSocket):
+    """Chat WebSocket 代理 — 排队后透传到 Worker /ws/chat"""
+    if not app_registry.is_enabled("turnbased"):
+        await ws.close(code=1008, reason="Turn-based Chat is currently disabled")
+        return
+    if worker_pool is None:
+        await ws.close(code=1013, reason="Service not ready")
+        return
+
+    await ws.accept()
+
+    assigned_worker: Optional[WorkerConnection] = None
+    worker_ws = None
+    task_start: Optional[datetime] = None
+
+    try:
+        # 收到前端发来的请求消息
+        raw = await ws.receive_text()
+
+        # 排队获取 Worker
+        try:
+            ticket, future = worker_pool.enqueue("chat")
+        except WorkerPool.QueueFullError:
+            await ws.send_json({"type": "error", "error": "Queue full"})
+            return
+
+        # 等待 Worker 分配
+        while not future.done():
+            try:
+                assigned_worker = await asyncio.wait_for(asyncio.shield(future), timeout=2.0)
+                break
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                await ws.send_json({"type": "error", "error": "Cancelled"})
+                return
+        if assigned_worker is None and future.done():
+            assigned_worker = future.result()
+
+        if assigned_worker is None:
+            await ws.send_json({"type": "error", "error": "No worker available"})
+            return
+
+        assigned_worker.mark_busy(GatewayWorkerStatus.BUSY_CHAT, "chat_ws")
+        assigned_worker.cached_hash = None
+        task_start = datetime.now()
+
+        # 连接 Worker WebSocket
+        import websockets
+        ws_url = f"ws://{assigned_worker.host}:{assigned_worker.port}/ws/chat"
+        worker_ws = await websockets.connect(ws_url)
+
+        # 转发请求
+        await worker_ws.send(raw)
+
+        # 透传 Worker 的所有响应到前端
+        async for msg_data in worker_ws:
+            await ws.send_text(msg_data)
+
+    except WebSocketDisconnect:
+        logger.info("Chat WS proxy: client disconnected")
+    except Exception as e:
+        logger.error(f"Chat WS proxy error: {e}", exc_info=True)
+        try:
+            await ws.send_json({"type": "error", "error": str(e)})
+        except Exception:
+            pass
+    finally:
+        if worker_ws:
+            try:
+                await worker_ws.close()
+            except Exception:
+                pass
+        if assigned_worker and task_start:
+            duration = (datetime.now() - task_start).total_seconds()
+            worker_pool.release_worker(assigned_worker, request_type="chat_ws", duration_s=duration)
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
 # ============ Streaming Stop（HTTP，转发到 Worker） ============
 
 @app.post("/api/streaming/stop")

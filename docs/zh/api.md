@@ -92,12 +92,15 @@ Worker 列表。
       "content": [
         {"type": "text", "text": "描述这张图片"},
         {"type": "image", "data": "<base64>"},
-        {"type": "audio", "data": "<base64 PCM float32>", "sample_rate": 16000}
+        {"type": "audio", "data": "<base64 PCM float32>", "sample_rate": 16000},
+        {"type": "video", "data": "<base64 video file>", "stack_frames": 1}
       ]
     }
   ]
 }
 ```
+
+> **注意**：包含视频内容时需设置 `omni_mode: true`，且仅支持 Chat 模式（不支持 Streaming）。
 
 **响应**：
 ```json
@@ -335,45 +338,33 @@ Worker 列表。
 
 ## WebSocket 协议
 
-### Streaming 协议
+### Chat WebSocket
 
-**连接**：`wss://localhost:8006/ws/streaming/{session_id}`
+**连接**：`wss://host/ws/chat`
 
-#### 客户端 → 服务端
+统一的 Turn-based Chat 接口，支持流式和非流式两种模式。
 
-| 消息类型 | 字段 | 说明 |
-|---------|------|------|
-| `prefill` | `messages`, `generation`, `streaming`, `use_tts_template`, `enable_thinking` | 预填充，发送消息历史 |
-| `generate` | — | 开始流式生成 |
-| `stop` | — | 停止生成 |
+**请求**（Client → Server，连接后发送一次）：
 
-**prefill 示例**：
 ```json
 {
-  "type": "prefill",
-  "messages": [
-    {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Hello!"}
-  ],
-  "generation": {"max_new_tokens": 512},
-  "streaming": {
-    "generate_audio": true,
-    "ref_audio_path": "assets/ref_audio/ref_minicpm_signature.wav"
-  }
+  "messages": [...],
+  "streaming": true,
+  "generation": {"max_new_tokens": 256, "length_penalty": 1.1},
+  "tts": {"enabled": true, "ref_audio_data": "<base64>"},
+  "image": {"max_slice_nums": null},
+  "omni_mode": false
 }
 ```
 
-#### 服务端 → 客户端
+**响应**（Server → Client）：
 
-| 消息类型 | 字段 | 说明 |
-|---------|------|------|
-| `queued` | `ticket_id`, `position`, `eta_seconds` | 排入队列 |
-| `queue_update` | `position`, `eta_seconds` | 队列位置更新 |
-| `queue_done` | — | 离开队列，开始处理 |
-| `prefill_done` | `prompt` | 预填充完成 |
-| `chunk` | `chunk_index`, `text_delta`, `audio_data`, `is_final` | 流式输出 chunk |
-| `done` | `full_text`, `total_chunks`, `total_duration_ms` | 生成完成 |
-| `error` | `message` | 错误 |
+| 消息类型 | 关键字段 | 说明 |
+|---------|---------|------|
+| `prefill_done` | `input_tokens` | Prefill 完成 |
+| `chunk` | `text_delta`, `audio_data` | 流式 chunk（仅 streaming=true） |
+| `done` | `text`, `generated_tokens`, `input_tokens`, `audio_data` | 生成完成 |
+| `error` | `error` | 错误信息 |
 
 ---
 

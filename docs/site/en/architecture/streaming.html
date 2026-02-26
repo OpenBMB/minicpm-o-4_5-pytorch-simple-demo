@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Streaming Mode - MiniCPM-o 4.5 Docs</title>
+<title>Chat Mode - MiniCPM-o 4.5 Docs</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -82,7 +82,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="../architecture/index.html">Overview</a></li>
-        <li><a href="../architecture/streaming.html" class="active">Streaming Mode</a></li>
+        <li><a href="../architecture/streaming.html" class="active">Chat Mode</a></li>
         <li><a href="../architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="../architecture/internals.html">Internals</a></li>
       </ul>
@@ -107,231 +107,225 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
   </ul>
 </nav>
 <main class="content" id="content">
-  <article><h1 id="streaming-mode-details">Streaming Mode Details</h1>
-<p>Streaming mode (<code>/ws/streaming/{session_id}</code>) implements <strong>Turn-based Chat</strong>: after the user sends a complete message, the model streams back text + audio. The core optimization is <strong>KV Cache reuse across turns</strong>.</p>
-<h2 id="basic-flow">Basic Flow</h2>
-<p>Let's first look at the simplest single-turn Streaming flow — without queuing or cache optimizations, focusing only on the core inference pipeline:</p>
+  <article><h1 id="chat-mode-details">Chat Mode Details</h1>
+<p>The core inference mode behind the Turn-based Chat page. Communicates via the <code>/ws/chat</code> WebSocket endpoint, supporting both <strong>streaming</strong> and <strong>non-streaming</strong> response modes.</p>
+<h2 id="in-one-sentence">In One Sentence</h2>
+<blockquote>
+<p>Feed all history messages into the model at once (<strong>Prefill</strong>), then let the model generate a reply based on the existing context (<strong>Generate</strong>).</p>
+</blockquote>
+<h2 id="overall-flow">Overall Flow</h2>
+<h3 id="simplified-view">Simplified View</h3>
+<p>Only two steps between the frontend and the model:</p>
 <pre class="mermaid">
 sequenceDiagram
-    participant C as Client
-    participant GW as Gateway
-    participant W as Worker
+    participant FE as Frontend
+    participant MD as Model
 
-    C->>GW: WS /ws/streaming/{session_id}
-    C->>GW: prefill (messages=[sys, user])
-    GW->>W: Forward all messages
-    W->>W: reset_session() clear old state
-    loop streaming_prefill(msg) for each message
-        W->>W: Encode message → LLM prefill → accumulate KV Cache
-    end
-    W-->>GW: prefill_done
-    GW-->>C: prefill_done
-
-    C->>GW: generate
-    GW->>W: Forward generate
-    W->>W: streaming_init_tts(ref_audio)
-    loop Streaming generation (chunk by chunk)
-        W-->>GW: StreamingChunk (text + audio)
-        GW-->>C: Forward chunk
-    end
-    W-->>GW: done
-    GW-->>C: done
+    FE->>MD: 1. Prefill: all messages
+    MD-->>FE: 2. Generate: reply (text + optional audio)
 </pre>
 
-<p>After receiving the message list, <code>StreamingView.prefill()</code> splits it into per-message calls to the model's <code>streaming_prefill()</code>:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># core/processors/unified.py — StreamingView.prefill()</span>
-<span class="k">def</span> <span class="nf">prefill</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">StreamingRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-    <span class="n">prompt</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">msg</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">messages</span><span class="p">):</span>
-        <span class="n">content</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_convert_content_to_model_format</span><span class="p">(</span><span class="n">msg</span><span class="o">.</span><span class="n">content</span><span class="p">)</span>
-        <span class="n">msgs</span> <span class="o">=</span> <span class="p">[{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="n">msg</span><span class="o">.</span><span class="n">role</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">content</span><span class="p">}]</span>
-        <span class="n">is_last</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">is_last_chunk</span> <span class="ow">and</span> <span class="p">(</span><span class="n">i</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">messages</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_model</span><span class="o">.</span><span class="n">streaming_prefill</span><span class="p">(</span>
-            <span class="n">session_id</span><span class="o">=</span><span class="n">request</span><span class="o">.</span><span class="n">session_id</span><span class="p">,</span> <span class="n">msgs</span><span class="o">=</span><span class="n">msgs</span><span class="p">,</span>
-            <span class="n">is_last_chunk</span><span class="o">=</span><span class="n">is_last</span><span class="p">,</span> <span class="n">stream_input</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">...</span>
-        <span class="p">)</span>
-        <span class="k">if</span> <span class="n">result</span><span class="p">:</span>
-            <span class="n">prompt</span> <span class="o">=</span> <span class="n">result</span>
-    <span class="k">return</span> <span class="n">prompt</span>
-</code></pre></div>
-
-<p>After each <code>streaming_prefill()</code> call, the model accumulates new KV pairs into <code>llm_past_key_values</code> for subsequent generation:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># MiniCPMO45/modeling_minicpmo_unified.py — streaming_prefill()</span>
-<span class="n">cache_length</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_kv_cache_length</span><span class="p">()</span>
-<span class="n">attention_mask</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="n">cache_length</span> <span class="o">+</span> <span class="n">inputs_embeds</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="o">...</span><span class="p">)</span>
-
-<span class="n">outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="p">(</span>
-    <span class="n">past_key_values</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span><span class="p">,</span>  <span class="c1"># Pass in existing KV Cache</span>
-    <span class="n">inputs_embeds</span><span class="o">=</span><span class="n">inputs_embeds</span><span class="p">,</span>                <span class="c1"># Embedding of current message only</span>
-    <span class="n">attention_mask</span><span class="o">=</span><span class="n">attention_mask</span><span class="p">,</span>
-    <span class="n">use_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<span class="p">)</span>
-<span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span> <span class="o">=</span> <span class="n">as_dynamic_cache</span><span class="p">(</span><span class="n">outputs</span><span class="p">[</span><span class="s2">&quot;past_key_values&quot;</span><span class="p">])</span>  <span class="c1"># Update cache</span>
-</code></pre></div>
-
-<h2 id="why-is-kv-cache-reuse-needed">Why Is KV Cache Reuse Needed?</h2>
-<p>The basic flow above has a problem: <strong>every turn requires re-prefilling all historical messages from scratch</strong>.</p>
-<pre class="mermaid">
-graph LR
-    subgraph round1 ["Round 1"]
-        R1["prefill: sys, user₁\n2 messages"]
-    end
-    subgraph round2 ["Round 2"]
-        R2["prefill: sys, user₁, asst₁, user₂\n4 messages (2 redundant)"]
-    end
-    subgraph round3 ["Round 3"]
-        R3["prefill: sys, user₁, asst₁, user₂, asst₂, user₃\n6 messages (4 redundant)"]
-    end
-    round1 --> round2 --> round3
-</pre>
-
-<p>As the number of dialogue turns increases, redundant computation grows linearly. For multimodal messages containing images and audio, the cost of redundant prefilling is especially high.</p>
-<p><strong>The core idea of KV Cache reuse</strong>: After the Worker finishes inference, it <strong>does not clear</strong> <code>llm_past_key_values</code>. When the next turn request is routed to the same Worker, it directly reuses the existing cache and only performs incremental prefill for new messages.</p>
-<h2 id="kv-cache-reuse-implementation">KV Cache Reuse Implementation</h2>
-<p>The reuse mechanism spans three layers: <strong>Gateway → Worker → Model</strong>:</p>
-<h3 id="1-gateway-cache-hit-detection">1. Gateway: Cache Hit Detection</h3>
-<p>The Gateway computes a SHA-256 hash of historical messages (excluding the latest user message) and compares it with the Worker's previously saved <code>cached_hash</code> to determine a hit:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># gateway.py — streaming_ws()</span>
-<span class="n">history</span> <span class="o">=</span> <span class="n">raw_messages</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-<span class="n">history_hash</span> <span class="o">=</span> <span class="n">compute_history_hash</span><span class="p">(</span><span class="n">history</span><span class="p">)</span> <span class="k">if</span> <span class="n">history</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
-
-<span class="n">cache_hit</span> <span class="o">=</span> <span class="n">history_hash</span> <span class="ow">and</span> <span class="n">worker</span><span class="o">.</span><span class="n">cached_hash</span> <span class="o">==</span> <span class="n">history_hash</span>
-
-<span class="k">if</span> <span class="n">cache_hit</span><span class="p">:</span>
-    <span class="c1"># Hit: send only the latest message, instruct the Worker to keep existing KV Cache</span>
-    <span class="n">forward_msg</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">msg</span><span class="p">,</span> <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="n">raw_messages</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:],</span> <span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
-<span class="k">else</span><span class="p">:</span>
-    <span class="c1"># Miss: send all messages, instruct the Worker to clear and do full prefill</span>
-    <span class="n">forward_msg</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">msg</span><span class="p">,</span> <span class="s2">&quot;messages&quot;</span><span class="p">:</span> <span class="n">raw_messages</span><span class="p">,</span> <span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
-</code></pre></div>
-
-<h3 id="2-worker-clear-or-keep-as-instructed">2. Worker: Clear or Keep as Instructed</h3>
-<p>The Worker receives the <code>clear_kv_cache</code> field from the Gateway and decides whether to reset the model session:</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># worker.py — streaming_ws()</span>
-<span class="k">if</span> <span class="n">msg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;clear_kv_cache&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
-    <span class="n">worker</span><span class="o">.</span><span class="n">reset_streaming_session</span><span class="p">()</span>
-    <span class="c1"># → streaming_view._model.reset_session(reset_token2wav_cache=False)</span>
-</code></pre></div>
-
-<h3 id="3-model-clearing-means-nullifying-llm_past_key_values">3. Model: Clearing Means Nullifying <code>llm_past_key_values</code></h3>
-<p><code>reset_session()</code> zeroes out all cache state. On a cache miss, the subsequent <code>streaming_prefill()</code> starts from an empty cache and prefills all messages; on a cache hit, the reset is skipped, and new messages are incrementally prefilled on top of the existing KV Cache.</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># MiniCPMO45/modeling_minicpmo_unified.py — reset_session()</span>
-<span class="k">def</span> <span class="nf">reset_session</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">reset_token2wav_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">llm_past_key_values</span> <span class="o">=</span> <span class="kc">None</span>   <span class="c1"># Clear LLM KV Cache</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">audio_past_key_values</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">session_id</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="o">...</span>
-</code></pre></div>
-
-<h2 id="full-flow-with-queuing-kv-cache-reuse">Full Flow (with Queuing + KV Cache Reuse)</h2>
+<h3 id="detailed-view">Detailed View</h3>
+<p>Full flow with the intermediate layers (Gateway passthrough proxy + Worker dispatch):</p>
 <pre class="mermaid">
 sequenceDiagram
-    participant C as Client
+    participant FE as Frontend
     participant GW as Gateway
-    participant Pool as WorkerPool
-    participant W as Worker
+    participant WK as Worker
+    participant MD as Model
 
-    C->>GW: WS connect /ws/streaming/{session_id}
-    GW->>Pool: enqueue("streaming", history_hash)
+    FE->>GW: WebSocket /ws/chat
+    GW->>WK: WebSocket passthrough
+    FE->>WK: {messages, streaming, tts, ...}
 
-    alt Idle Worker available (immediate assignment)
-        Pool->>Pool: LRU cache routing (see details below)
-        Pool-->>GW: Future.resolve(Worker)
-        GW-->>C: queue_done
-    else No idle Worker (enqueue and wait)
-        Pool-->>GW: Enter FIFO queue
-        GW-->>C: queued (position, eta)
-        loop Waiting for release
-            Pool-->>GW: Position update
-            GW-->>C: queue_update (position, eta)
+    WK->>MD: Prefill (fill all messages at once)
+    MD-->>WK: KV Cache ready
+    WK-->>FE: prefill_done
+
+    alt Streaming response
+        loop chunk-by-chunk generation
+            MD-->>WK: text chunk + audio chunk
+            WK-->>FE: {type: "chunk", text_delta, audio_data}
         end
-        Note over Pool: Worker released → _dispatch_next()
-        Pool-->>GW: Future.resolve(Worker)
-        GW-->>C: queue_done
+    else Non-streaming response
+        MD-->>WK: complete text + complete audio
     end
 
-    GW->>W: Establish WS connection to Worker
-
-    alt Cache miss (clear_kv_cache=true)
-        GW->>W: prefill (clear_kv_cache=true, all messages)
-        W->>W: reset_session() clear old KV Cache
-        W->>W: streaming_prefill() full prefill
-    else Cache hit (clear_kv_cache=false)
-        GW->>W: prefill (clear_kv_cache=false, new messages only)
-        W->>W: streaming_prefill() incremental prefill<br/>reusing existing KV Cache
-    end
-    W-->>GW: prefill_done (cached_tokens, input_tokens)
-    GW-->>C: Forward prefill_done
-
-    C->>GW: generate
-    GW->>W: Forward generate
-    W->>W: streaming_init_tts(ref_audio)
-    loop Streaming generation (chunk by chunk)
-        W->>W: streaming_generate() yield chunk
-        W-->>GW: StreamingChunk (text_delta + audio_data)
-        GW-->>C: Forward chunk
-    end
-    W-->>GW: done (token_stats)
-    GW-->>C: Forward done
-
-    GW->>Pool: release_worker(cached_hash=current hash)
-    Note over Pool: Update Worker.cached_hash<br/>next request with same hash can hit cache
+    WK-->>FE: {type: "done", text, generated_tokens}
 </pre>
 
-<h2 id="lru-cache-routing-details">LRU Cache Routing Details</h2>
-<p>LRU cache routing is implemented on the <strong>Gateway side</strong> in <code>WorkerPool._route_streaming_worker()</code> (located in <code>gateway_modules/worker_pool.py</code>), not on the Worker side. The Gateway tracks each Worker's currently cached session history hash via the <code>WorkerConnection.cached_hash</code> and <code>last_cache_used_at</code> fields.</p>
-<p><strong>4-level routing priority</strong>:</p>
-<pre class="mermaid">
-flowchart TD
-    Start["Streaming request received\nCompute history_hash"] --> Check1{"Iterate idle Workers\nhash == cached_hash ?"}
-    Check1 -->|"Hit"| Hit["Cache hit\nAssign this Worker\nIncremental prefill"]
-    Check1 -->|"Miss"| Check2{"Any idle Worker with\ncached_hash==None ?"}
-    Check2 -->|"Yes"| NoCache["Assign cacheless Worker\nAvoid unnecessary eviction"]
-    Check2 -->|"No"| Check3{"Any other idle Worker ?"}
-    Check3 -->|"Yes"| LRU["LRU eviction\nPick Worker with oldest last_cache_used_at\nOverwrite its cache"]
-    Check3 -->|"No"| Enqueue["No idle Worker\nEnter FIFO queue and wait"]
-</pre>
+<h2 id="prefill-stage">Prefill Stage</h2>
+<p>Prefill fills the entire conversation history (system prompt + multi-turn user/assistant messages) into the model's <strong>KV Cache</strong> in one shot.</p>
+<p>Key behaviors:
+- Uses <code>apply_chat_template</code> to build the prompt, but <strong>without generation prompt</strong> (<code>add_generation_prompt=False</code>)
+- The generation prompt (<code>&lt;|im_start|&gt;assistant\n</code>) is injected during the Generate stage
+- Supports multimodal input: text, images, audio, video</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Pseudocode</span>
+<span class="n">prompt</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">apply_chat_template</span><span class="p">(</span><span class="n">msgs</span><span class="p">,</span> <span class="n">add_generation_prompt</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">inputs</span> <span class="o">=</span> <span class="n">processor</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="n">audios</span><span class="p">)</span>
+<span class="n">inputs_embeds</span> <span class="o">=</span> <span class="n">get_vllm_embedding</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>   <span class="c1"># vision encoding</span>
+<span class="n">inputs_embeds</span> <span class="o">=</span> <span class="n">get_omni_embedding</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>   <span class="c1"># audio encoding</span>
 
-<ul>
-<li><strong>Hash computation</strong>: <code>compute_history_hash()</code> serializes the <code>role + content</code> of the message list and computes a SHA-256 hash, ensuring the same conversation history produces the same hash.</li>
-<li><strong>Cache update timing</strong>: The Gateway writes the current request's <code>history_hash</code> to <code>Worker.cached_hash</code> and <code>last_cache_used_at</code> during <code>release_worker()</code>, for subsequent request matching.</li>
-<li><strong>Non-Streaming requests also consider cache</strong>: Duplex assignment also preferentially selects cacheless Workers (<code>_get_idle_worker()</code>), avoiding unnecessary eviction of Streaming caches.</li>
-</ul>
-<h2 id="worker-side-processing-details">Worker-Side Processing Details</h2>
-<p>The Worker uses a fixed <code>session_id="streaming"</code> to manage KV Cache state. Below are the specific implementations of the prefill / generate / stop phases in the Worker WebSocket handler.</p>
-<h3 id="prefill-phase">Prefill Phase</h3>
+<span class="c1"># Fill KV Cache</span>
+<span class="n">outputs</span> <span class="o">=</span> <span class="n">llm</span><span class="p">(</span><span class="n">inputs_embeds</span><span class="o">=</span><span class="n">inputs_embeds</span><span class="p">,</span> <span class="n">use_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">kv_cache</span> <span class="o">=</span> <span class="n">outputs</span><span class="o">.</span><span class="n">past_key_values</span>
+</code></pre></div>
+
+<h2 id="generate-stage">Generate Stage</h2>
+<p>Generate produces a reply based on the filled KV Cache. It first injects the bos string, then branches:</p>
+<h3 id="bos-string-injection">Bos String Injection</h3>
+<div class="codehilite"><pre><span></span><code><span class="err">&lt;</span>|im_end|&gt;\n<span class="err">&lt;</span>|im_start|&gt;assistant\n<span class="nt">&lt;think&gt;</span>\n\n<span class="nt">&lt;/think&gt;</span>\n\n<span class="err">&lt;</span>|tts_bos|&gt;
+</code></pre></div>
+
+<p>This is consistent with the model's behavior in <code>chat()</code> and <code>streaming_generate()</code>.</p>
+<h3 id="non-streaming-generation">Non-streaming Generation</h3>
+<p>Uses HuggingFace's standard <code>llm.generate()</code> API:</p>
 <ol>
-<li>Check state (IDLE or BUSY_STREAMING)</li>
-<li>Set state → <code>BUSY_STREAMING</code></li>
-<li>Check the <code>clear_kv_cache</code> flag from the Gateway:</li>
-<li><code>true</code> (cache miss) → <code>reset_streaming_session()</code> clears the KV Cache</li>
-<li><code>false</code> (cache hit) → keep existing KV Cache</li>
-<li>Decode <code>ref_audio_base64</code> from the frontend → cache to <code>_streaming_ref_audio_cache</code></li>
-<li>Build the message list (supports text / audio / image multimodal content)</li>
-<li>Record KV Cache length difference before and after prefill → <code>cached_tokens</code> / <code>input_tokens</code></li>
-<li><code>streaming_prefill(request)</code> executes the prefill</li>
-<li>Send <code>prefill_done</code> (with <code>cached_tokens</code>, <code>input_tokens</code>)</li>
+<li>bos string → embedding → KV Cache forward pass</li>
+<li><code>llm.generate(past_key_values=kv_cache, ...)</code> generates the complete sequence</li>
+<li>Decode text</li>
+<li>Optional: call <code>_generate_speech_non_streaming()</code> for TTS audio</li>
 </ol>
-<p><strong>KV Cache reuse key point</strong>: <code>cached_tokens</code> represents the number of reused cache tokens. On a cache hit, <code>cached_tokens &gt; 0</code>, meaning only new messages need incremental processing, significantly reducing time-to-first-token latency.</p>
-<h3 id="generate-phase">Generate Phase</h3>
+<p>Best for: short replies, scenarios that don't require real-time feedback.</p>
+<h3 id="streaming-generation">Streaming Generation</h3>
+<p>Uses the model's internal <code>streaming_generate()</code> method:</p>
 <ol>
-<li>Retrieve ref audio from <code>_streaming_ref_audio_cache</code> (cached during prefill)</li>
-<li><code>streaming_init_tts(ref_audio)</code> initializes TTS</li>
-<li>Run <code>streaming_generate()</code> in <code>run_in_executor</code>:</li>
-<li>Generator yields <code>StreamingChunk</code> chunk by chunk</li>
-<li>Each chunk is passed to the main coroutine via <code>asyncio.Queue</code></li>
-<li>Main coroutine sends each chunk to the client</li>
-<li>After each yielded chunk, check <code>stop_event</code></li>
-<li>Send <code>done</code> (with full <code>token_stats</code>)</li>
-<li>Restore state → <code>IDLE</code></li>
+<li>bos string is auto-injected</li>
+<li>Generates in groups of 10 tokens (<code>ChunkPrefillChunkGenerate</code>)</li>
+<li>Each token group is fed to TTS to produce an audio chunk</li>
+<li>Yields (waveform_chunk, text_delta) incrementally</li>
 </ol>
-<h3 id="stop-control">Stop Control</h3>
-<ul>
-<li>Each WS connection creates an independent <code>threading.Event</code></li>
-<li><code>threading.Event</code> is thread-safe across threads (asyncio thread ↔ generate worker thread)</li>
-<li>Triggered by <code>set()</code> when the client sends <code>stop</code> or disconnects</li>
-<li>HTTP <code>POST /streaming/stop</code> broadcasts to all active sessions</li>
-</ul></article>
+<p>Best for: long replies, scenarios that need real-time token-by-token display.</p>
+<h2 id="websocket-protocol">WebSocket Protocol</h2>
+<h3 id="endpoint">Endpoint</h3>
+<div class="codehilite"><pre><span></span><code>wss://host/ws/chat
+</code></pre></div>
+
+<h3 id="request-format">Request Format</h3>
+<p>Send one JSON message after connecting:</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;messages&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;system&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">}]},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Hello&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;streaming&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;generation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;max_new_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;length_penalty&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.1</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;tts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;ref_audio_data&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;base64&gt;&quot;</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;image&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;max_slice_nums&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;omni_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>messages</code></td>
+<td>Complete message history (including system prompt)</td>
+</tr>
+<tr>
+<td><code>streaming</code></td>
+<td><code>true</code> for streaming / <code>false</code> for non-streaming</td>
+</tr>
+<tr>
+<td><code>generation</code></td>
+<td>Generation parameters (max_new_tokens, length_penalty, etc.)</td>
+</tr>
+<tr>
+<td><code>tts</code></td>
+<td>Voice Response config (enabled, ref_audio_data)</td>
+</tr>
+<tr>
+<td><code>omni_mode</code></td>
+<td>Set to <code>true</code> for video input</td>
+</tr>
+</tbody>
+</table>
+<h3 id="response-messages">Response Messages</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Fields</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prefill_done</code></td>
+<td><code>input_tokens</code></td>
+<td>Prefill complete, returns input token count</td>
+</tr>
+<tr>
+<td><code>chunk</code></td>
+<td><code>text_delta</code>, <code>audio_data</code></td>
+<td>One streaming chunk (streaming=true only)</td>
+</tr>
+<tr>
+<td><code>done</code></td>
+<td><code>text</code>, <code>generated_tokens</code>, <code>input_tokens</code>, <code>audio_data</code></td>
+<td>Generation complete</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td><code>error</code></td>
+<td>Error message</td>
+</tr>
+</tbody>
+</table>
+<h2 id="call-chain">Call Chain</h2>
+<div class="codehilite"><pre><span></span><code>Frontend turnbased.html
+  └─ WebSocket /ws/chat
+      └─ Gateway (WS passthrough proxy)
+          └─ Worker /ws/chat
+              ├─ chat_prefill()
+              │   └─ ChatView.prefill()
+              │       └─ model.non_streaming_prefill()
+              ├─ TTS init
+              │   └─ model.init_token2wav_cache()
+              └─ Generation
+                  ├─ Streaming: chat_streaming_generate()
+                  │   └─ ChatView.streaming_generate()
+                  │       └─ model.streaming_generate()
+                  └─ Non-streaming: chat_non_streaming_generate()
+                      └─ ChatView.generate()
+                          └─ model.non_streaming_generate()
+</code></pre></div>
+
+<h2 id="voice-response">Voice Response</h2>
+<p>The frontend provides a "Voice Response" toggle:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>On</td>
+<td>Generates voice reply + text; automatically suppresses special characters (Markdown <code>*</code>, <code>#</code>, code symbols, etc.) to ensure text is suitable for voice playback</td>
+</tr>
+<tr>
+<td>Off</td>
+<td>Text-only generation; no character suppression, Markdown, code, etc. can be freely output</td>
+</tr>
+</tbody>
+</table>
+<p>Technical detail: The <code>suppress_forbidden_tokens</code> parameter in <code>ChunkPrefillChunkGenerate.chunk_generate()</code> is controlled by <code>generate_audio</code>.</p>
+<h2 id="video-input">Video Input</h2>
+<p>Chat mode supports video input (<code>VideoContent</code>):</p>
+<ol>
+<li>Frontend uploads a video file → Base64 encoding</li>
+<li>Processor decodes to a temp file → <code>get_video_frame_audio_segments()</code> extracts frames and audio</li>
+<li>Frames and audio are interleaved (frame, audio, [stacked_frame], ...) and fed to the model</li>
+<li>Request automatically sets <code>omni_mode: true</code>, <code>max_slice_nums: 1</code></li>
+</ol></article>
   <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; Generated by build_docs.py</p></footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>

@@ -16,59 +16,45 @@
 
 ## turnbased.html — 轮次对话
 
-最复杂的非双工页面，支持 Chat 和 Streaming 两种模式。
+Turn-based Chat 页面，统一通过 `/ws/chat` WebSocket 与后端通信。
 
-### 全局状态对象
+### 状态管理
 
 ```javascript
 const state = {
     messages: [],                // 消息列表 {role, content, displayText}
-    systemContentList: [],       // 系统内容列表 (text + audio + image)
+    systemContentList: [],       // 系统内容列表 (text + audio + image + video)
     isGenerating: false,         // 是否正在生成
-    generationPhase: 'idle',     // 'idle' | 'queuing' | 'generating'
-    currentTicketId: null,       // 排队 ticket ID（仅 streaming）
-    abortController: null,       // Fetch abort（仅 chat）
-    streamingWs: null,           // WebSocket 连接（仅 streaming）
-    requestId: 'req_' + Date.now(),
-    currentView: 'initial',      // 'initial' | 'conversation'
-    editingIndex: -1,            // 正在编辑的消息索引
-    ttsRefAudioMode: 'extract',  // 'extract' | 'independent'
-    ttsRefAudioData: null,       // TTS 参考音频 base64
+    generationPhase: 'idle',     // 'idle' | 'generating'
 };
 ```
 
-### Streaming 模式
-
-通过 WebSocket (`WS /ws/streaming/{request_id}`) 进行流式对话：
-
-1. 建立 WebSocket 连接
-2. 发送 `prefill` 消息（含消息历史 + ref_audio_base64）
-3. 收到 `prefill_done` 后发送 `generate`
-4. 逐 chunk 接收 `StreamingChunk`（text_delta + audio_data）
-5. 收到 `done` 后渲染完整结果
-6. 排队时显示 `CountdownTimer`
-
 ### 消息构建流程
 
-1. 从 `UserContentEditor` 获取用户输入 items
+1. 用户输入文本 / 录音 / 上传图片、视频
 2. 音频 Blob → 重采样到 16kHz mono → Base64 PCM float32
 3. 图片 File → Base64
-4. 构建 `content list` 格式：`[{type:"text", text:...}, {type:"audio", data:...}, ...]`
-5. `buildRequestMessages()` 组装完整消息列表（含 system prompt）
+4. 视频 File → Base64（后端自动提取帧和音频，需 `omni_mode: true`）
+5. 构建 `content list` 格式：`[{type:"text", text:...}, {type:"audio", data:...}, {type:"video", data:...}, ...]`
+6. `buildRequestMessages()` 组装完整消息列表（含 system prompt）
 
-### TTS 参考音频
+### 通信模式
 
-两种模式：
-- **extract**：从系统内容中提取（需恰好 1 个音频且 <20s）
-- **independent**：独立上传参考音频
+所有请求通过 `/ws/chat` WebSocket 发送，协议：
 
-在 Streaming 的 `prefill` 消息中通过 `tts_ref_audio_base64` 字段发送给 Worker。
+1. 连接 WebSocket
+2. 发送 JSON（含 `messages`、`streaming`、`tts` 等参数）
+3. 收到 `prefill_done` 后等待生成结果
+4. `streaming=true`：逐 chunk 收到 `{type:"chunk", text_delta, audio_data}`，实时渲染
+5. `streaming=false`：收到 `{type:"done", text, audio_data}`，一次性渲染
+6. 音频通过 `StreamingAudioPlayer`（流式）或 `createMiniPlayer`（非流式）播放
 
-### 响应渲染
+### 前端开关
 
-- `addMessageUI()` — 添加消息气泡到对话区
-- `updateLastAssistantMessage()` — 流式更新最后一条助手消息
-- 音频播放：响应中的 `audio_data` 通过 `createMiniPlayer()` 创建内联播放器
+| 开关 | 说明 |
+|------|------|
+| Streaming | 实时逐字输出 vs 一次性返回 |
+| Voice Response | 生成语音回复；开启时抑制特殊字符输出 |
 
 ---
 
