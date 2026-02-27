@@ -75,6 +75,66 @@ let mixerCtrl = null;
 
 const metricsPanel = new MetricsPanel();
 
+// Mic waveform visualization
+let _omniWaveformRunning = false;
+let _omniAnalyserNode = null;
+
+function _omniDrawWaveform() {
+    if (!_omniWaveformRunning || !_omniAnalyserNode) return;
+    requestAnimationFrame(_omniDrawWaveform);
+    const canvas = document.getElementById('omniWaveformCanvas');
+    if (!canvas) return;
+    const container = canvas.parentElement;
+    const dpr = window.devicePixelRatio || 1;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w === 0 || h === 0) return;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const bufLen = _omniAnalyserNode.frequencyBinCount;
+    const data = new Float32Array(bufLen);
+    _omniAnalyserNode.getFloatTimeDomainData(data);
+
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, w, h);
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = '#4ade80';
+    ctx.beginPath();
+    const sliceW = w / bufLen;
+    let x = 0;
+    for (let i = 0; i < bufLen; i++) {
+        const y = (data[i] * 0.5 + 0.5) * h;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        x += sliceW;
+    }
+    ctx.stroke();
+}
+
+function _omniStartWaveform(audioCtx, audioSource) {
+    _omniAnalyserNode = audioCtx.createAnalyser();
+    _omniAnalyserNode.fftSize = 2048;
+    audioSource.connect(_omniAnalyserNode);
+    _omniWaveformRunning = true;
+    const ph = document.getElementById('omniWaveformPlaceholder');
+    if (ph) ph.style.display = 'none';
+    requestAnimationFrame(_omniDrawWaveform);
+}
+
+function _omniStopWaveform() {
+    _omniWaveformRunning = false;
+    _omniAnalyserNode = null;
+    const canvas = document.getElementById('omniWaveformCanvas');
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    const ph = document.getElementById('omniWaveformPlaceholder');
+    if (ph) ph.style.display = '';
+}
+
 // ============================================================================
 // Init: Status panel + health check + defaults + settings persistence
 // ============================================================================
@@ -299,6 +359,8 @@ class LiveMediaProvider extends MediaProvider {
         this._audioSource.connect(this._captureNode);
         this._captureNode.port.postMessage({ command: 'start' });
 
+        _omniStartWaveform(this._audioCtx, this._audioSource);
+
         // Real-time audio output for recording (CaptureProcessor pass-through, zero delay)
         this._recDest = this._audioCtx.createMediaStreamDestination();
         this._captureNode.connect(this._recDest);
@@ -338,6 +400,7 @@ class LiveMediaProvider extends MediaProvider {
 
     stop() {
         this.running = false;
+        _omniStopWaveform();
         if (this._captureNode) {
             this._captureNode.port.postMessage({ command: 'stop' });
             try { this._captureNode.disconnect(); } catch (_) {}
@@ -592,6 +655,8 @@ class FileMediaProvider extends MediaProvider {
         this._micGainNode.connect(this._captureNode);
         this._micGainNode.connect(this._micAnalyserNode);
 
+        _omniStartWaveform(this._micCtx, this._micSource);
+
         // mixed mode: connect padded video audio source [silence × padBefore] + video + [silence × padAfter]
         if (this._audioMode === 'mixed') {
             const silence = () => new Float32Array(SAMPLE_RATE_IN);
@@ -633,6 +698,7 @@ class FileMediaProvider extends MediaProvider {
     }
 
     _disconnectMic() {
+        _omniStopWaveform();
         this._graphConnected = false;
         if (this._captureNode) {
             this._captureNode.port.postMessage({ command: 'stop' });
