@@ -780,6 +780,9 @@ async def chat_ws(ws: WebSocket):
         worker.state.status = WorkerStatus.BUSY_HALF_DUPLEX
         worker.state.current_session_id = session_id
 
+        chat_ws_recorder: Optional[TurnBasedSessionRecorder] = None
+        chat_ws_session_id: Optional[str] = None
+
         try:
             # 1. 解析消息和参数
             messages = _parse_raw_messages(msg.get("messages", []))
@@ -810,6 +813,29 @@ async def chat_ws(ws: WebSocket):
             omni_mode = msg.get("omni_mode", False)
             enable_thinking = msg.get("enable_thinking", False)
 
+            from config import get_config
+            _chat_ws_cfg = get_config()
+            if _chat_ws_cfg.recording.enabled:
+                chat_ws_session_id = generate_session_id("chat")
+                raw_messages = msg.get("messages", [])
+                sys_prompt = ""
+                for m in raw_messages:
+                    if m.get("role") == "system":
+                        c = m.get("content", "")
+                        sys_prompt = c if isinstance(c, str) else str(c)
+                        break
+                chat_ws_recorder = TurnBasedSessionRecorder(
+                    session_id=chat_ws_session_id,
+                    app_type="chat",
+                    worker_id=worker.gpu_id,
+                    config_snapshot={
+                        "system_prompt": sys_prompt,
+                        "streaming": streaming,
+                        "ref_audio": _chat_ws_cfg.ref_audio_path,
+                    },
+                    data_dir=_chat_ws_cfg.data_dir,
+                )
+
             # 2. Prefill
             def _do_prefill():
                 return worker.chat_prefill(
@@ -836,9 +862,61 @@ async def chat_ws(ws: WebSocket):
                         worker.processor.model.init_token2wav_cache(prompt_speech_16k=ref_audio)
                 await asyncio.to_thread(_init_tts)
 
+            # Build input summary for recording — save all content types
+            _chat_input_summary: Dict[str, Any] = {}
+            _chat_audio_idx = 0
+            _chat_video_idx = 0
+            for _rm in msg.get("messages", []):
+                if _rm.get("role") == "user":
+                    c = _rm.get("content", "")
+                    if isinstance(c, str):
+                        _chat_input_summary["text"] = c
+                    elif isinstance(c, list):
+                        texts = [it["text"] for it in c if isinstance(it, dict) and it.get("type") == "text" and it.get("text")]
+                        if texts:
+                            _chat_input_summary["text"] = " ".join(texts)
+                        if chat_ws_recorder:
+                            saved_imgs = []
+                            saved_videos = []
+                            for it in c:
+                                if not isinstance(it, dict):
+                                    continue
+                                if it.get("type") == "image" and it.get("data"):
+                                    try:
+                                        img_data = base64.b64decode(it["data"])
+                                        idx = chat_ws_recorder.next_image_index()
+                                        rel = chat_ws_recorder.save_user_image(idx, img_data)
+                                        saved_imgs.append(rel)
+                                    except Exception:
+                                        pass
+                                elif it.get("type") == "audio" and it.get("data"):
+                                    try:
+                                        audio_bytes = base64.b64decode(it["data"])
+                                        audio_np = np.frombuffer(audio_bytes, dtype=np.float32)
+                                        rel = chat_ws_recorder.save_user_audio(_chat_audio_idx, audio_np)
+                                        _chat_input_summary["audio"] = rel
+                                        _chat_audio_idx += 1
+                                    except Exception:
+                                        pass
+                                elif it.get("type") == "video" and it.get("data"):
+                                    try:
+                                        video_bytes = base64.b64decode(it["data"])
+                                        rel = chat_ws_recorder.save_user_video(_chat_video_idx, video_bytes)
+                                        saved_videos.append(rel)
+                                        _chat_video_idx += 1
+                                    except Exception:
+                                        pass
+                            if saved_imgs:
+                                _chat_input_summary["images"] = saved_imgs
+                            if saved_videos:
+                                _chat_input_summary["videos"] = saved_videos
+
+            _gen_start = time.perf_counter()
+
             # 4. Generate
             if streaming:
-                # 流式：chunk queue 模式
+                if chat_ws_recorder:
+                    chat_ws_recorder.start_turn(turn_index=0, request_ts_ms=0.0, input_summary=_chat_input_summary)
                 chunk_queue: asyncio.Queue = asyncio.Queue()
                 loop = asyncio.get_event_loop()
 
@@ -870,15 +948,28 @@ async def chat_ws(ws: WebSocket):
                             chunk_data["audio_data"] = payload.audio_data
                         if len(chunk_data) > 1:
                             await ws.send_json(chunk_data)
+                        if chat_ws_recorder:
+                            chat_ws_recorder.add_streaming_chunk(
+                                text_delta=payload.text_delta,
+                                audio_base64=payload.audio_data,
+                            )
                         chunk_count += 1
                     elif tag == "done":
                         _gen_ids = getattr(worker.processor.model, '_streaming_generated_token_ids', None)
                         generated_tokens = len(_gen_ids) if _gen_ids else chunk_count
+                        _elapsed = round((time.perf_counter() - _gen_start) * 1000, 1)
+                        if chat_ws_recorder:
+                            chat_ws_recorder.end_turn(timing={
+                                "elapsed_ms": _elapsed,
+                                "tokens": generated_tokens,
+                                "input_tokens": pre_kv,
+                            })
                         await ws.send_json({
                             "type": "done",
                             "text": full_text,
                             "generated_tokens": generated_tokens,
                             "input_tokens": pre_kv,
+                            **({"recording_session_id": chat_ws_session_id} if chat_ws_session_id else {}),
                         })
                         break
                     elif tag == "error":
@@ -891,7 +982,6 @@ async def chat_ws(ws: WebSocket):
                     pass
 
             else:
-                # 非流式
                 def _run_non_streaming():
                     return worker.chat_non_streaming_generate(
                         session_id=session_id,
@@ -907,19 +997,38 @@ async def chat_ws(ws: WebSocket):
 
                 text = result
                 audio_data = None
+                output_audio_np = None
                 if isinstance(result, tuple):
                     text, waveform = result
                     if waveform is not None:
-                        audio_bytes = waveform.astype(np.float32).tobytes()
+                        output_audio_np = waveform.astype(np.float32)
+                        audio_bytes = output_audio_np.tobytes()
                         audio_data = base64.b64encode(audio_bytes).decode('utf-8')
 
                 stats = getattr(worker.processor.model, '_last_chat_token_stats', {})
+                _elapsed = round((time.perf_counter() - _gen_start) * 1000, 1)
+
+                if chat_ws_recorder:
+                    chat_ws_recorder.record_chat_turn(
+                        turn_index=0,
+                        request_ts_ms=0.0,
+                        input_summary=_chat_input_summary,
+                        output_text=text or "",
+                        output_audio=output_audio_np,
+                        timing={
+                            "elapsed_ms": _elapsed,
+                            "tokens": stats.get("generated_tokens", 0),
+                            "input_tokens": pre_kv,
+                        },
+                    )
+
                 await ws.send_json({
                     "type": "done",
                     "text": text or "",
                     "audio_data": audio_data,
                     "generated_tokens": stats.get("generated_tokens", 0),
                     "input_tokens": pre_kv,
+                    **({"recording_session_id": chat_ws_session_id} if chat_ws_session_id else {}),
                 })
 
         except Exception as e:
@@ -929,6 +1038,11 @@ async def chat_ws(ws: WebSocket):
             except Exception:
                 pass
         finally:
+            if chat_ws_recorder:
+                try:
+                    chat_ws_recorder.finalize()
+                except Exception as _e:
+                    logger.error(f"[ChatWS] recorder finalize failed: {_e}", exc_info=True)
             worker.state.status = WorkerStatus.IDLE
             worker.state.current_session_id = None
 
@@ -1020,6 +1134,9 @@ async def half_duplex_ws(ws: WebSocket):
     INITIAL_GUARD_S = 0.5
     _half_duplex_stop_events[conn_id] = stop_event
 
+    hdx_recorder: Optional[TurnBasedSessionRecorder] = None
+    hdx_session_start_perf: float = 0.0
+
     try:
         while True:
             elapsed_s = time.perf_counter() - session_start
@@ -1110,11 +1227,31 @@ async def half_duplex_ws(ws: WebSocket):
                         await asyncio.to_thread(worker.half_duplex_init_tts)
 
                 vad_armed_at = time.perf_counter()
+                hdx_session_start_perf = time.perf_counter()
 
+                from config import get_config
+                hdx_cfg = get_config()
+                if hdx_cfg.recording.enabled:
+                    hdx_recorder = TurnBasedSessionRecorder(
+                        session_id=session_id,
+                        app_type="half_duplex_audio",
+                        worker_id=worker.gpu_id,
+                        config_snapshot={
+                            "system_prompt": system_prompt,
+                            "vad": vad_cfg,
+                            "generation": gen_cfg,
+                            "tts_enabled": generate_audio,
+                            "timeout_s": timeout_s,
+                        },
+                        data_dir=hdx_cfg.data_dir,
+                    )
+
+                rec_sid = hdx_recorder.session_id if hdx_recorder else None
                 await ws.send_json({
                     "type": "prepared",
                     "session_id": session_id,
                     "timeout_s": timeout_s,
+                    **({"recording_session_id": rec_sid} if rec_sid else {}),
                 })
                 logger.info(f"[HalfDuplex] prepared: timeout={timeout_s}s, vad_threshold={vad_options.threshold}")
 
@@ -1152,6 +1289,21 @@ async def half_duplex_ws(ws: WebSocket):
                     is_generating = True
 
                     try:
+                        speech_duration_ms = round(len(speech_segment) / 16000 * 1000)
+                        request_ts_ms = (time.perf_counter() - hdx_session_start_perf) * 1000
+
+                        if hdx_recorder:
+                            user_audio_rel = hdx_recorder.save_user_audio(turn_index, speech_segment)
+                            hdx_recorder.start_turn(
+                                turn_index=turn_index,
+                                request_ts_ms=request_ts_ms,
+                                input_summary={
+                                    "type": "voice",
+                                    "duration_ms": speech_duration_ms,
+                                    "audio": user_audio_rel,
+                                },
+                            )
+
                         audio_b64_data = base64.b64encode(speech_segment.tobytes()).decode('utf-8')
                         user_msg = Message(
                             role=Role.USER,
@@ -1168,6 +1320,7 @@ async def half_duplex_ws(ws: WebSocket):
                         chunk_queue: asyncio.Queue = asyncio.Queue()
                         loop = asyncio.get_event_loop()
                         stop_event.clear()
+                        gen_start = time.perf_counter()
 
                         def _run_generate():
                             try:
@@ -1193,12 +1346,24 @@ async def half_duplex_ws(ws: WebSocket):
                                 await ws.send_json({"type": "chunk", **payload.model_dump()})
                                 if payload.text_delta:
                                     full_text += payload.text_delta
+                                if hdx_recorder:
+                                    hdx_recorder.add_streaming_chunk(
+                                        text_delta=payload.text_delta,
+                                        audio_base64=payload.audio_data,
+                                    )
                             elif item_type == "done":
                                 break
                             elif item_type == "error":
                                 raise payload
 
                         await gen_task
+
+                        gen_elapsed_ms = (time.perf_counter() - gen_start) * 1000
+                        if hdx_recorder:
+                            hdx_recorder.end_turn(timing={
+                                "elapsed_ms": round(gen_elapsed_ms, 1),
+                                "speech_input_ms": speech_duration_ms,
+                            })
 
                         turn_index += 1
                         await ws.send_json({
@@ -1229,6 +1394,12 @@ async def half_duplex_ws(ws: WebSocket):
     except Exception as e:
         logger.error(f"Half-Duplex WS error (conn={conn_id}): {e}", exc_info=True)
     finally:
+        if hdx_recorder:
+            try:
+                hdx_recorder.finalize()
+            except Exception as e:
+                logger.error(f"[HalfDuplex] recorder finalize failed: {e}", exc_info=True)
+
         stop_event.set()
         _half_duplex_stop_events.pop(conn_id, None)
         if worker.state.status == WorkerStatus.BUSY_HALF_DUPLEX:

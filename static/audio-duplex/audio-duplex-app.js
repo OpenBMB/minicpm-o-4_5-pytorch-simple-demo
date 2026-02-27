@@ -172,12 +172,12 @@ const _duplexPreset = new PresetSelector({
     container: document.getElementById('presetSelectorDuplex'),
     page: 'audio_duplex',
     detailsEl: document.getElementById('duplexSysPromptDetails'),
-    onSelect: (preset) => {
+    onSelect: (preset, { audioLoaded } = {}) => {
         if (preset && preset.system_prompt) {
             document.getElementById('systemPrompt').value = preset.system_prompt;
             settingsPersistence.save();
         }
-        if (preset && preset.ref_audio && preset.ref_audio.data) {
+        if (audioLoaded && preset && preset.ref_audio && preset.ref_audio.data) {
             refAudio.setAudio(preset.ref_audio.data, preset.ref_audio.name, preset.ref_audio.duration);
         }
     },

@@ -6,8 +6,10 @@
  */
 
 import { AudioDeviceSelector } from '../lib/audio-device-selector.js';
+import { SessionRecorder } from '../duplex/lib/session-recorder.js';
 
 const SAMPLE_RATE = 16000;
+const SAMPLE_RATE_OUT = 24000;
 const CHUNK_DURATION_S = 0.5;
 const CHUNK_SIZE = SAMPLE_RATE * CHUNK_DURATION_S;
 const STORAGE_KEY = 'half_duplex_settings';
@@ -40,18 +42,25 @@ let analyserNode = null;
 let sessionStartTime = null;
 let timerInterval = null;
 let audioPlayer = null;
-let aiSpeaking = false;  // AI 正在播放音频时暂停发送
+let aiSpeaking = false;
 let waveformRunning = false;
 let turnIndex = 0;
+
+// Recording
+let sessionRecorder = null;
+let lastRecordingBlob = null;
+const _saveShareUI = typeof SaveShareUI !== 'undefined'
+    ? new SaveShareUI({ containerId: 'save-share-container', appType: 'half_duplex_audio' })
+    : null;
 
 // ============================================================
 // Settings persistence (localStorage)
 // ============================================================
 
 const DEFAULTS = {
-    vadThreshold: 0.7,
+    vadThreshold: 0.8,
     vadMinSpeech: 128,
-    vadMinSilence: 500,
+    vadMinSilence: 800,
     vadSpeechPad: 30,
     genMaxTokens: 256,
     genLengthPenalty: 1.1,
@@ -164,7 +173,7 @@ const _hdxPreset = typeof PresetSelector !== 'undefined'
         container: document.getElementById('presetSelectorHdx'),
         page: 'half_duplex_audio',
         detailsEl: document.getElementById('hdxSysPromptDetails'),
-        onSelect: (preset) => {
+        onSelect: (preset, { audioLoaded } = {}) => {
             if (!preset) return;
             if (preset.system_content) {
                 _currentSystemContent = preset.system_content;
@@ -172,16 +181,18 @@ const _hdxPreset = typeof PresetSelector !== 'undefined'
                     .filter(it => it.type === 'text' && it.text)
                     .map(it => it.text);
                 document.getElementById('systemPrompt').value = texts.join('\n');
-                const audioItem = preset.system_content.find(it => it.type === 'audio' && it.data);
-                if (audioItem && refAudioPlayer) {
-                    refAudioPlayer.setAudio(audioItem.data, audioItem.name, audioItem.duration);
-                    _refAudioData = audioItem.data;
+                if (audioLoaded) {
+                    const audioItem = preset.system_content.find(it => it.type === 'audio' && it.data);
+                    if (audioItem && refAudioPlayer) {
+                        refAudioPlayer.setAudio(audioItem.data, audioItem.name, audioItem.duration);
+                        _refAudioData = audioItem.data;
+                    }
                 }
             } else if (preset.system_prompt) {
                 document.getElementById('systemPrompt').value = preset.system_prompt;
                 _currentSystemContent = null;
             }
-            if (preset.ref_audio && preset.ref_audio.data) {
+            if (audioLoaded && preset.ref_audio && preset.ref_audio.data) {
                 if (refAudioPlayer) refAudioPlayer.setAudio(preset.ref_audio.data, preset.ref_audio.name, preset.ref_audio.duration);
                 _refAudioData = preset.ref_audio.data;
             }
@@ -275,15 +286,17 @@ async function startCapture() {
     });
 
     captureNode.port.onmessage = (e) => {
-        if (e.data.type === 'chunk' && ws && ws.readyState === WebSocket.OPEN && !aiSpeaking) {
+        if (e.data.type === 'chunk') {
             const float32 = e.data.audio;
-            const b64 = float32ToBase64(float32);
-            ws.send(JSON.stringify({ type: 'audio_chunk', audio_base64: b64 }));
+            if (sessionRecorder) sessionRecorder.pushLeft(float32);
+            if (ws && ws.readyState === WebSocket.OPEN && !aiSpeaking) {
+                const b64 = float32ToBase64(float32);
+                ws.send(JSON.stringify({ type: 'audio_chunk', audio_base64: b64 }));
+            }
         }
     };
 
     audioSource.connect(captureNode);
-    captureNode.connect(audioCtx.destination);
     captureNode.port.postMessage({ command: 'start' });
 
     waveformPlaceholder.style.display = 'none';
@@ -359,6 +372,8 @@ function playAudioChunk(base64Data) {
     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
     const float32 = new Float32Array(bytes.buffer);
 
+    if (sessionRecorder) sessionRecorder.pushRight(float32, SAMPLE_RATE_OUT, performance.now());
+
     const buffer = ctx.createBuffer(1, float32.length, 24000);
     buffer.getChannelData(0).set(float32);
 
@@ -406,6 +421,14 @@ async function startSession() {
 
     turnIndex = 0;
     turnValue.textContent = '0';
+
+    const recEnabled = document.getElementById('recCheckbox')?.checked;
+    if (recEnabled) {
+        sessionRecorder = new SessionRecorder(SAMPLE_RATE, SAMPLE_RATE_OUT);
+        lastRecordingBlob = null;
+        const btn = document.getElementById('btnDownloadRec');
+        if (btn) { btn.style.display = 'none'; btn.disabled = true; }
+    }
 
     btnStart.disabled = true;
     setLampState('preparing', 'Preparing');
@@ -457,7 +480,9 @@ function handleMessage(msg) {
             btnStart.style.display = 'none';
             btnStop.style.display = '';
             btnStop.disabled = false;
-            chatSessionInfo.textContent = msg.session_id;
+            chatSessionInfo.textContent = msg.recording_session_id || msg.session_id;
+            if (_saveShareUI) _saveShareUI.setSessionId(msg.recording_session_id || msg.session_id);
+            if (sessionRecorder) sessionRecorder.start();
             clearChat();
             setLampState('live', 'Listening');
             updateState('Listening');
@@ -518,6 +543,19 @@ function endSession() {
     stopCapture();
     stopAllAudio();
     stopTimer();
+
+    if (sessionRecorder && sessionRecorder.recording) {
+        const result = sessionRecorder.stop();
+        if (result.blob.size > 0) {
+            lastRecordingBlob = result.blob;
+            addSystemMessage(`Recording: ${result.durationSec.toFixed(1)}s stereo WAV (${(result.blob.size / 1024).toFixed(0)} KB)`);
+            const btn = document.getElementById('btnDownloadRec');
+            if (btn) { btn.style.display = ''; btn.disabled = false; }
+            if (_saveShareUI) _saveShareUI.setRecordingBlob(result.blob, 'wav');
+        }
+        sessionRecorder = null;
+    }
+
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'stop' }));
         ws.close();
@@ -663,6 +701,15 @@ async function checkHealth() {
 
 btnStart.addEventListener('click', startSession);
 btnStop.addEventListener('click', endSession);
+document.getElementById('btnDownloadRec')?.addEventListener('click', () => {
+    if (!lastRecordingBlob) return;
+    const url = URL.createObjectURL(lastRecordingBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `half-duplex-${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.wav`;
+    a.click();
+    URL.revokeObjectURL(url);
+});
 
 loadSettings();
 drawIdleWaveform();

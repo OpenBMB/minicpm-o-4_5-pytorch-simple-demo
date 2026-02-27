@@ -17,9 +17,9 @@ SAMPLING_RATE = 16000
 
 
 class VadOptions(NamedTuple):
-    threshold: float = 0.7
+    threshold: float = 0.8
     min_speech_duration_ms: int = 128
-    min_silence_duration_ms: int = 500
+    min_silence_duration_ms: int = 800
     window_size_samples: int = 1024
     speech_pad_ms: int = 30
 

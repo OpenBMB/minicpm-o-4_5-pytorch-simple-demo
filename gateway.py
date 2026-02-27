@@ -712,43 +712,56 @@ async def get_frontend_defaults():
 _presets_cache: Optional[Dict[str, List[Dict[str, Any]]]] = None
 
 
-def _load_audio_for_preset_item(item: Dict[str, Any], project_root: str) -> Dict[str, Any]:
-    """加载预设中 audio item 的文件，转为 base64 返回"""
-    import base64
+def _get_audio_meta(rel_path: str, project_root: str) -> Dict[str, Any]:
+    """获取音频文件的元数据（不加载 base64），用于预设列表"""
     import librosa
 
-    audio_path = item.get("path", "")
-    if not audio_path:
-        return {"type": "audio", "data": None, "name": "", "duration": 0}
+    if not rel_path:
+        return {"name": "", "duration": 0}
 
-    if not os.path.isabs(audio_path):
-        audio_path = os.path.join(project_root, audio_path)
+    abs_path = rel_path if os.path.isabs(rel_path) else os.path.join(project_root, rel_path)
+    name = os.path.basename(abs_path)
 
-    if not os.path.exists(audio_path):
-        logger.warning(f"Preset audio file not found: {audio_path}")
-        return {"type": "audio", "data": None, "name": os.path.basename(audio_path), "duration": 0}
+    if not os.path.exists(abs_path):
+        return {"name": name, "duration": 0}
 
     try:
-        audio, sr = librosa.load(audio_path, sr=16000, mono=True)
-        duration = round(len(audio) / sr, 1)
+        audio, sr = librosa.load(abs_path, sr=16000, mono=True)
+        return {"name": name, "duration": round(len(audio) / sr, 1)}
+    except Exception:
+        return {"name": name, "duration": 0}
+
+
+def _load_audio_base64(rel_path: str, project_root: str) -> Optional[Dict[str, Any]]:
+    """加载音频文件为 base64（按需调用）"""
+    import librosa
+
+    if not rel_path:
+        return None
+
+    abs_path = rel_path if os.path.isabs(rel_path) else os.path.join(project_root, rel_path)
+    if not os.path.exists(abs_path):
+        return None
+
+    try:
+        audio, sr = librosa.load(abs_path, sr=16000, mono=True)
         audio_bytes = audio.astype(np.float32).tobytes()
-        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+        import base64 as b64mod
         return {
-            "type": "audio",
-            "data": audio_b64,
-            "name": os.path.basename(audio_path),
-            "duration": duration,
+            "data": b64mod.b64encode(audio_bytes).decode("ascii"),
+            "name": os.path.basename(abs_path),
+            "duration": round(len(audio) / sr, 1),
         }
     except Exception as e:
-        logger.error(f"Failed to load preset audio {audio_path}: {e}")
-        return {"type": "audio", "data": None, "name": os.path.basename(audio_path), "duration": 0}
+        logger.error(f"Failed to load audio {abs_path}: {e}")
+        return None
 
 
 def _load_presets_from_dir(project_root: str) -> Dict[str, List[Dict[str, Any]]]:
-    """扫描 presets/<mode>/*.yaml，返回 {mode: [preset, ...]}"""
+    """扫描 assets/presets/<mode>/*.yaml，返回元数据（不含音频 base64）"""
     import yaml
 
-    presets_root = os.path.join(project_root, "presets")
+    presets_root = os.path.join(project_root, "assets", "presets")
     result: Dict[str, List[Dict[str, Any]]] = {}
 
     if not os.path.isdir(presets_root):
@@ -770,26 +783,29 @@ def _load_presets_from_dir(project_root: str) -> Dict[str, List[Dict[str, Any]]]
                 if not preset or not isinstance(preset, dict):
                     continue
 
-                # 处理 turnbased 的 system_content 中的 audio 项
                 if "system_content" in preset:
                     resolved = []
                     for item in preset["system_content"]:
-                        if item.get("type") == "audio":
-                            resolved.append(_load_audio_for_preset_item(item, project_root))
+                        if item.get("type") == "audio" and item.get("path"):
+                            meta = _get_audio_meta(item["path"], project_root)
+                            resolved.append({
+                                "type": "audio",
+                                "data": None,
+                                "path": item["path"],
+                                "name": meta["name"],
+                                "duration": meta["duration"],
+                            })
                         else:
                             resolved.append(item)
                     preset["system_content"] = resolved
 
-                # 处理 duplex/omni 的 ref_audio_path
                 if "ref_audio_path" in preset:
-                    audio_item = _load_audio_for_preset_item(
-                        {"type": "audio", "path": preset["ref_audio_path"]},
-                        project_root,
-                    )
+                    meta = _get_audio_meta(preset["ref_audio_path"], project_root)
                     preset["ref_audio"] = {
-                        "data": audio_item.get("data"),
-                        "name": audio_item.get("name", ""),
-                        "duration": audio_item.get("duration", 0),
+                        "data": None,
+                        "path": preset["ref_audio_path"],
+                        "name": meta["name"],
+                        "duration": meta["duration"],
                     }
                     del preset["ref_audio_path"]
 
@@ -802,13 +818,13 @@ def _load_presets_from_dir(project_root: str) -> Dict[str, List[Dict[str, Any]]]
             result[mode_dir] = mode_presets
 
     total = sum(len(v) for v in result.values())
-    logger.info(f"Loaded {total} presets across {len(result)} modes")
+    logger.info(f"Loaded {total} presets (metadata only) across {len(result)} modes")
     return result
 
 
 @app.get("/api/presets")
 async def get_presets():
-    """返回 system prompt 预设（按模式分组，从 presets/<mode>/*.yaml 加载，带缓存）"""
+    """返回预设元数据（不含音频 base64，音频通过 /api/presets/{mode}/{id}/audio 按需加载）"""
     global _presets_cache
 
     if _presets_cache is not None:
@@ -817,6 +833,37 @@ async def get_presets():
     project_root = os.path.dirname(__file__)
     _presets_cache = _load_presets_from_dir(project_root)
     return _presets_cache
+
+
+@app.get("/api/presets/{mode}/{preset_id}/audio")
+async def get_preset_audio(mode: str, preset_id: str):
+    """按需加载单个 preset 的音频数据"""
+    global _presets_cache
+    if _presets_cache is None:
+        project_root = os.path.dirname(__file__)
+        _presets_cache = _load_presets_from_dir(project_root)
+
+    mode_presets = _presets_cache.get(mode, [])
+    preset = next((p for p in mode_presets if p.get("id") == preset_id), None)
+    if not preset:
+        raise HTTPException(status_code=404, detail=f"Preset not found: {mode}/{preset_id}")
+
+    project_root = os.path.dirname(__file__)
+    result: Dict[str, Any] = {}
+
+    if "system_content" in preset:
+        audio_items = []
+        for item in preset["system_content"]:
+            if item.get("type") == "audio" and item.get("path"):
+                loaded = _load_audio_base64(item["path"], project_root)
+                audio_items.append(loaded or {"data": None, "name": item.get("name", ""), "duration": 0})
+        result["system_content_audio"] = audio_items
+
+    if preset.get("ref_audio") and preset["ref_audio"].get("path"):
+        loaded = _load_audio_base64(preset["ref_audio"]["path"], project_root)
+        result["ref_audio"] = loaded or {"data": None, "name": preset["ref_audio"].get("name", ""), "duration": 0}
+
+    return result
 
 
 # 缓存：启动后首次请求时加载，之后直接返回
