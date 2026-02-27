@@ -1117,7 +1117,7 @@ async def half_duplex_ws(ws: WebSocket):
     worker.state.status = WorkerStatus.BUSY_HALF_DUPLEX
     worker.state.current_session_id = session_id
 
-    from core.vad import StreamingVAD, VadOptions
+    from vad import StreamingVAD, VadOptions
 
     vad: Optional[StreamingVAD] = None
     turn_index = 0
