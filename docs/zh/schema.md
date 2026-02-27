@@ -174,9 +174,9 @@ class UnifiedProcessor(BaseProcessor):
 |----------|------|
 | `_load_model()` | 加载模型和 TTS |
 | `_release_resources()` | 释放所有资源 |
-| `set_streaming_mode()` | 切换到 Streaming 模式，返回 `StreamingView` |
+| `set_half_duplex_mode()` | 切换到 Half-Duplex 模式，返回 `HalfDuplexView` |
 | `set_duplex_mode()` | 切换到 Duplex 模式，返回 `DuplexView` |
-| `streaming` | StreamingView 属性 |
+| `half_duplex` | HalfDuplexView 属性 |
 | `duplex` | DuplexView 属性 |
 | `kv_cache_length` | 当前 KV Cache 长度 |
 
@@ -214,7 +214,7 @@ ChatView 提供 Turn-based Chat 的专用 API，支持流式和非流式两种�
 
 ```python
 class ProcessorMode(Enum):
-    STREAMING = "streaming"
+    HALF_DUPLEX = "half_duplex"
     DUPLEX = "duplex"
 ```
 

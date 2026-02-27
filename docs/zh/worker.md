@@ -1,6 +1,6 @@
 # Worker API 参考
 
-Worker 是系统的推理执行单元，每个 Worker 独占一张 GPU，持有一个 `UnifiedProcessor` 实例。详细的处理流程和实现细节见 [ChatView 模式详解](architecture/streaming.html) 和 [Duplex 模式详解](architecture/duplex.html)。
+Worker 是系统的推理执行单元，每个 Worker 独占一张 GPU，持有一个 `UnifiedProcessor` 实例。详细的处理流程和实现细节见 [ChatView 模式详解](architecture/chat.html) 和 [Duplex 模式详解](architecture/duplex.html)。
 
 ## WorkerStatus 枚举
 
@@ -8,7 +8,7 @@ Worker 是系统的推理执行单元，每个 Worker 独占一张 GPU，持有�
 |------|------|----------|
 | `LOADING` | 模型加载中 | 否 |
 | `IDLE` | 空闲 | 是 |
-| `BUSY_STREAMING` | 正在执行 Streaming | 否（同连接内可） |
+| `BUSY_HALF_DUPLEX` | 正在执行 Half-Duplex 会话 | 否（独占） |
 | `DUPLEX_ACTIVE` | Duplex 会话活跃 | 否 |
 | `DUPLEX_PAUSED` | Duplex 会话暂停 | 否 |
 | `ERROR` | 异常 | 否 |

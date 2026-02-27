@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Chat Mode - MiniCPM-o 4.5 Docs</title>
+<title>Chat 模式 - MiniCPM-o 4.5 文档</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -73,140 +73,141 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <nav class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <h2>MiniCPM-o 4.5</h2>
-    <span class="sidebar-subtitle">Documentation</span>
-    <a href="../../zh/architecture/streaming.html" class="lang-switch">中文</a>
+    <span class="sidebar-subtitle">项目文档</span>
+    <a href="../../en/architecture/chat.html" class="lang-switch">English</a>
   </div>
   <ul class="nav-list">
-    <li><a href="../index.html">Overview</a></li>
+    <li><a href="../index.html">项目概述</a></li>
     <li class="nav-group">
-      <span class="nav-group-header">Architecture</span>
+      <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
-        <li><a href="../architecture/index.html">Overview</a></li>
-        <li><a href="../architecture/streaming.html" class="active">Chat Mode</a></li>
-        <li><a href="../architecture/duplex.html">Duplex Mode</a></li>
-        <li><a href="../architecture/internals.html">Internals</a></li>
+        <li><a href="../architecture/index.html">架构概述</a></li>
+        <li><a href="../architecture/chat.html" class="active">Chat 模式</a></li>
+        <li><a href="../architecture/half-duplex.html">Half-Duplex 模式</a></li>
+        <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="../architecture/internals.html">内部机制</a></li>
       </ul>
     </li>
-    <li><a href="../gateway.html">Gateway</a></li>
-    <li><a href="../worker.html">Worker</a></li>
+    <li><a href="../gateway.html">Gateway 模块</a></li>
+    <li><a href="../worker.html">Worker 模块</a></li>
     <li><a href="../schema.html">Schema</a></li>
-    <li><a href="../model.html">Model</a></li>
+    <li><a href="../model.html">模型模块</a></li>
     <li><a href="../compile.html">torch.compile</a></li>
     <li class="nav-group">
-      <span class="nav-group-header">Frontend</span>
+      <span class="nav-group-header">前端模块</span>
       <ul class="nav-group-children">
-        <li><a href="../frontend/index.html">Overview</a></li>
-        <li><a href="../frontend/pages.html">Pages & Routes</a></li>
-        <li><a href="../frontend/audio.html">Audio</a></li>
-        <li><a href="../frontend/duplex-session.html">Duplex Session</a></li>
-        <li><a href="../frontend/components.html">UI Components</a></li>
+        <li><a href="../frontend/index.html">前端概述</a></li>
+        <li><a href="../frontend/pages.html">页面与路由</a></li>
+        <li><a href="../frontend/audio.html">音频处理</a></li>
+        <li><a href="../frontend/duplex-session.html">双工会话</a></li>
+        <li><a href="../frontend/components.html">UI 组件</a></li>
       </ul>
     </li>
-    <li><a href="../api.html">API Reference</a></li>
-    <li><a href="../deployment.html">Deployment</a></li>
+    <li><a href="../api.html">API 参考</a></li>
+    <li><a href="../deployment.html">配置与部署</a></li>
   </ul>
 </nav>
 <main class="content" id="content">
-  <article><h1 id="chat-mode-details">Chat Mode Details</h1>
-<p>The core inference mode behind the Turn-based Chat page. Communicates via the <code>/ws/chat</code> WebSocket endpoint, supporting both <strong>streaming</strong> and <strong>non-streaming</strong> response modes.</p>
-<h2 id="in-one-sentence">In One Sentence</h2>
+  <article><h1 id="chat">Chat 模式详解</h1>
+<p>Turn-based Chat 页面的核心推理模式。通过 <code>/ws/chat</code> WebSocket 接口，支持<strong>流式</strong>和<strong>非流式</strong>两种响应方式。</p>
+<h2 id="_1">一句话理解</h2>
 <blockquote>
-<p>Feed all history messages into the model at once (<strong>Prefill</strong>), then let the model generate a reply based on the existing context (<strong>Generate</strong>).</p>
+<p>先把所有历史消息一次性"喂"给模型（<strong>Prefill</strong>），再让模型基于已有上下文生成回复（<strong>Generate</strong>）。</p>
 </blockquote>
-<h2 id="overall-flow">Overall Flow</h2>
-<h3 id="simplified-view">Simplified View</h3>
-<p>Only two steps between the frontend and the model:</p>
+<h2 id="_2">整体流程</h2>
+<h3 id="_3">简化视角</h3>
+<p>前端和模型之间只有两步交互：</p>
 <pre class="mermaid">
 sequenceDiagram
-    participant FE as Frontend
+    participant FE as 前端
     participant MD as Model
 
-    FE->>MD: 1. Prefill: all messages
-    MD-->>FE: 2. Generate: reply (text + optional audio)
+    FE->>MD: 1. Prefill：所有消息
+    MD-->>FE: 2. Generate：回复（文本 + 可选音频）
 </pre>
 
-<h3 id="detailed-view">Detailed View</h3>
-<p>Full flow with the intermediate layers (Gateway passthrough proxy + Worker dispatch):</p>
+<h3 id="_4">详细视角</h3>
+<p>加入中间层（Gateway 透传代理 + Worker 调度）后的完整流程：</p>
 <pre class="mermaid">
 sequenceDiagram
-    participant FE as Frontend
+    participant FE as 前端
     participant GW as Gateway
     participant WK as Worker
     participant MD as Model
 
     FE->>GW: WebSocket /ws/chat
-    GW->>WK: WebSocket passthrough
+    GW->>WK: WebSocket 透传
     FE->>WK: {messages, streaming, tts, ...}
 
-    WK->>MD: Prefill (fill all messages at once)
-    MD-->>WK: KV Cache ready
+    WK->>MD: Prefill（一次性填充所有消息）
+    MD-->>WK: KV Cache 就绪
     WK-->>FE: prefill_done
 
-    alt Streaming response
-        loop chunk-by-chunk generation
-            MD-->>WK: text chunk + audio chunk
+    alt 流式响应
+        loop 逐 chunk 生成
+            MD-->>WK: 文本片段 + 音频片段
             WK-->>FE: {type: "chunk", text_delta, audio_data}
         end
-    else Non-streaming response
-        MD-->>WK: complete text + complete audio
+    else 非流式响应
+        MD-->>WK: 完整文本 + 完整音频
     end
 
     WK-->>FE: {type: "done", text, generated_tokens}
 </pre>
 
-<h2 id="prefill-stage">Prefill Stage</h2>
-<p>Prefill fills the entire conversation history (system prompt + multi-turn user/assistant messages) into the model's <strong>KV Cache</strong> in one shot.</p>
-<p>Key behaviors:
-- Uses <code>apply_chat_template</code> to build the prompt, but <strong>without generation prompt</strong> (<code>add_generation_prompt=False</code>)
-- The generation prompt (<code>&lt;|im_start|&gt;assistant\n</code>) is injected during the Generate stage
-- Supports multimodal input: text, images, audio, video</p>
-<div class="codehilite"><pre><span></span><code><span class="c1"># Pseudocode</span>
+<h2 id="prefill">Prefill 阶段</h2>
+<p>Prefill 将对话历史（system prompt + 多轮 user/assistant 消息）一次性填充到模型的 <strong>KV Cache</strong> 中。</p>
+<p>关键行为：
+- 使用 <code>apply_chat_template</code> 构建 prompt，但 <strong>不加 generation prompt</strong>（<code>add_generation_prompt=False</code>）
+- generation prompt（<code>&lt;|im_start|&gt;assistant\n</code>）在 Generate 阶段才注入
+- 支持多模态输入：文本、图片、音频、视频</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 伪代码</span>
 <span class="n">prompt</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">apply_chat_template</span><span class="p">(</span><span class="n">msgs</span><span class="p">,</span> <span class="n">add_generation_prompt</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <span class="n">inputs</span> <span class="o">=</span> <span class="n">processor</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="n">audios</span><span class="p">)</span>
-<span class="n">inputs_embeds</span> <span class="o">=</span> <span class="n">get_vllm_embedding</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>   <span class="c1"># vision encoding</span>
-<span class="n">inputs_embeds</span> <span class="o">=</span> <span class="n">get_omni_embedding</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>   <span class="c1"># audio encoding</span>
+<span class="n">inputs_embeds</span> <span class="o">=</span> <span class="n">get_vllm_embedding</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>   <span class="c1"># 视觉编码</span>
+<span class="n">inputs_embeds</span> <span class="o">=</span> <span class="n">get_omni_embedding</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>   <span class="c1"># 音频编码</span>
 
-<span class="c1"># Fill KV Cache</span>
+<span class="c1"># 填充 KV Cache</span>
 <span class="n">outputs</span> <span class="o">=</span> <span class="n">llm</span><span class="p">(</span><span class="n">inputs_embeds</span><span class="o">=</span><span class="n">inputs_embeds</span><span class="p">,</span> <span class="n">use_cache</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">kv_cache</span> <span class="o">=</span> <span class="n">outputs</span><span class="o">.</span><span class="n">past_key_values</span>
 </code></pre></div>
 
-<h2 id="generate-stage">Generate Stage</h2>
-<p>Generate produces a reply based on the filled KV Cache. It first injects the bos string, then branches:</p>
-<h3 id="bos-string-injection">Bos String Injection</h3>
+<h2 id="generate">Generate 阶段</h2>
+<p>Generate 基于已填充的 KV Cache 生成回复。首先注入 bos string，然后分流：</p>
+<h3 id="bos-string">注入 bos string</h3>
 <div class="codehilite"><pre><span></span><code><span class="err">&lt;</span>|im_end|&gt;\n<span class="err">&lt;</span>|im_start|&gt;assistant\n<span class="nt">&lt;think&gt;</span>\n\n<span class="nt">&lt;/think&gt;</span>\n\n<span class="err">&lt;</span>|tts_bos|&gt;
 </code></pre></div>
 
-<p>This is consistent with the model's behavior in <code>chat()</code> and <code>streaming_generate()</code>.</p>
-<h3 id="non-streaming-generation">Non-streaming Generation</h3>
-<p>Uses HuggingFace's standard <code>llm.generate()</code> API:</p>
+<p>这与模型在 <code>chat()</code> 和 <code>streaming_generate()</code> 中的行为一致。</p>
+<h3 id="_5">非流式生成</h3>
+<p>使用 HuggingFace 标准的 <code>llm.generate()</code> API：</p>
 <ol>
-<li>bos string → embedding → KV Cache forward pass</li>
-<li><code>llm.generate(past_key_values=kv_cache, ...)</code> generates the complete sequence</li>
-<li>Decode text</li>
-<li>Optional: call <code>_generate_speech_non_streaming()</code> for TTS audio</li>
+<li>bos string → embedding → KV Cache 前向</li>
+<li><code>llm.generate(past_key_values=kv_cache, ...)</code> 生成完整序列</li>
+<li>解码文本</li>
+<li>可选：调用 <code>_generate_speech_non_streaming()</code> 生成 TTS 音频</li>
 </ol>
-<p>Best for: short replies, scenarios that don't require real-time feedback.</p>
-<h3 id="streaming-generation">Streaming Generation</h3>
-<p>Uses the model's internal <code>streaming_generate()</code> method:</p>
+<p>适合：短回复、不需要实时反馈的场景。</p>
+<h3 id="_6">流式生成</h3>
+<p>使用模型内部的 <code>streaming_generate()</code> 方法：</p>
 <ol>
-<li>bos string is auto-injected</li>
-<li>Generates in groups of 10 tokens (<code>ChunkPrefillChunkGenerate</code>)</li>
-<li>Each token group is fed to TTS to produce an audio chunk</li>
-<li>Yields (waveform_chunk, text_delta) incrementally</li>
+<li>bos string 自动注入</li>
+<li>每 10 个 token 为一组生成（<code>ChunkPrefillChunkGenerate</code>）</li>
+<li>每组 token 送入 TTS 生成音频 chunk</li>
+<li>逐块 yield (waveform_chunk, text_delta)</li>
 </ol>
-<p>Best for: long replies, scenarios that need real-time token-by-token display.</p>
-<h2 id="websocket-protocol">WebSocket Protocol</h2>
-<h3 id="endpoint">Endpoint</h3>
+<p>适合：长回复、需要实时逐字显示的场景。</p>
+<h2 id="websocket">WebSocket 协议</h2>
+<h3 id="_7">端点</h3>
 <div class="codehilite"><pre><span></span><code>wss://host/ws/chat
 </code></pre></div>
 
-<h3 id="request-format">Request Format</h3>
-<p>Send one JSON message after connecting:</p>
+<h3 id="_8">请求格式</h3>
+<p>连接后发送一次 JSON：</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;messages&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;system&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;text&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">}]},</span>
-<span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Hello&quot;</span><span class="p">}</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;你好&quot;</span><span class="p">}</span>
 <span class="w">  </span><span class="p">],</span>
 <span class="w">  </span><span class="nt">&quot;streaming&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;generation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;max_new_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;length_penalty&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.1</span><span class="p">},</span>
@@ -219,114 +220,114 @@ sequenceDiagram
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Description</th>
+<th>字段</th>
+<th>说明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>messages</code></td>
-<td>Complete message history (including system prompt)</td>
+<td>完整消息历史（含 system prompt）</td>
 </tr>
 <tr>
 <td><code>streaming</code></td>
-<td><code>true</code> for streaming / <code>false</code> for non-streaming</td>
+<td><code>true</code> 流式 / <code>false</code> 非流式</td>
 </tr>
 <tr>
 <td><code>generation</code></td>
-<td>Generation parameters (max_new_tokens, length_penalty, etc.)</td>
+<td>生成参数（max_new_tokens、length_penalty 等）</td>
 </tr>
 <tr>
 <td><code>tts</code></td>
-<td>Voice Response config (enabled, ref_audio_data)</td>
+<td>Voice Response 配置（enabled、ref_audio_data）</td>
 </tr>
 <tr>
 <td><code>omni_mode</code></td>
-<td>Set to <code>true</code> for video input</td>
+<td>视频输入时为 <code>true</code></td>
 </tr>
 </tbody>
 </table>
-<h3 id="response-messages">Response Messages</h3>
+<h3 id="_9">响应消息</h3>
 <table>
 <thead>
 <tr>
-<th>Type</th>
-<th>Fields</th>
-<th>Description</th>
+<th>类型</th>
+<th>字段</th>
+<th>说明</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>prefill_done</code></td>
 <td><code>input_tokens</code></td>
-<td>Prefill complete, returns input token count</td>
+<td>Prefill 完成，返回输入 token 数</td>
 </tr>
 <tr>
 <td><code>chunk</code></td>
 <td><code>text_delta</code>, <code>audio_data</code></td>
-<td>One streaming chunk (streaming=true only)</td>
+<td>流式生成的一个 chunk（仅 streaming=true）</td>
 </tr>
 <tr>
 <td><code>done</code></td>
 <td><code>text</code>, <code>generated_tokens</code>, <code>input_tokens</code>, <code>audio_data</code></td>
-<td>Generation complete</td>
+<td>生成完成</td>
 </tr>
 <tr>
 <td><code>error</code></td>
 <td><code>error</code></td>
-<td>Error message</td>
+<td>错误信息</td>
 </tr>
 </tbody>
 </table>
-<h2 id="call-chain">Call Chain</h2>
-<div class="codehilite"><pre><span></span><code>Frontend turnbased.html
+<h2 id="_10">调用链路</h2>
+<div class="codehilite"><pre><span></span><code>前端 turnbased.html
   └─ WebSocket /ws/chat
-      └─ Gateway (WS passthrough proxy)
+      └─ Gateway（WS 透传代理）
           └─ Worker /ws/chat
               ├─ chat_prefill()
               │   └─ ChatView.prefill()
               │       └─ model.non_streaming_prefill()
               ├─ TTS init
               │   └─ model.init_token2wav_cache()
-              └─ Generation
-                  ├─ Streaming: chat_streaming_generate()
+              └─ 生成
+                  ├─ 流式: chat_streaming_generate()
                   │   └─ ChatView.streaming_generate()
                   │       └─ model.streaming_generate()
-                  └─ Non-streaming: chat_non_streaming_generate()
+                  └─ 非流式: chat_non_streaming_generate()
                       └─ ChatView.generate()
                           └─ model.non_streaming_generate()
 </code></pre></div>
 
 <h2 id="voice-response">Voice Response</h2>
-<p>The frontend provides a "Voice Response" toggle:</p>
+<p>前端提供 "Voice Response" 开关：</p>
 <table>
 <thead>
 <tr>
-<th>State</th>
-<th>Behavior</th>
+<th>状态</th>
+<th>行为</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>On</td>
-<td>Generates voice reply + text; automatically suppresses special characters (Markdown <code>*</code>, <code>#</code>, code symbols, etc.) to ensure text is suitable for voice playback</td>
+<td>开启</td>
+<td>生成语音回复 + 文本；自动抑制特殊字符（Markdown <code>*</code>、<code>#</code>、代码符号等），确保文本适合语音播报</td>
 </tr>
 <tr>
-<td>Off</td>
-<td>Text-only generation; no character suppression, Markdown, code, etc. can be freely output</td>
+<td>关闭</td>
+<td>仅生成文本；不抑制任何字符，可自由输出 Markdown、代码等</td>
 </tr>
 </tbody>
 </table>
-<p>Technical detail: The <code>suppress_forbidden_tokens</code> parameter in <code>ChunkPrefillChunkGenerate.chunk_generate()</code> is controlled by <code>generate_audio</code>.</p>
-<h2 id="video-input">Video Input</h2>
-<p>Chat mode supports video input (<code>VideoContent</code>):</p>
+<p>技术实现：<code>ChunkPrefillChunkGenerate.chunk_generate()</code> 的 <code>suppress_forbidden_tokens</code> 参数由 <code>generate_audio</code> 控制。</p>
+<h2 id="_11">视频输入</h2>
+<p>Chat 模式支持视频输入（<code>VideoContent</code>）：</p>
 <ol>
-<li>Frontend uploads a video file → Base64 encoding</li>
-<li>Processor decodes to a temp file → <code>get_video_frame_audio_segments()</code> extracts frames and audio</li>
-<li>Frames and audio are interleaved (frame, audio, [stacked_frame], ...) and fed to the model</li>
-<li>Request automatically sets <code>omni_mode: true</code>, <code>max_slice_nums: 1</code></li>
+<li>前端上传视频文件 → Base64 编码</li>
+<li>Processor 解码为临时文件 → <code>get_video_frame_audio_segments()</code> 提取帧和音频</li>
+<li>帧和音频按交错顺序（frame, audio, [stacked_frame], ...）送入模型</li>
+<li>请求中自动设置 <code>omni_mode: true</code>，<code>max_slice_nums: 1</code></li>
 </ol></article>
-  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; Generated by build_docs.py</p></footer>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>

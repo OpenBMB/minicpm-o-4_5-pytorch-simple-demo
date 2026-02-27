@@ -122,9 +122,9 @@ Stateless Chat inference. Each request performs a full prefill without reusing t
 }
 ```
 
-#### POST /api/streaming/stop
+#### POST /api/half_duplex/stop
 
-Stop an ongoing streaming generation.
+Stop an ongoing half-duplex generation.
 
 **Request Body**:
 ```json
@@ -256,7 +256,7 @@ Get ETA configuration.
 ```json
 {
   "eta_chat_s": 15.0,
-  "eta_streaming_s": 20.0,
+  "eta_half_duplex_s": 180.0,
   "eta_audio_duplex_s": 120.0,
   "eta_omni_duplex_s": 90.0,
   "eta_ema_alpha": 0.3,

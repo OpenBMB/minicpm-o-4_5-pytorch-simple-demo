@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Half-Duplex Mode - MiniCPM-o 4.5 Docs</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">Documentation</span>
+    <a href="../../zh/architecture/half-duplex.html" class="lang-switch">中文</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="../index.html">Overview</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Architecture</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">Overview</a></li>
+        <li><a href="../architecture/chat.html">Chat Mode</a></li>
+        <li><a href="../architecture/half-duplex.html" class="active">Half-Duplex Mode</a></li>
+        <li><a href="../architecture/duplex.html">Duplex Mode</a></li>
+        <li><a href="../architecture/internals.html">Internals</a></li>
+      </ul>
+    </li>
+    <li><a href="../gateway.html">Gateway</a></li>
+    <li><a href="../worker.html">Worker</a></li>
+    <li><a href="../schema.html">Schema</a></li>
+    <li><a href="../model.html">Model</a></li>
+    <li><a href="../compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">Frontend</span>
+      <ul class="nav-group-children">
+        <li><a href="../frontend/index.html">Overview</a></li>
+        <li><a href="../frontend/pages.html">Pages & Routes</a></li>
+        <li><a href="../frontend/audio.html">Audio</a></li>
+        <li><a href="../frontend/duplex-session.html">Duplex Session</a></li>
+        <li><a href="../frontend/components.html">UI Components</a></li>
+      </ul>
+    </li>
+    <li><a href="../api.html">API Reference</a></li>
+    <li><a href="../deployment.html">Deployment</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="half-duplex-audio-mode-details">Half-Duplex Audio Mode Details</h1>
+<p>The core inference mode behind the Half-Duplex Audio page. Communicates via the <code>/ws/half_duplex/{session_id}</code> WebSocket endpoint, implementing VAD-based half-duplex voice conversation.</p>
+<h2 id="in-one-sentence">In One Sentence</h2>
+<blockquote>
+<p>VAD automatically detects when the user finishes speaking, feeds the speech segment to the model for reply generation, waits for playback to complete, then resumes listening — like a phone call with turn-taking.</p>
+</blockquote>
+<h2 id="comparison-with-other-modes">Comparison with Other Modes</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Chat Mode</th>
+<th>Half-Duplex Mode</th>
+<th>Duplex Mode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Interaction</td>
+<td>Turn-based (manual trigger)</td>
+<td>Turn-based (VAD auto-trigger)</td>
+<td>Full-duplex (simultaneous)</td>
+</tr>
+<tr>
+<td>Input processing</td>
+<td>One-shot prefill of all messages</td>
+<td>VAD detects speech segment -&gt; prefill</td>
+<td>Per-second streaming prefill of audio/video</td>
+</tr>
+<tr>
+<td>Worker occupation</td>
+<td>Inference duration only, released after</td>
+<td>Exclusive for entire session (default 3 min)</td>
+<td>Exclusive for entire session</td>
+</tr>
+<tr>
+<td>Voice detection</td>
+<td>None (frontend manual recording)</td>
+<td>Server-side SileroVAD</td>
+<td>None (model decides autonomously)</td>
+</tr>
+<tr>
+<td>Use case</td>
+<td>Text/multimodal Q&amp;A</td>
+<td>Voice conversation, hands-free</td>
+<td>Real-time voice/video conversation</td>
+</tr>
+</tbody>
+</table>
+<h2 id="overall-flow">Overall Flow</h2>
+<h3 id="simplified-view">Simplified View</h3>
+<pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant VAD as SileroVAD
+    participant MD as Model
+
+    loop Half-duplex loop
+        U->>VAD: Continuous audio stream
+        VAD->>VAD: Detect speech start/end
+        VAD->>MD: Speech segment (user finished)
+        MD-->>U: Streaming reply (text + audio)
+        Note over U: Wait for playback to finish
+    end
+</pre>
+
+<h3 id="detailed-view">Detailed View</h3>
+<pre class="mermaid">
+sequenceDiagram
+    participant FE as Frontend
+    participant GW as Gateway
+    participant WK as Worker
+    participant VAD as StreamingVAD
+    participant MD as HalfDuplexView
+
+    FE->>GW: WS /ws/half_duplex/{session_id}
+    GW->>WK: Exclusive Worker
+    FE->>WK: prepare (system_prompt + config)
+    WK->>MD: reset + prefill system prompt
+    WK->>VAD: Initialize VAD
+
+    loop Half-duplex loop
+        FE->>WK: audio_chunk (continuous)
+        WK->>VAD: feed(audio_chunk)
+        alt User speaking
+            WK-->>FE: vad_state: speaking
+        else User stopped speaking
+            WK-->>FE: vad_state: false
+            WK-->>FE: generating
+            WK->>MD: prefill(speech_segment)
+            WK->>MD: generate(streaming)
+            loop Streaming response
+                MD-->>WK: text_delta + audio
+                WK-->>FE: chunk
+            end
+            WK-->>FE: turn_done
+            WK->>VAD: reset()
+        end
+    end
+
+    FE->>WK: stop / timeout
+    WK-->>FE: timeout
+</pre>
+
+<h2 id="vad-stage">VAD Stage</h2>
+<p>The core of Half-Duplex is server-side VAD (Voice Activity Detection) using the SileroVAD ONNX model for real-time speech detection.</p>
+<h3 id="streamingvad">StreamingVAD</h3>
+<p>The <code>StreamingVAD</code> class in <code>vad/vad.py</code> encapsulates streaming VAD logic:</p>
+<div class="codehilite"><pre><span></span><code><span class="n">vad</span> <span class="o">=</span> <span class="n">StreamingVAD</span><span class="p">(</span><span class="n">options</span><span class="o">=</span><span class="n">StreamingVadOptions</span><span class="p">(</span>
+    <span class="n">threshold</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>              <span class="c1"># Speech probability threshold</span>
+    <span class="n">min_speech_duration_ms</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="c1"># Minimum speech segment length</span>
+    <span class="n">min_silence_duration_ms</span><span class="o">=</span><span class="mi">800</span><span class="p">,</span><span class="c1"># Minimum silence to confirm end of speech</span>
+    <span class="n">speech_pad_ms</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>           <span class="c1"># Padding on each side of speech segment</span>
+<span class="p">))</span>
+
+<span class="c1"># Feed chunks incrementally</span>
+<span class="k">for</span> <span class="n">audio_chunk</span> <span class="ow">in</span> <span class="n">audio_stream</span><span class="p">:</span>
+    <span class="n">speech_segment</span> <span class="o">=</span> <span class="n">vad</span><span class="o">.</span><span class="n">feed</span><span class="p">(</span><span class="n">audio_chunk</span><span class="p">)</span>  <span class="c1"># float32, 16kHz</span>
+    <span class="k">if</span> <span class="n">speech_segment</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># User finished speaking</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">prefill</span><span class="p">(</span><span class="n">speech_segment</span><span class="p">)</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">()</span>
+</code></pre></div>
+
+<h3 id="how-it-works">How It Works</h3>
+<ol>
+<li>Frontend sends an <code>audio_chunk</code> every 0.5 seconds (16kHz float32 PCM)</li>
+<li><code>StreamingVAD.feed()</code> slides a 1024-sample window, calling SileroVAD for speech probability on each window</li>
+<li>Probability &gt;= threshold: mark "speech started", accumulate audio to buffer</li>
+<li>Probability &lt; (threshold - 0.15) sustained for &gt;= min_silence_duration_ms: confirm "speech ended"</li>
+<li>Return accumulated speech segment, reset VAD state</li>
+</ol>
+<h3 id="false-trigger-prevention">False Trigger Prevention</h3>
+<ul>
+<li><strong>Cold start guard</strong>: Ignore all VAD for 0.5s after <code>prepare</code> to avoid mic initialization noise</li>
+<li><strong>AI playback suppression</strong>: Frontend stops sending <code>audio_chunk</code> while AI audio is playing to prevent echo feedback</li>
+<li><strong>Post-playback delay</strong>: After <code>turn_done</code>, wait for AI audio to finish + 800ms buffer before resuming</li>
+</ul>
+<h2 id="prefill-generate-stage">Prefill + Generate Stage</h2>
+<p>After VAD detects a speech segment, <code>HalfDuplexView</code> handles inference. It reuses the model's <code>streaming_prefill</code> + <code>streaming_generate</code> capabilities:</p>
+<ol>
+<li>Speech segment -&gt; Base64 encode -&gt; <code>AudioContent</code> -&gt; <code>Message(role=USER)</code></li>
+<li><code>HalfDuplexView.prefill(request)</code> — prefill user speech into KV Cache</li>
+<li><code>HalfDuplexView.generate()</code> — streaming generation of text + audio chunks</li>
+<li>Each chunk sent to frontend via WebSocket</li>
+</ol>
+<p>KV Cache persists throughout the session, supporting multi-turn context accumulation.</p>
+<h2 id="websocket-protocol">WebSocket Protocol</h2>
+<h3 id="endpoint">Endpoint</h3>
+<div class="codehilite"><pre><span></span><code>wss://host/ws/half_duplex/{session_id}
+</code></pre></div>
+
+<p>Gateway proxies this connection to a Worker, which is exclusively occupied for the entire session.</p>
+<h3 id="client-server">Client -&gt; Server</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Fields</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prepare</code></td>
+<td><code>system_prompt</code>, <code>config</code>, <code>ref_audio_base64</code>, <code>system_content</code></td>
+<td>Initialize session</td>
+</tr>
+<tr>
+<td><code>audio_chunk</code></td>
+<td><code>audio_base64</code></td>
+<td>Send mic audio (float32 PCM 16kHz)</td>
+</tr>
+<tr>
+<td><code>stop</code></td>
+<td>—</td>
+<td>Stop session</td>
+</tr>
+</tbody>
+</table>
+<p><code>config</code> structure:</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;vad&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;min_speech_duration_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;min_silence_duration_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">800</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;speech_pad_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">30</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;generation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;max_new_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;length_penalty&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;temperature&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.7</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;tts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;session&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;timeout_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">180</span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="server-client">Server -&gt; Client</h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Fields</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>queued</code></td>
+<td><code>position</code>, <code>estimated_wait_s</code></td>
+<td>Queued</td>
+</tr>
+<tr>
+<td><code>queue_done</code></td>
+<td>—</td>
+<td>Left queue</td>
+</tr>
+<tr>
+<td><code>prepared</code></td>
+<td><code>session_id</code>, <code>timeout_s</code>, <code>recording_session_id</code></td>
+<td>Ready</td>
+</tr>
+<tr>
+<td><code>vad_state</code></td>
+<td><code>speaking</code></td>
+<td>VAD state change (user started/stopped speaking)</td>
+</tr>
+<tr>
+<td><code>generating</code></td>
+<td><code>speech_duration_ms</code></td>
+<td>Starting reply generation</td>
+</tr>
+<tr>
+<td><code>chunk</code></td>
+<td><code>text_delta</code>, <code>audio_data</code></td>
+<td>One streaming chunk</td>
+</tr>
+<tr>
+<td><code>turn_done</code></td>
+<td><code>turn_index</code>, <code>text</code></td>
+<td>Turn generation complete</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td><code>elapsed_s</code></td>
+<td>Session timeout</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td><code>error</code></td>
+<td>Error message</td>
+</tr>
+</tbody>
+</table>
+<h2 id="call-chain">Call Chain</h2>
+<div class="codehilite"><pre><span></span><code>Frontend half_duplex.html
+  └─ WebSocket /ws/half_duplex/{session_id}
+      └─ Gateway (exclusive WS proxy)
+          └─ Worker /ws/half_duplex
+              ├─ prepare
+              │   ├─ StreamingVAD init
+              │   ├─ HalfDuplexView.prefill(system_prompt)
+              │   ├─ TTS init (ref_audio)
+              │   └─ TurnBasedSessionRecorder init
+              └─ audio_chunk loop
+                  ├─ StreamingVAD.feed(chunk)
+                  ├─ Speech detected → HalfDuplexView.prefill(user_audio)
+                  ├─ HalfDuplexView.generate() → streaming chunks
+                  └─ VAD reset + wait for next turn
+</code></pre></div>
+
+<h2 id="frontend-parameter-pass-through">Frontend Parameter Pass-through</h2>
+<p>Settings panel parameters are sent to the backend via the <code>config</code> field in the <code>prepare</code> message. Parameters are saved to <code>localStorage</code> and only sent at session start — mid-session changes do not take effect.</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Parameter</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VAD</td>
+<td>threshold</td>
+<td>0.8</td>
+<td>Speech detection threshold (higher = stricter)</td>
+</tr>
+<tr>
+<td>VAD</td>
+<td>min_speech_duration_ms</td>
+<td>128</td>
+<td>Minimum speech segment length</td>
+</tr>
+<tr>
+<td>VAD</td>
+<td>min_silence_duration_ms</td>
+<td>800</td>
+<td>Silence duration to confirm end of speech</td>
+</tr>
+<tr>
+<td>VAD</td>
+<td>speech_pad_ms</td>
+<td>30</td>
+<td>Padding on each side of speech segment</td>
+</tr>
+<tr>
+<td>Generation</td>
+<td>max_new_tokens</td>
+<td>256</td>
+<td>Maximum generated tokens</td>
+</tr>
+<tr>
+<td>Generation</td>
+<td>length_penalty</td>
+<td>1.1</td>
+<td>Length penalty coefficient</td>
+</tr>
+<tr>
+<td>Generation</td>
+<td>temperature</td>
+<td>0.7</td>
+<td>Sampling temperature</td>
+</tr>
+<tr>
+<td>TTS</td>
+<td>enabled</td>
+<td>true</td>
+<td>Enable voice response</td>
+</tr>
+<tr>
+<td>Session</td>
+<td>timeout_s</td>
+<td>180</td>
+<td>Session timeout (seconds)</td>
+</tr>
+</tbody>
+</table></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; Generated by build_docs.py</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

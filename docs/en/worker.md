@@ -1,6 +1,6 @@
 # Worker API Reference
 
-The Worker is the system's inference execution unit. Each Worker exclusively occupies one GPU and holds a single `UnifiedProcessor` instance. For detailed processing flows and implementation details, see [ChatView Mode Details](architecture/streaming.html) and [Duplex Mode Details](architecture/duplex.html).
+The Worker is the system's inference execution unit. Each Worker exclusively occupies one GPU and holds a single `UnifiedProcessor` instance. For detailed processing flows and implementation details, see [ChatView Mode Details](architecture/chat.html) and [Duplex Mode Details](architecture/duplex.html).
 
 ## WorkerStatus Enum
 
@@ -8,7 +8,7 @@ The Worker is the system's inference execution unit. Each Worker exclusively occ
 |--------|-------------|------------------|
 | `LOADING` | Model loading | No |
 | `IDLE` | Idle | Yes |
-| `BUSY_STREAMING` | Executing Streaming | No (allowed within the same connection) |
+| `BUSY_HALF_DUPLEX` | Half-Duplex session active | No (exclusive) |
 | `DUPLEX_ACTIVE` | Duplex session active | No |
 | `DUPLEX_PAUSED` | Duplex session paused | No |
 | `ERROR` | Error | No |

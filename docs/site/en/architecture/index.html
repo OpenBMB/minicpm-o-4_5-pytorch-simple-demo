@@ -82,7 +82,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="../architecture/index.html" class="active">Overview</a></li>
-        <li><a href="../architecture/streaming.html">Chat Mode</a></li>
+        <li><a href="../architecture/chat.html">Chat Mode</a></li>
+        <li><a href="../architecture/half-duplex.html">Half-Duplex Mode</a></li>
         <li><a href="../architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="../architecture/internals.html">Internals</a></li>
       </ul>
@@ -137,8 +138,10 @@ graph TB
     subgraph modelLayer [Model Layer]
         UP["UnifiedProcessor"]
         ChatV["ChatView"]
+        HdxV["HalfDuplexView"]
         DuplexV["DuplexView"]
         UP --> ChatV
+        UP --> HdxV
         UP --> DuplexV
     end
 
@@ -177,12 +180,12 @@ graph TB
 <tr>
 <td><strong>Model Layer</strong></td>
 <td>UnifiedProcessor</td>
-<td>Unified model loading, millisecond-level hot-switching between Streaming / Duplex</td>
+<td>Unified model loading, millisecond-level hot-switching between Chat / Half-Duplex / Duplex</td>
 </tr>
 </tbody>
 </table>
-<h2 id="three-interaction-modes">Three Interaction Modes</h2>
-<p>The system provides three interaction modes, sharing <strong>two WebSocket endpoints</strong> under the hood:</p>
+<h2 id="four-interaction-modes">Four Interaction Modes</h2>
+<p>The system provides four interaction modes, sharing <strong>three WebSocket endpoints</strong> under the hood:</p>
 <table>
 <thead>
 <tr>
@@ -204,12 +207,20 @@ graph TB
 <td>ChatView</td>
 </tr>
 <tr>
+<td><strong>Half-Duplex Audio</strong></td>
+<td>VAD auto-detects speech boundaries, hands-free voice conversation</td>
+<td>Voice</td>
+<td>Text + Voice</td>
+<td>Half-duplex</td>
+<td>HalfDuplexView</td>
+</tr>
+<tr>
 <td><strong>Omnimodal Full-Duplex</strong></td>
 <td>Full-modality full-duplex, vision + voice input and voice output occur simultaneously</td>
 <td>Vision + Voice</td>
 <td>Text + Voice</td>
 <td>Full-duplex</td>
-<td>Duplex</td>
+<td>DuplexView</td>
 </tr>
 <tr>
 <td><strong>Audio Full-Duplex</strong></td>
@@ -217,24 +228,27 @@ graph TB
 <td>Voice</td>
 <td>Text + Voice</td>
 <td>Full-duplex</td>
-<td>Duplex</td>
+<td>DuplexView</td>
 </tr>
 </tbody>
 </table>
 <pre class="mermaid">
 graph LR
-    subgraph modes [Three Interaction Modes]
+    subgraph modes [Four Interaction Modes]
         TB["Turn-based Chat"]
+        HD["Half-Duplex Audio"]
         OD["Omnimodal Full-Duplex"]
         AD["Audio Full-Duplex"]
     end
 
-    subgraph apis [Two WebSocket Endpoints]
+    subgraph apis [Three WebSocket Endpoints]
         ChatAPI["/ws/chat\nChatView"]
-        DuplexAPI["/ws/duplex/{session_id}\nDuplexView"]
+        HdxAPI["/ws/half_duplex\nHalfDuplexView"]
+        DuplexAPI["/ws/duplex\nDuplexView"]
     end
 
     TB --> ChatAPI
+    HD --> HdxAPI
     OD --> DuplexAPI
     AD --> DuplexAPI
 </pre>
@@ -242,7 +256,11 @@ graph LR
 <h3 id="chat-endpoint-turn-based-chat">Chat Endpoint — Turn-based Chat</h3>
 <p>Turn-based Chat uses <strong>ChatView</strong> (<code>/ws/chat</code> WebSocket) to implement turn-based multimodal dialogue.</p>
 <p>ChatView splits inference into prefill and generate stages: prefill fills all messages into the KV Cache in one shot, and generate supports both streaming and non-streaming modes. The frontend can toggle the Streaming switch to choose between real-time token-by-token output or one-shot response.</p>
-<p>See <a href="streaming.html">ChatView Mode Details</a> for more information.</p>
+<p>See <a href="chat.html">ChatView Mode Details</a> for more information.</p>
+<h3 id="half-duplex-endpoint-half-duplex-audio">Half-Duplex Endpoint — Half-Duplex Audio</h3>
+<p>Half-Duplex Audio uses <strong>HalfDuplexView</strong> (<code>/ws/half_duplex/{session_id}</code> WebSocket) to implement VAD-based half-duplex voice conversation.</p>
+<p>Server-side SileroVAD detects speech boundaries in real-time. After the user finishes speaking, it automatically triggers prefill + streaming generate. The Worker is exclusively occupied for the entire session (default 3-minute timeout). Frontend parameters (VAD threshold, generation params, etc.) are passed at session start.</p>
+<p>See <a href="half-duplex.html">Half-Duplex Mode Details</a> for more information.</p>
 <h3 id="duplex-endpoint-full-duplex">Duplex Endpoint — Full-Duplex</h3>
 <p>Omnimodal Full-Duplex and Audio Full-Duplex share the <strong>Duplex endpoint</strong> (<code>/ws/duplex/{session_id}</code>), differing only in whether video frames are sent:</p>
 <ul>

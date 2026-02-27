@@ -82,7 +82,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="../architecture/index.html">Overview</a></li>
-        <li><a href="../architecture/streaming.html">Chat Mode</a></li>
+        <li><a href="../architecture/chat.html">Chat Mode</a></li>
+        <li><a href="../architecture/half-duplex.html">Half-Duplex Mode</a></li>
         <li><a href="../architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="../architecture/internals.html" class="active">Internals</a></li>
       </ul>
@@ -260,10 +261,10 @@ stateDiagram-v2
     LOADING --> IDLE: Model loaded
     LOADING --> ERROR: Loading failed
 
-    IDLE --> BUSY_STREAMING: Assigned Streaming task
+    IDLE --> BUSY_HALF_DUPLEX: Assigned Half-Duplex task
     IDLE --> DUPLEX_ACTIVE: Assigned Duplex task
 
-    BUSY_STREAMING --> IDLE: Inference complete
+    BUSY_HALF_DUPLEX --> IDLE: Session ended/timeout
 
     DUPLEX_ACTIVE --> DUPLEX_PAUSED: pause (client paused)
     DUPLEX_PAUSED --> DUPLEX_ACTIVE: resume (client resumed)

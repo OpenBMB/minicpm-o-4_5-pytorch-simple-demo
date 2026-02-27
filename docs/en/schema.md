@@ -174,9 +174,9 @@ class UnifiedProcessor(BaseProcessor):
 |----------------|-------------|
 | `_load_model()` | Load model and TTS |
 | `_release_resources()` | Release all resources |
-| `set_streaming_mode()` | Switch to Streaming mode, returns `StreamingView` |
+| `set_half_duplex_mode()` | Switch to Half-Duplex mode, returns `HalfDuplexView` |
 | `set_duplex_mode()` | Switch to Duplex mode, returns `DuplexView` |
-| `streaming` | StreamingView property |
+| `half_duplex` | HalfDuplexView property |
 | `duplex` | DuplexView property |
 | `kv_cache_length` | Current KV Cache length |
 
@@ -214,7 +214,7 @@ ChatView provides the dedicated API for Turn-based Chat, supporting both streami
 
 ```python
 class ProcessorMode(Enum):
-    STREAMING = "streaming"
+    HALF_DUPLEX = "half_duplex"
     DUPLEX = "duplex"
 ```
 

@@ -82,7 +82,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">Overview</a></li>
-        <li><a href="architecture/streaming.html">Chat Mode</a></li>
+        <li><a href="architecture/chat.html">Chat Mode</a></li>
+        <li><a href="architecture/half-duplex.html">Half-Duplex Mode</a></li>
         <li><a href="architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="architecture/internals.html">Internals</a></li>
       </ul>
@@ -210,8 +211,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <span class="p">}</span>
 </code></pre></div>
 
-<h4 id="post-apistreamingstop">POST /api/streaming/stop</h4>
-<p>Stop an ongoing streaming generation.</p>
+<h4 id="post-apihalf_duplexstop">POST /api/half_duplex/stop</h4>
+<p>Stop an ongoing half-duplex generation.</p>
 <p><strong>Request Body</strong>:</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;session_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;stream_abc123&quot;</span><span class="p">}</span>
 </code></pre></div>
@@ -307,7 +308,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <p><strong>Response</strong>:</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;eta_chat_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">15.0</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;eta_streaming_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">20.0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;eta_half_duplex_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">180.0</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;eta_audio_duplex_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">120.0</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;eta_omni_duplex_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">90.0</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;eta_ema_alpha&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.3</span><span class="p">,</span>

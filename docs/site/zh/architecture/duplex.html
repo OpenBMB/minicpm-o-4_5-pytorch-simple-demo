@@ -82,7 +82,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="../architecture/index.html">架构概述</a></li>
-        <li><a href="../architecture/streaming.html">Chat 模式</a></li>
+        <li><a href="../architecture/chat.html">Chat 模式</a></li>
+        <li><a href="../architecture/half-duplex.html">Half-Duplex 模式</a></li>
         <li><a href="../architecture/duplex.html" class="active">Duplex 模式</a></li>
         <li><a href="../architecture/internals.html">内部机制</a></li>
       </ul>
@@ -116,34 +117,39 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <p>两者共享相同的 prefill-generate unit 循环，区别仅在于是否传入视频帧。</p>
 <h2 id="_1">基础概念</h2>
 <p>Duplex（全双工）模式实现了类似电话的实时对话体验：用户说话的同时，模型可以随时开口回应，无需等待用户说完。</p>
-<p>与 Streaming 模式的关键区别：</p>
+<p>与其他模式的关键区别：</p>
 <table>
 <thead>
 <tr>
 <th></th>
-<th>Streaming 模式</th>
+<th>Chat 模式</th>
+<th>Half-Duplex 模式</th>
 <th>Duplex 模式</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>交互方式</td>
-<td>轮次式（用户说完 → 模型回答）</td>
+<td>轮次式（手动触发）</td>
+<td>轮次式（VAD 自动触发）</td>
 <td>实时全双工（同时收听和回应）</td>
 </tr>
 <tr>
 <td>输入处理</td>
 <td>一次性 prefill 完整消息</td>
+<td>VAD 检测语音段 → prefill</td>
 <td>每秒流式 prefill 音频/视频</td>
 </tr>
 <tr>
 <td>Worker 占用</td>
-<td>仅推理期间占用，完成即释放</td>
+<td>仅推理期间，完成即释放</td>
+<td>整个会话期间独占</td>
 <td>整个会话期间独占</td>
 </tr>
 <tr>
 <td>适用场景</td>
 <td>文本/多模态问答</td>
+<td>语音对话、免手操作</td>
 <td>语音/视频实时对话</td>
 </tr>
 </tbody>

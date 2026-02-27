@@ -49,7 +49,8 @@ PAGES = {
     "zh": [
         ("index.md",                   "项目概述",       None),
         ("architecture/index.md",      "架构概述",       "系统架构"),
-        ("architecture/streaming.md",  "Chat 模式",      "系统架构"),
+        ("architecture/chat.md",       "Chat 模式",      "系统架构"),
+        ("architecture/half-duplex.md","Half-Duplex 模式","系统架构"),
         ("architecture/duplex.md",     "Duplex 模式",    "系统架构"),
         ("architecture/internals.md",  "内部机制",       "系统架构"),
         ("gateway.md",                 "Gateway 模块",   None),
@@ -68,7 +69,8 @@ PAGES = {
     "en": [
         ("index.md",                   "Overview",        None),
         ("architecture/index.md",      "Overview",        "Architecture"),
-        ("architecture/streaming.md",  "Chat Mode",       "Architecture"),
+        ("architecture/chat.md",       "Chat Mode",       "Architecture"),
+        ("architecture/half-duplex.md","Half-Duplex Mode","Architecture"),
         ("architecture/duplex.md",     "Duplex Mode",     "Architecture"),
         ("architecture/internals.md",  "Internals",       "Architecture"),
         ("gateway.md",                 "Gateway",         None),
