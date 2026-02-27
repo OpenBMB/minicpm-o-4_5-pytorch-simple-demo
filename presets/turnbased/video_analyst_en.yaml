@@ -1,6 +1,6 @@
 id: video_analyst_en
 order: 2
-name: "Video Analysis"
+name: "Video-Audio Analysis"
 description: "Video Analysis Expert"
 system_content:
   - type: text
