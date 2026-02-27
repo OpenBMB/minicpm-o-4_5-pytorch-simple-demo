@@ -394,6 +394,31 @@ body.video-fullscreen .fullscreen-controls { display: flex; }
     min-width: 28px;
 }
 
+/* ========== Mic Waveform Bar ========== */
+.omni-waveform-bar {
+    flex: none;
+    height: 48px;
+    background: #111;
+    border-radius: 8px;
+    border: 1px solid #e5e5e0;
+    position: relative;
+    overflow: hidden;
+}
+.omni-waveform-bar canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.omni-waveform-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    font-size: 12px;
+}
+
 /* ========== Fullscreen Mobile Responsive ========== */
 @media (max-width: 768px) {
     /* Smaller bottom bar on mobile */

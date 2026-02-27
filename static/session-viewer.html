@@ -212,9 +212,7 @@
             <h1>MiniCPMO45</h1>
             <nav class="nav-links">
                 <a href="/">Home</a>
-                <a href="/turnbased">Turn-based</a>
-                <a href="/omni">Omni</a>
-                <a href="/audio_duplex">Audio Duplex</a>
+
             </nav>
         </div>
     </div>
@@ -703,6 +701,9 @@
                 uInner += '</div>';
             }
             if (inp.audio) uInner += makeAudioCtrl(aUrl(inp.audio));
+            if (inp.videos?.length) {
+                for (const vid of inp.videos) uInner += `<video src="${aUrl(vid)}" controls style="width:100%;max-height:300px;border-radius:8px;margin-top:6px;background:#000;"></video>`;
+            }
             if (!uInner && inp.summary) uInner = `<div style="color:#999">${esc(JSON.stringify(inp.summary))}</div>`;
             html += `<div class="message user"><div class="avatar">U</div><div class="msg-body"><div class="content">${uInner}</div></div></div>`;
 

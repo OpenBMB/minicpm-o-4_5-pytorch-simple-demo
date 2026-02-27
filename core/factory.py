@@ -26,7 +26,7 @@ processor = UnifiedProcessor(
 
 # 模式切换（毫秒级）
 chat = processor.set_chat_mode()
-streaming = processor.set_streaming_mode()
+half_duplex = processor.set_half_duplex_mode()
 duplex = processor.set_duplex_mode()
 ```
 
@@ -61,7 +61,7 @@ duplex_view = ProcessorFactory.from_config(config)
 from typing import Union, Dict, Any, Optional
 
 from core.capabilities import ProcessorMode
-from core.processors import UnifiedProcessor, ChatView, StreamingView, DuplexView
+from core.processors import UnifiedProcessor, ChatView, HalfDuplexView, DuplexView
 
 
 # 缓存 UnifiedProcessor 实例，避免重复加载模型
@@ -76,7 +76,7 @@ class ProcessorFactory:
     **支持的模式**：
     
     - CHAT: ChatView
-    - STREAMING: StreamingView
+    - HALF_DUPLEX: HalfDuplexView
     - DUPLEX: DuplexView
     
     **参数校验**：
@@ -130,13 +130,13 @@ class ProcessorFactory:
         device: str = "cuda",
         ref_audio_path: Optional[str] = None,
         **kwargs
-    ) -> Union[ChatView, StreamingView, DuplexView]:
+    ) -> Union[ChatView, HalfDuplexView, DuplexView]:
         """创建 View
         
         根据指定的模式创建对应的 View 实例。
         
         Args:
-            mode: 处理器模式（CHAT/STREAMING/DUPLEX）
+            mode: 处理器模式（CHAT/HALF_DUPLEX/DUPLEX）
             model_path: 基础模型路径（HuggingFace 格式目录）
             pt_path: 额外的 .pt 权重路径（可选，用于覆盖基础模型权重）
             device: 运行设备，默认 "cuda"
@@ -174,15 +174,15 @@ class ProcessorFactory:
         
         if mode == ProcessorMode.CHAT:
             return processor.set_chat_mode()
-        elif mode == ProcessorMode.STREAMING:
-            return processor.set_streaming_mode()
+        elif mode == ProcessorMode.HALF_DUPLEX:
+            return processor.set_half_duplex_mode()
         elif mode == ProcessorMode.DUPLEX:
             return processor.set_duplex_mode()
         else:
             raise ValueError(f"未知的处理器模式: {mode}")
     
     @staticmethod
-    def from_config(config: Dict[str, Any]) -> Union[ChatView, StreamingView, DuplexView]:
+    def from_config(config: Dict[str, Any]) -> Union[ChatView, HalfDuplexView, DuplexView]:
         """从配置字典创建 View
         
         便于从配置文件（YAML/JSON）加载处理器。
@@ -200,7 +200,7 @@ class ProcessorFactory:
         配置格式：
             ```python
             config = {
-                "mode": "CHAT" | "STREAMING" | "DUPLEX",
+                "mode": "CHAT" | "HALF_DUPLEX" | "DUPLEX",
                 "model_path": "/path/to/model",
                 "pt_path": "/path/to/weights.pt",  # 可选，覆盖权重
                 "device": "cuda",  # 可选，默认 cuda
@@ -252,7 +252,7 @@ def create_processor(
     mode: ProcessorMode,
     model_path: str,
     **kwargs
-) -> Union[ChatView, StreamingView, DuplexView]:
+) -> Union[ChatView, HalfDuplexView, DuplexView]:
     """创建 View（便捷函数）
     
     ProcessorFactory.create() 的简写形式。

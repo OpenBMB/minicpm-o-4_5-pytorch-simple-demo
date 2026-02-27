@@ -31,8 +31,10 @@ graph TB
     subgraph modelLayer [Model Layer]
         UP["UnifiedProcessor"]
         ChatV["ChatView"]
+        HdxV["HalfDuplexView"]
         DuplexV["DuplexView"]
         UP --> ChatV
+        UP --> HdxV
         UP --> DuplexV
     end
 
@@ -50,32 +52,36 @@ graph TB
 | **Client Layer** | Browser Frontend | Mode selection, audio/video capture, WebSocket communication, session recording |
 | **Gateway Layer** | Gateway | Request routing & dispatch, WebSocket proxy, FIFO queuing, session affinity, ETA estimation |
 | **Worker Layer** | Worker x N | Each Worker owns a dedicated GPU, performs model inference, manages KV Cache |
-| **Model Layer** | UnifiedProcessor | Unified model loading, millisecond-level hot-switching between Streaming / Duplex |
+| **Model Layer** | UnifiedProcessor | Unified model loading, millisecond-level hot-switching between Chat / Half-Duplex / Duplex |
 
-## Three Interaction Modes
+## Four Interaction Modes
 
-The system provides three interaction modes, sharing **two WebSocket endpoints** under the hood:
+The system provides four interaction modes, sharing **three WebSocket endpoints** under the hood:
 
 | Mode | Features | Input Modalities | Output Modalities | Interaction Paradigm | Endpoint |
 |------|----------|------------------|-------------------|---------------------|----------|
 | **Turn-based Chat** | Low-latency streaming interaction, reply triggered by button or VAD, strong base capabilities | Audio + Text + Image + Video | Audio + Text | Turn-based dialogue | ChatView |
-| **Omnimodal Full-Duplex** | Full-modality full-duplex, vision + voice input and voice output occur simultaneously | Vision + Voice | Text + Voice | Full-duplex | Duplex |
-| **Audio Full-Duplex** | Voice full-duplex, voice input and output occur simultaneously | Voice | Text + Voice | Full-duplex | Duplex |
+| **Half-Duplex Audio** | VAD auto-detects speech boundaries, hands-free voice conversation | Voice | Text + Voice | Half-duplex | HalfDuplexView |
+| **Omnimodal Full-Duplex** | Full-modality full-duplex, vision + voice input and voice output occur simultaneously | Vision + Voice | Text + Voice | Full-duplex | DuplexView |
+| **Audio Full-Duplex** | Voice full-duplex, voice input and output occur simultaneously | Voice | Text + Voice | Full-duplex | DuplexView |
 
 ```mermaid
 graph LR
-    subgraph modes [Three Interaction Modes]
+    subgraph modes [Four Interaction Modes]
         TB["Turn-based Chat"]
+        HD["Half-Duplex Audio"]
         OD["Omnimodal Full-Duplex"]
         AD["Audio Full-Duplex"]
     end
 
-    subgraph apis [Two WebSocket Endpoints]
+    subgraph apis [Three WebSocket Endpoints]
         ChatAPI["/ws/chat\nChatView"]
-        DuplexAPI["/ws/duplex/{session_id}\nDuplexView"]
+        HdxAPI["/ws/half_duplex\nHalfDuplexView"]
+        DuplexAPI["/ws/duplex\nDuplexView"]
     end
 
     TB --> ChatAPI
+    HD --> HdxAPI
     OD --> DuplexAPI
     AD --> DuplexAPI
 ```
@@ -86,7 +92,15 @@ Turn-based Chat uses **ChatView** (`/ws/chat` WebSocket) to implement turn-based
 
 ChatView splits inference into prefill and generate stages: prefill fills all messages into the KV Cache in one shot, and generate supports both streaming and non-streaming modes. The frontend can toggle the Streaming switch to choose between real-time token-by-token output or one-shot response.
 
-See [ChatView Mode Details](streaming.html) for more information.
+See [ChatView Mode Details](chat.html) for more information.
+
+### Half-Duplex Endpoint — Half-Duplex Audio
+
+Half-Duplex Audio uses **HalfDuplexView** (`/ws/half_duplex/{session_id}` WebSocket) to implement VAD-based half-duplex voice conversation.
+
+Server-side SileroVAD detects speech boundaries in real-time. After the user finishes speaking, it automatically triggers prefill + streaming generate. The Worker is exclusively occupied for the entire session (default 3-minute timeout). Frontend parameters (VAD threshold, generation params, etc.) are passed at session start.
+
+See [Half-Duplex Mode Details](half-duplex.html) for more information.
 
 ### Duplex Endpoint — Full-Duplex
 

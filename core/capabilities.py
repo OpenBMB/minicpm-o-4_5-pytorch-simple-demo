@@ -43,8 +43,8 @@ def route_request(request):
 三种模式的能力对比：
 ==================
 
-| 能力 | Chat | Streaming | Duplex |
-|------|------|-----------|--------|
+| 能力 | Chat | Half-Duplex | Duplex |
+|------|------|-------------|--------|
 | 文本输入 | ✅ | ✅ | ✅ |
 | 图像输入 | ✅ | ✅ | ✅ |
 | 音频输入 | ✅ | ✅ | ✅ |
@@ -73,9 +73,9 @@ class ProcessorMode(Enum):
       - 适合简单问答、批量处理
       - 使用 MiniCPMO 类
       
-    - STREAMING: 流式对话
+    - HALF_DUPLEX: 半双工对话
       - 一问一答，流式返回响应
-      - 适合实时 TTS、快速首字显示
+      - 独占 Worker，支持 VAD 语音检测
       - 使用 MiniCPMO 类（streaming=True）
       
     - DUPLEX: 双工对话
@@ -95,7 +95,7 @@ class ProcessorMode(Enum):
     - MiniCPMODuplex Worker：处理 DUPLEX
     """
     CHAT = auto()
-    STREAMING = auto()
+    HALF_DUPLEX = auto()
     DUPLEX = auto()
 
 
@@ -219,8 +219,8 @@ CHAT_CAPABILITIES = ProcessorCapabilities(
 """
 
 
-STREAMING_CAPABILITIES = ProcessorCapabilities(
-    mode=ProcessorMode.STREAMING,
+HALF_DUPLEX_CAPABILITIES = ProcessorCapabilities(
+    mode=ProcessorMode.HALF_DUPLEX,
     
     # 输入：全支持
     supports_text=True,
@@ -231,25 +231,23 @@ STREAMING_CAPABILITIES = ProcessorCapabilities(
     # 输出：文本+音频，流式
     supports_text_output=True,
     supports_audio_output=True,
-    supports_streaming_output=True,  # 流式！
+    supports_streaming_output=True,
     
     # 交互：多轮+回溯
     supports_multi_turn=True,
-    supports_interrupt=False,  # 不支持打断
-    supports_rollback=True,    # 支持回溯
+    supports_interrupt=False,
+    supports_rollback=True,
     
-    # 资源：共享、KV Cache 复用
-    requires_exclusive_worker=False,
+    # 资源：独占 Worker
+    requires_exclusive_worker=True,
     supports_kv_cache_reuse=True,
 )
-"""流式对话能力
+"""半双工对话能力
 
 特点：
-- 一问一答，流式返回（边生成边返回）
-- 首字延迟低
-- 不支持打断
+- 半双工语音通话（VAD 检测语音 → 模型推理 → 流式返回）
+- 独占 Worker（会话期间）
 - 支持回溯（speculative_snapshot）
-- 可以共享 Worker（但连接期间占用）
 - 支持 KV Cache 复用
 """
 
@@ -291,7 +289,7 @@ DUPLEX_CAPABILITIES = ProcessorCapabilities(
 # 能力字典（按模式索引）
 CAPABILITIES: Dict[ProcessorMode, ProcessorCapabilities] = {
     ProcessorMode.CHAT: CHAT_CAPABILITIES,
-    ProcessorMode.STREAMING: STREAMING_CAPABILITIES,
+    ProcessorMode.HALF_DUPLEX: HALF_DUPLEX_CAPABILITIES,
     ProcessorMode.DUPLEX: DUPLEX_CAPABILITIES,
 }
 """按模式索引的能力字典

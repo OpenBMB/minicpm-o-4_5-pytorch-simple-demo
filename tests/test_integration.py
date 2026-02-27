@@ -688,7 +688,7 @@ class TestQueueAPIIntegration:
             # PUT
             resp = await client.put(
                 f"{cluster_1w.gateway_url}/api/config/eta",
-                json={"eta_chat_s": 5.0, "eta_streaming_s": 8.0, "eta_duplex_s": 60.0},
+                json={"eta_chat_s": 5.0, "eta_half_duplex_s": 8.0, "eta_duplex_s": 60.0},
             )
             assert resp.status_code == 200
 

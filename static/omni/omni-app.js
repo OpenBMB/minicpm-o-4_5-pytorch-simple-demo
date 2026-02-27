@@ -6,6 +6,7 @@
  */
 
 // Layer 0: Pure logic
+import { AudioDeviceSelector } from '../lib/audio-device-selector.js';
 import { resampleAudio as downsample, arrayBufferToBase64, escapeHtml } from '../duplex/lib/duplex-utils.js';
 import { DuplexSession } from '../duplex/lib/duplex-session.js';
 import { SessionVideoRecorder } from '../duplex/lib/session-video-recorder.js';
@@ -74,6 +75,66 @@ let mixerCtrl = null;
 
 const metricsPanel = new MetricsPanel();
 
+// Mic waveform visualization
+let _omniWaveformRunning = false;
+let _omniAnalyserNode = null;
+
+function _omniDrawWaveform() {
+    if (!_omniWaveformRunning || !_omniAnalyserNode) return;
+    requestAnimationFrame(_omniDrawWaveform);
+    const canvas = document.getElementById('omniWaveformCanvas');
+    if (!canvas) return;
+    const container = canvas.parentElement;
+    const dpr = window.devicePixelRatio || 1;
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w === 0 || h === 0) return;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+
+    const bufLen = _omniAnalyserNode.frequencyBinCount;
+    const data = new Float32Array(bufLen);
+    _omniAnalyserNode.getFloatTimeDomainData(data);
+
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, w, h);
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = '#4ade80';
+    ctx.beginPath();
+    const sliceW = w / bufLen;
+    let x = 0;
+    for (let i = 0; i < bufLen; i++) {
+        const y = (data[i] * 0.5 + 0.5) * h;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        x += sliceW;
+    }
+    ctx.stroke();
+}
+
+function _omniStartWaveform(audioCtx, audioSource) {
+    _omniAnalyserNode = audioCtx.createAnalyser();
+    _omniAnalyserNode.fftSize = 2048;
+    audioSource.connect(_omniAnalyserNode);
+    _omniWaveformRunning = true;
+    const ph = document.getElementById('omniWaveformPlaceholder');
+    if (ph) ph.style.display = 'none';
+    requestAnimationFrame(_omniDrawWaveform);
+}
+
+function _omniStopWaveform() {
+    _omniWaveformRunning = false;
+    _omniAnalyserNode = null;
+    const canvas = document.getElementById('omniWaveformCanvas');
+    if (canvas) {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    const ph = document.getElementById('omniWaveformPlaceholder');
+    if (ph) ph.style.display = '';
+}
+
 // ============================================================================
 // Init: Status panel + health check + defaults + settings persistence
 // ============================================================================
@@ -120,10 +181,24 @@ loadFrontendDefaults().then(() => {
     _omniPreset.init();
 });
 window._settingsPersistence = settingsPersistence;
+const omniDeviceSelector = new AudioDeviceSelector({
+    micSelectEl: document.getElementById('omniMicDevice'),
+    speakerSelectEl: document.getElementById('omniSpeakerDevice'),
+    refreshBtnEl: document.getElementById('omniBtnRefreshDevices'),
+    storagePrefix: 'omni',
+    onSpeakerChange: () => {
+        if (session && session.audioPlayer && session.audioPlayer._ctx) {
+            omniDeviceSelector.applySinkId(session.audioPlayer._ctx);
+        }
+    },
+});
+omniDeviceSelector.init();
+
 document.getElementById('btnResetSettings')?.addEventListener('click', () => {
     if (confirm('Reset all settings to defaults?')) {
         if (recordingSettings) recordingSettings.clearStorage();
         localStorage.removeItem('omni_preset');
+        omniDeviceSelector.clearSaved();
         settingsPersistence.clear();
     }
 });
@@ -144,12 +219,12 @@ const _omniPreset = new PresetSelector({
     container: document.getElementById('presetSelectorOmni'),
     page: 'omni',
     detailsEl: document.getElementById('omniSysPromptDetails'),
-    onSelect: (preset) => {
+    onSelect: (preset, { audioLoaded } = {}) => {
         if (preset && preset.system_prompt) {
             document.getElementById('systemPrompt').value = preset.system_prompt;
             settingsPersistence.save();
         }
-        if (preset && preset.ref_audio && preset.ref_audio.data) {
+        if (audioLoaded && preset && preset.ref_audio && preset.ref_audio.data) {
             refAudio.setAudio(preset.ref_audio.data, preset.ref_audio.name, preset.ref_audio.duration);
         }
     },
@@ -237,8 +312,10 @@ class LiveMediaProvider extends MediaProvider {
         if (!this._videoStream) {
             await this._openVideoStream(this._useFront);
         }
+        const _omniMicId = omniDeviceSelector.getSelectedMicId();
         this._audioStream = await navigator.mediaDevices.getUserMedia({
-            audio: { channelCount: 1 }, video: false
+            audio: { channelCount: 1, ...(_omniMicId ? { deviceId: { exact: _omniMicId } } : {}) },
+            video: false,
         });
         this._audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE_IN });
         if (this._audioCtx.state === 'suspended') await this._audioCtx.resume();
@@ -282,6 +359,8 @@ class LiveMediaProvider extends MediaProvider {
         this._audioSource.connect(this._captureNode);
         this._captureNode.port.postMessage({ command: 'start' });
 
+        _omniStartWaveform(this._audioCtx, this._audioSource);
+
         // Real-time audio output for recording (CaptureProcessor pass-through, zero delay)
         this._recDest = this._audioCtx.createMediaStreamDestination();
         this._captureNode.connect(this._recDest);
@@ -321,6 +400,7 @@ class LiveMediaProvider extends MediaProvider {
 
     stop() {
         this.running = false;
+        _omniStopWaveform();
         if (this._captureNode) {
             this._captureNode.port.postMessage({ command: 'stop' });
             try { this._captureNode.disconnect(); } catch (_) {}
@@ -523,8 +603,9 @@ class FileMediaProvider extends MediaProvider {
     // ==================== Mic/Mixed modes: phased feeding ====================
 
     async _setupMic() {
+        const _omniMicId = omniDeviceSelector.getSelectedMicId();
         this._micStream = await navigator.mediaDevices.getUserMedia({
-            audio: { channelCount: 1 },
+            audio: { channelCount: 1, ...(_omniMicId ? { deviceId: { exact: _omniMicId } } : {}) },
             video: false,
         });
 
@@ -574,6 +655,8 @@ class FileMediaProvider extends MediaProvider {
         this._micGainNode.connect(this._captureNode);
         this._micGainNode.connect(this._micAnalyserNode);
 
+        _omniStartWaveform(this._micCtx, this._micSource);
+
         // mixed mode: connect padded video audio source [silence × padBefore] + video + [silence × padAfter]
         if (this._audioMode === 'mixed') {
             const silence = () => new Float32Array(SAMPLE_RATE_IN);
@@ -615,6 +698,7 @@ class FileMediaProvider extends MediaProvider {
     }
 
     _disconnectMic() {
+        _omniStopWaveform();
         this._graphConnected = false;
         if (this._captureNode) {
             this._captureNode.port.postMessage({ command: 'stop' });
@@ -1422,7 +1506,12 @@ async function startSession() {
         syncFullscreenQueueButtons('assigned');
         playAlarmBell();
     };
-    session.onPrepared = async () => { await playSessionChime(); };
+    session.onPrepared = async () => {
+        if (session.audioPlayer && session.audioPlayer._ctx) {
+            omniDeviceSelector.applySinkId(session.audioPlayer._ctx);
+        }
+        await playSessionChime();
+    };
     session.onCleanup = () => {
         _omniCountdown.stop();
         if (_stopDingDong) { _stopDingDong(); _stopDingDong = null; }

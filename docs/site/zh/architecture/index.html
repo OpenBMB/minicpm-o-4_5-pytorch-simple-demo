@@ -82,7 +82,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="../architecture/index.html" class="active">架构概述</a></li>
-        <li><a href="../architecture/streaming.html">Chat 模式</a></li>
+        <li><a href="../architecture/chat.html">Chat 模式</a></li>
+        <li><a href="../architecture/half-duplex.html">Half-Duplex 模式</a></li>
         <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="../architecture/internals.html">内部机制</a></li>
       </ul>
@@ -137,8 +138,10 @@ graph TB
     subgraph modelLayer [模型层]
         UP["UnifiedProcessor"]
         ChatV["ChatView"]
+        HdxV["HalfDuplexView"]
         DuplexV["DuplexView"]
         UP --> ChatV
+        UP --> HdxV
         UP --> DuplexV
     end
 
@@ -177,7 +180,7 @@ graph TB
 <tr>
 <td><strong>模型层</strong></td>
 <td>UnifiedProcessor</td>
-<td>统一模型加载，Streaming / Duplex 毫秒级热切换</td>
+<td>统一模型加载，Chat / Half-Duplex / Duplex 毫秒级热切换</td>
 </tr>
 </tbody>
 </table>
@@ -204,12 +207,20 @@ graph TB
 <td>ChatView</td>
 </tr>
 <tr>
+<td><strong>Half-Duplex Audio</strong></td>
+<td>VAD 自动检测语音边界，免手操作的语音通话</td>
+<td>语音</td>
+<td>文本 + 语音</td>
+<td>半双工</td>
+<td>HalfDuplexView</td>
+</tr>
+<tr>
 <td><strong>Omnimodal Full-Duplex</strong></td>
 <td>全模态全双工，视觉 + 语音输入与语音输出同时进行</td>
 <td>视觉 + 语音</td>
 <td>文本 + 语音</td>
 <td>全双工</td>
-<td>Duplex</td>
+<td>DuplexView</td>
 </tr>
 <tr>
 <td><strong>Audio Full-Duplex</strong></td>
@@ -217,24 +228,27 @@ graph TB
 <td>语音</td>
 <td>文本 + 语音</td>
 <td>全双工</td>
-<td>Duplex</td>
+<td>DuplexView</td>
 </tr>
 </tbody>
 </table>
 <pre class="mermaid">
 graph LR
-    subgraph modes [三种交互模式]
+    subgraph modes [四种交互模式]
         TB["Turn-based Chat\n轮次对话"]
+        HD["Half-Duplex Audio\n半双工语音"]
         OD["Omnimodal Full-Duplex\n全模态全双工"]
         AD["Audio Full-Duplex\n语音全双工"]
     end
 
-    subgraph apis [两个 WebSocket 接口]
+    subgraph apis [三个 WebSocket 接口]
         ChatAPI["/ws/chat\nChatView"]
-        DuplexAPI["/ws/duplex/{session_id}\nDuplexView"]
+        HdxAPI["/ws/half_duplex\nHalfDuplexView"]
+        DuplexAPI["/ws/duplex\nDuplexView"]
     end
 
     TB --> ChatAPI
+    HD --> HdxAPI
     OD --> DuplexAPI
     AD --> DuplexAPI
 </pre>
@@ -242,7 +256,11 @@ graph LR
 <h3 id="chat-turn-based-chat">Chat 接口 — Turn-based Chat</h3>
 <p>Turn-based Chat 通过 <strong>ChatView</strong>（<code>/ws/chat</code> WebSocket）实现轮次式多模态对话。</p>
 <p>ChatView 将推理分为 prefill 和 generate 两个阶段：prefill 一次性将所有消息填充到 KV Cache，generate 支持流式和非流式两种模式。前端可通过 Streaming 开关选择实时逐字输出或一次性返回。</p>
-<p>详见 <a href="streaming.html">ChatView 模式详解</a>。</p>
+<p>详见 <a href="chat.html">ChatView 模式详解</a>。</p>
+<h3 id="half-duplex-half-duplex-audio">Half-Duplex 接口 — Half-Duplex Audio</h3>
+<p>Half-Duplex Audio 通过 <strong>HalfDuplexView</strong>（<code>/ws/half_duplex/{session_id}</code> WebSocket）实现基于 VAD 的半双工语音通话。</p>
+<p>服务端 SileroVAD 实时检测用户语音边界，说完后自动触发 prefill + streaming generate。Worker 在整个会话期间被独占（默认 3 分钟超时）。前端参数（VAD 阈值、生成参数等）在 session 启动时透传。</p>
+<p>详见 <a href="half-duplex.html">Half-Duplex 模式详解</a>。</p>
 <h3 id="duplex-full-duplex">Duplex 接口 — Full-Duplex</h3>
 <p>Omnimodal Full-Duplex 和 Audio Full-Duplex 共用 <strong>Duplex 接口</strong> (<code>/ws/duplex/{session_id}</code>)，区别仅在于是否传入视频帧：</p>
 <ul>

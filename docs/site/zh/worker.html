@@ -82,7 +82,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">架构概述</a></li>
-        <li><a href="architecture/streaming.html">Chat 模式</a></li>
+        <li><a href="architecture/chat.html">Chat 模式</a></li>
+        <li><a href="architecture/half-duplex.html">Half-Duplex 模式</a></li>
         <li><a href="architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="architecture/internals.html">内部机制</a></li>
       </ul>
@@ -108,7 +109,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </nav>
 <main class="content" id="content">
   <article><h1 id="worker-api">Worker API 参考</h1>
-<p>Worker 是系统的推理执行单元，每个 Worker 独占一张 GPU，持有一个 <code>UnifiedProcessor</code> 实例。详细的处理流程和实现细节见 <a href="architecture/streaming.html">ChatView 模式详解</a> 和 <a href="architecture/duplex.html">Duplex 模式详解</a>。</p>
+<p>Worker 是系统的推理执行单元，每个 Worker 独占一张 GPU，持有一个 <code>UnifiedProcessor</code> 实例。详细的处理流程和实现细节见 <a href="architecture/chat.html">ChatView 模式详解</a> 和 <a href="architecture/duplex.html">Duplex 模式详解</a>。</p>
 <h2 id="workerstatus">WorkerStatus 枚举</h2>
 <table>
 <thead>
@@ -130,9 +131,9 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <td>是</td>
 </tr>
 <tr>
-<td><code>BUSY_STREAMING</code></td>
-<td>正在执行 Streaming</td>
-<td>否（同连接内可）</td>
+<td><code>BUSY_HALF_DUPLEX</code></td>
+<td>正在执行 Half-Duplex 会话</td>
+<td>否（独占）</td>
 </tr>
 <tr>
 <td><code>DUPLEX_ACTIVE</code></td>

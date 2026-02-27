@@ -4,17 +4,13 @@
 
 核心职责：
 1. Worker 发现和健康检查
-2. Streaming 请求基于历史上下文 hash 的 LRU 缓存命中路由
-3. 统一 FIFO 请求排队（容量 1000，先到先服务）
-4. 队列位置追踪和等待时间估算（ETA）
-5. 请求取消和清理
+2. 统一 FIFO 请求排队（容量 1000，先到先服务）
+3. 队列位置追踪和等待时间估算（ETA）
+4. 请求取消和清理
 
 路由策略：
 - Chat（无状态）：任意空闲 Worker
-- Streaming（内容寻址缓存 + LRU 淘汰）：
-    1. cached_hash 匹配 → 缓存命中
-    2. cached_hash == None → 无缓存 Worker 优先
-    3. 有缓存 → last_cache_used_at 最旧的（LRU 淘汰）
+- Half-Duplex（独占）：任意空闲 Worker，会话期间独占
 - Duplex（独占）：任意空闲 Worker
 
 排队机制：
@@ -26,8 +22,6 @@
 import asyncio
 import heapq
 import logging
-import json
-import hashlib
 import uuid
 from typing import Dict, List, Optional, Tuple, Any, Callable, Awaitable
 from collections import OrderedDict
@@ -52,28 +46,6 @@ logger = logging.getLogger("gateway.worker_pool")
 HEALTH_CHECK_INTERVAL = 10.0
 
 
-# ============ 工具函数 ============
-
-def compute_history_hash(messages: List[Dict[str, Any]]) -> str:
-    """计算消息列表的内容 hash（确定性）
-
-    用于 Streaming 缓存命中判断。序列化 role + content 后 SHA-256。
-
-    Args:
-        messages: 消息列表（dict 格式，含 role 和 content）
-
-    Returns:
-        SHA-256 hash 字符串
-    """
-    canonical = json.dumps(
-        [{"role": m.get("role", ""), "content": m.get("content", "")}
-         for m in messages],
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-    return hashlib.sha256(canonical.encode()).hexdigest()
-
-
 # ============ Worker 连接 ============
 
 @dataclass
@@ -85,8 +57,6 @@ class WorkerConnection:
     gpu_id: int
     status: GatewayWorkerStatus = GatewayWorkerStatus.OFFLINE
     current_session_id: Optional[str] = None
-    cached_hash: Optional[str] = None
-    last_cache_used_at: Optional[datetime] = None
     total_requests: int = 0
     avg_inference_time_ms: float = 0.0
     last_heartbeat: Optional[datetime] = None
@@ -106,7 +76,7 @@ class WorkerConnection:
     def is_busy(self) -> bool:
         return self.status in (
             GatewayWorkerStatus.BUSY_CHAT,
-            GatewayWorkerStatus.BUSY_STREAMING,
+            GatewayWorkerStatus.BUSY_HALF_DUPLEX,
             GatewayWorkerStatus.DUPLEX_ACTIVE,
             GatewayWorkerStatus.DUPLEX_PAUSED,
         )
@@ -119,8 +89,6 @@ class WorkerConnection:
             gpu_id=self.gpu_id,
             status=self.status,
             current_session_id=self.current_session_id,
-            cached_hash=self.cached_hash,
-            last_cache_used_at=self.last_cache_used_at,
             total_requests=self.total_requests,
             avg_inference_time_ms=self.avg_inference_time_ms,
             last_heartbeat=self.last_heartbeat,
@@ -157,7 +125,7 @@ class QueueEntry:
     """队列中的一个等待条目"""
     ticket: QueueTicket
     future: "asyncio.Future[Optional[WorkerConnection]]"
-    history_hash: Optional[str] = None  # Streaming 专用：缓存命中 hash
+    history_hash: Optional[str] = None
 
 
 # ============ EMA 追踪器 ============
@@ -176,7 +144,7 @@ class EtaTracker:
 
         # EMA 状态
         self._ema: Dict[str, float] = {}
-        self._samples: Dict[str, int] = {"chat": 0, "streaming": 0, "audio_duplex": 0, "omni_duplex": 0}
+        self._samples: Dict[str, int] = {"chat": 0, "half_duplex_audio": 0, "audio_duplex": 0, "omni_duplex": 0}
 
     def get_eta(self, request_type: str) -> float:
         """获取指定类型的预估耗时
@@ -209,11 +177,11 @@ class EtaTracker:
             config=self.config,
             ema_alpha=self.ema_alpha,
             ema_chat_s=self._ema.get("chat"),
-            ema_streaming_s=self._ema.get("streaming"),
+            ema_half_duplex_s=self._ema.get("half_duplex_audio"),
             ema_audio_duplex_s=self._ema.get("audio_duplex"),
             ema_omni_duplex_s=self._ema.get("omni_duplex"),
             ema_chat_samples=self._samples.get("chat", 0),
-            ema_streaming_samples=self._samples.get("streaming", 0),
+            ema_half_duplex_samples=self._samples.get("half_duplex_audio", 0),
             ema_audio_duplex_samples=self._samples.get("audio_duplex", 0),
             ema_omni_duplex_samples=self._samples.get("omni_duplex", 0),
         )
@@ -222,8 +190,8 @@ class EtaTracker:
         """获取 Admin 配置的基准值"""
         if request_type == "chat":
             return self.config.eta_chat_s
-        elif request_type == "streaming":
-            return self.config.eta_streaming_s
+        elif request_type == "half_duplex_audio":
+            return self.config.eta_half_duplex_s
         elif request_type == "audio_duplex":
             return self.config.eta_audio_duplex_s
         elif request_type == "omni_duplex":
@@ -240,7 +208,6 @@ class WorkerPool:
     - 统一 FIFO 队列（OrderedDict），所有请求类型共享
     - 每个 QueueEntry 持有 asyncio.Future，分配 Worker 时 resolve
     - 单一调度点 _dispatch_next()：Worker 释放 / 取消 / 入队时调用
-    - Streaming LRU 缓存命中路由
     """
 
     def __init__(
@@ -368,7 +335,7 @@ class WorkerPool:
                     "loading": GatewayWorkerStatus.LOADING,
                     "idle": GatewayWorkerStatus.IDLE,
                     "busy_chat": GatewayWorkerStatus.BUSY_CHAT,
-                    "busy_streaming": GatewayWorkerStatus.BUSY_STREAMING,
+                    "busy_half_duplex": GatewayWorkerStatus.BUSY_HALF_DUPLEX,
                     "duplex_active": GatewayWorkerStatus.DUPLEX_ACTIVE,
                     "duplex_paused": GatewayWorkerStatus.DUPLEX_PAUSED,
                     "error": GatewayWorkerStatus.ERROR,
@@ -394,76 +361,17 @@ class WorkerPool:
                 worker.last_heartbeat = datetime.now()
             else:
                 worker.status = GatewayWorkerStatus.ERROR
-                worker.cached_hash = None
-                worker.last_cache_used_at = None
         except Exception as e:
             logger.warning(f"Health check failed for {worker.worker_id}: {e}")
             worker.status = GatewayWorkerStatus.OFFLINE
-            worker.cached_hash = None
-            worker.last_cache_used_at = None
 
-    # ========== 路由策略（Streaming LRU 缓存命中） ==========
-
-    def _route_streaming_worker(self, history_hash: str) -> Tuple[Optional[WorkerConnection], bool]:
-        """路由 Streaming 请求（LRU 缓存命中）
-
-        优先级：
-        1. cached_hash 匹配的空闲 Worker → 缓存命中
-        2. cached_hash == None 的空闲 Worker → 无缓存优先
-        3. 有缓存的空闲 Worker → last_cache_used_at 最旧的（LRU 淘汰）
-        4. 无空闲 → None
-
-        Args:
-            history_hash: 请求中历史消息的 hash
-
-        Returns:
-            (worker, cache_hit)
-        """
-        # 1. 缓存命中
-        for w in self.workers.values():
-            if w.is_idle and w.cached_hash == history_hash:
-                logger.info(f"Cache HIT → {w.worker_id} (hash={history_hash[:12]}...)")
-                return w, True
-
-        # 2. 无缓存 Worker 优先
-        for w in self.workers.values():
-            if w.is_idle and w.cached_hash is None:
-                return w, False
-
-        # 3. LRU 淘汰：按 last_cache_used_at 升序，选最旧的
-        idle_with_cache: List[WorkerConnection] = [
-            w for w in self.workers.values()
-            if w.is_idle and w.cached_hash is not None
-        ]
-        if idle_with_cache:
-            idle_with_cache.sort(
-                key=lambda w: w.last_cache_used_at or datetime.min
-            )
-            worker = idle_with_cache[0]
-            logger.info(
-                f"Cache LRU evict → {worker.worker_id} "
-                f"(evicting hash={worker.cached_hash[:12] if worker.cached_hash else 'None'}...)"
-            )
-            return worker, False
-
-        # 4. 无空闲
-        return None, False
+    # ========== 路由策略 ==========
 
     def _get_idle_worker(self) -> Optional[WorkerConnection]:
-        """获取任意空闲 Worker（Chat/Duplex 用）"""
-        # 优先选无缓存的（避免不必要的缓存淘汰）
+        """获取任意空闲 Worker"""
         for w in self.workers.values():
-            if w.is_idle and w.cached_hash is None:
+            if w.is_idle:
                 return w
-        # 然后 LRU
-        idle_with_cache: List[WorkerConnection] = [
-            w for w in self.workers.values() if w.is_idle
-        ]
-        if idle_with_cache:
-            idle_with_cache.sort(
-                key=lambda w: w.last_cache_used_at or datetime.min
-            )
-            return idle_with_cache[0]
         return None
 
     # ========== FIFO 队列核心 ==========
@@ -476,7 +384,6 @@ class WorkerPool:
         self,
         request_type: str,
         session_id: Optional[str] = None,
-        history_hash: Optional[str] = None,
     ) -> Tuple[QueueTicket, "asyncio.Future[Optional[WorkerConnection]]"]:
         """入队请求
 
@@ -484,32 +391,20 @@ class WorkerPool:
         否则加入 FIFO 队列等待。
 
         Args:
-            request_type: "chat" | "streaming" | "audio_duplex" | "omni_duplex"
-            session_id: Streaming/Duplex 的 session_id
-            history_hash: Streaming 专用的缓存命中 hash
+            request_type: "chat" | "half_duplex_audio" | "audio_duplex" | "omni_duplex"
+            session_id: 会话 ID
 
         Returns:
             (ticket, future)
-            - ticket: 排队凭证（含位置和 ETA）
-            - future: await 此 Future 获取分配的 Worker
 
         Raises:
             QueueFullError: 队列已满
         """
         loop = asyncio.get_running_loop()
 
-        # 1. 尝试立即分配
-        worker: Optional[WorkerConnection] = None
-        cache_hit = False
-
-        if request_type == "streaming" and history_hash:
-            worker, cache_hit = self._route_streaming_worker(history_hash)
-        else:
-            worker = self._get_idle_worker()
+        worker = self._get_idle_worker()
 
         if worker is not None:
-            # 立即分配，不入队
-            # [CRITICAL] 立即标记 Worker 为忙碌，防止并发 enqueue 重复分配
             dispatch_status = self._DISPATCH_STATUS_MAP.get(
                 request_type, GatewayWorkerStatus.BUSY_CHAT
             )
@@ -519,38 +414,31 @@ class WorkerPool:
                 ticket_id=f"q_{uuid.uuid4().hex[:12]}",
                 request_type=request_type,
                 session_id=session_id,
-                position=0,  # 0 表示已分配
+                position=0,
                 estimated_wait_s=0.0,
             )
             future: asyncio.Future[Optional[WorkerConnection]] = loop.create_future()
             future.set_result(worker)
             logger.info(
                 f"[{ticket.ticket_id}] Immediate assign → {worker.worker_id} "
-                f"(type={request_type}, cache_hit={cache_hit})"
+                f"(type={request_type})"
             )
             return ticket, future
 
-        # 2. 容量检查
         if len(self._queue) >= self.max_queue_size:
             raise WorkerPool.QueueFullError(
                 f"Queue full ({self.max_queue_size} requests)"
             )
 
-        # 3. 入队
         ticket = QueueTicket(
             ticket_id=f"q_{uuid.uuid4().hex[:12]}",
             request_type=request_type,
             session_id=session_id,
         )
         future = loop.create_future()
-        entry = QueueEntry(
-            ticket=ticket,
-            future=future,
-            history_hash=history_hash,
-        )
+        entry = QueueEntry(ticket=ticket, future=future)
         self._queue[ticket.ticket_id] = entry
 
-        # 4. 重算位置和 ETA
         self._recalc_positions_and_eta()
 
         logger.info(
@@ -561,10 +449,9 @@ class WorkerPool:
 
         return ticket, future
 
-    # Worker 分配时的临时状态映射（Gateway 会用 mark_busy 覆盖为正式状态）
     _DISPATCH_STATUS_MAP: Dict[str, GatewayWorkerStatus] = {
         "chat": GatewayWorkerStatus.BUSY_CHAT,
-        "streaming": GatewayWorkerStatus.BUSY_STREAMING,
+        "half_duplex_audio": GatewayWorkerStatus.BUSY_HALF_DUPLEX,
         "audio_duplex": GatewayWorkerStatus.DUPLEX_ACTIVE,
         "omni_duplex": GatewayWorkerStatus.DUPLEX_ACTIVE,
     }
@@ -587,12 +474,7 @@ class WorkerPool:
                 self._queue.pop(ticket_id, None)
                 continue
 
-            # 尝试获取 Worker
-            worker: Optional[WorkerConnection] = None
-            if entry.ticket.request_type == "streaming" and entry.history_hash:
-                worker, _cache_hit = self._route_streaming_worker(entry.history_hash)
-            else:
-                worker = self._get_idle_worker()
+            worker = self._get_idle_worker()
 
             if worker is None:
                 break

@@ -82,7 +82,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">Architecture</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">Overview</a></li>
-        <li><a href="architecture/streaming.html">Chat Mode</a></li>
+        <li><a href="architecture/chat.html">Chat Mode</a></li>
+        <li><a href="architecture/half-duplex.html">Half-Duplex Mode</a></li>
         <li><a href="architecture/duplex.html">Duplex Mode</a></li>
         <li><a href="architecture/internals.html">Internals</a></li>
       </ul>
@@ -108,7 +109,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </nav>
 <main class="content" id="content">
   <article><h1 id="worker-api-reference">Worker API Reference</h1>
-<p>The Worker is the system's inference execution unit. Each Worker exclusively occupies one GPU and holds a single <code>UnifiedProcessor</code> instance. For detailed processing flows and implementation details, see <a href="architecture/streaming.html">ChatView Mode Details</a> and <a href="architecture/duplex.html">Duplex Mode Details</a>.</p>
+<p>The Worker is the system's inference execution unit. Each Worker exclusively occupies one GPU and holds a single <code>UnifiedProcessor</code> instance. For detailed processing flows and implementation details, see <a href="architecture/chat.html">ChatView Mode Details</a> and <a href="architecture/duplex.html">Duplex Mode Details</a>.</p>
 <h2 id="workerstatus-enum">WorkerStatus Enum</h2>
 <table>
 <thead>
@@ -130,9 +131,9 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <td>Yes</td>
 </tr>
 <tr>
-<td><code>BUSY_STREAMING</code></td>
-<td>Executing Streaming</td>
-<td>No (allowed within the same connection)</td>
+<td><code>BUSY_HALF_DUPLEX</code></td>
+<td>Half-Duplex session active</td>
+<td>No (exclusive)</td>
 </tr>
 <tr>
 <td><code>DUPLEX_ACTIVE</code></td>

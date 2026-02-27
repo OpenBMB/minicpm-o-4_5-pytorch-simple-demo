@@ -416,6 +416,33 @@ body {
     .ctrl-btn { padding: 8px 12px; min-width: 70px; font-size: 12px; }
 }
 
+/* ========== Audio Device Selector (shared) ========== */
+.cg-select {
+    width: 100%;
+    font-size: 11px;
+    padding: 4px 6px;
+    border: 1px solid #e5e5e0;
+    border-radius: 5px;
+    background: #fafaf7;
+    color: #2d2d2d;
+    font-family: inherit;
+    cursor: pointer;
+    appearance: auto;
+}
+.cg-select:focus { outline: none; border-color: #999; }
+.device-refresh-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    border: 1px solid #e5e5e0;
+    border-radius: 4px;
+    background: #f0f0eb;
+    color: #888;
+    cursor: pointer;
+    font-family: inherit;
+    margin-top: 2px;
+}
+.device-refresh-btn:hover { background: #e5e5e0; color: #2d2d2d; }
+
 /* ========== Rec label (shared controls) ========== */
 .rec-label {
     display: flex; align-items: center; gap: 4px;

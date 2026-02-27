@@ -181,6 +181,7 @@ class SessionRecorder:
         os.makedirs(os.path.join(base, "user_frames"), exist_ok=True)
         os.makedirs(os.path.join(base, "ai_audio"), exist_ok=True)
         os.makedirs(os.path.join(base, "user_images"), exist_ok=True)
+        os.makedirs(os.path.join(base, "user_videos"), exist_ok=True)
 
         meta = {
             "session_id": session_id,
@@ -253,6 +254,17 @@ class SessionRecorder:
         rel = f"user_images/img_{image_index}.jpg"
         path = os.path.join(self.session_dir, rel)
         self._pending_io.append(_io_pool.submit(_write_bytes, path, image_data))
+        return rel
+
+    def save_user_video(self, video_index: int, video_data: bytes, ext: str = "mp4") -> str:
+        """保存用户上传的视频
+
+        Returns:
+            相对路径，如 "user_videos/vid_0.mp4"
+        """
+        rel = f"user_videos/vid_{video_index}.{ext}"
+        path = os.path.join(self.session_dir, rel)
+        self._pending_io.append(_io_pool.submit(_write_bytes, path, video_data))
         return rel
 
     def update_config(self, extra: Dict[str, Any]) -> None:

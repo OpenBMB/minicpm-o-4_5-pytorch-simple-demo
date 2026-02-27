@@ -21,7 +21,8 @@ UnifiedProcessor（统一入口）
 ├── set_chat_mode() → ChatView
 │   └── chat(request) → ChatResponse
 │
-├── set_streaming_mode() → StreamingView
+│
+├── set_half_duplex_mode() → HalfDuplexView
 │   ├── prefill(request) → str
 │   ├── generate(...) → Generator[StreamingChunk]
 │   └── rollback() → RollbackResult
@@ -80,14 +81,14 @@ response = chat.chat(ChatRequest(
 ))
 print(response.content)
 
-# ========== Streaming 模式（毫秒级切换）==========
-streaming = processor.set_streaming_mode()
-streaming.prefill(StreamingRequest(
+# ========== Half-Duplex 模式（毫秒级切换）==========
+half_duplex = processor.set_half_duplex_mode()
+half_duplex.prefill(StreamingRequest(
     session_id="user_001",
     messages=[Message(role=Role.USER, content="讲个故事")],
     is_last_chunk=True
 ))
-for chunk in streaming.generate(session_id="user_001"):
+for chunk in half_duplex.generate(session_id="user_001"):
     print(chunk.text_delta, end="", flush=True)
 
 # ========== Duplex 模式（毫秒级切换）==========
@@ -459,20 +460,21 @@ class ChatView(MiniCPMOProcessorMixin):
         )
 
 
-class StreamingView(MiniCPMOProcessorMixin):
-    """Streaming 模式视图
+class HalfDuplexView(MiniCPMOProcessorMixin):
+    """Half-Duplex 模式视图
     
-    提供 Streaming 模式专用的 API。
+    提供 Half-Duplex 模式专用的 API。
     
     特性：
     - 有状态（session_id + KV Cache 复用）
     - 流式返回（边生成边返回）
     - 支持回溯（speculative_snapshot）
+    - 独占 Worker（会话期间）
     
     示例：
-        >>> streaming = processor.set_streaming_mode()
-        >>> streaming.prefill(request)
-        >>> for chunk in streaming.generate(session_id):
+        >>> half_duplex = processor.set_half_duplex_mode()
+        >>> half_duplex.prefill(request)
+        >>> for chunk in half_duplex.generate(session_id):
         ...     print(chunk.text_delta, end="")
     """
     
@@ -726,9 +728,9 @@ class StreamingView(MiniCPMOProcessorMixin):
             StreamingResponse: 包含完整文本和音频的响应
             
         示例：
-            >>> streaming = processor.set_streaming_mode()
-            >>> streaming.reset_session("user_001")
-            >>> streaming.init_ref_audio("/path/to/ref.wav")
+            >>> half_duplex = processor.set_half_duplex_mode()
+            >>> half_duplex.reset_session("user_001")
+            >>> half_duplex.init_ref_audio("/path/to/ref.wav")
             >>> 
             >>> response = streaming.complete_turn(
             ...     session_id="user_001",
@@ -1180,10 +1182,10 @@ class UnifiedProcessor(BaseProcessor):
         >>> chat = processor.set_chat_mode()
         >>> response = chat.chat(request)
         >>> 
-        >>> # Streaming 模式
-        >>> streaming = processor.set_streaming_mode()
-        >>> streaming.prefill(request)
-        >>> for chunk in streaming.generate(session_id):
+        >>> # Half-Duplex 模式
+        >>> half_duplex = processor.set_half_duplex_mode()
+        >>> half_duplex.prefill(request)
+        >>> for chunk in half_duplex.generate(session_id):
         ...     print(chunk.text_delta, end="")
         >>> 
         >>> # Duplex 模式
@@ -1235,7 +1237,7 @@ class UnifiedProcessor(BaseProcessor):
         
         # View 实例（懒创建）
         self._chat_view: Optional[ChatView] = None
-        self._streaming_view: Optional[StreamingView] = None
+        self._half_duplex_view: Optional[HalfDuplexView] = None
         self._duplex_view: Optional[DuplexView] = None
         
         # 当前模式
@@ -1246,7 +1248,7 @@ class UnifiedProcessor(BaseProcessor):
     @property
     def mode(self) -> ProcessorMode:
         """当前模式"""
-        return self._current_mode or ProcessorMode.STREAMING
+        return self._current_mode or ProcessorMode.HALF_DUPLEX
     
     def _resolve_attn_implementation(self) -> str:
         """解析实际使用的 attention 实现方式
@@ -1372,7 +1374,7 @@ class UnifiedProcessor(BaseProcessor):
         
         # 创建 View 实例
         self._chat_view = ChatView(self.model, self.ref_audio_path)
-        self._streaming_view = StreamingView(self.model, self.ref_audio_path)
+        self._half_duplex_view = HalfDuplexView(self.model, self.ref_audio_path)
         self._duplex_view = DuplexView(self.model, self.ref_audio_path, self.duplex_config)
         
         total_time = time.time() - start
@@ -1404,21 +1406,21 @@ class UnifiedProcessor(BaseProcessor):
         
         return self._chat_view
     
-    def set_streaming_mode(self) -> StreamingView:
-        """切换到 Streaming 模式
+    def set_half_duplex_mode(self) -> HalfDuplexView:
+        """切换到 Half-Duplex 模式
         
         Returns:
-            StreamingView 实例
+            HalfDuplexView 实例
         """
         from MiniCPMO45.modeling_minicpmo_unified import ProcessorMode as ModelProcessorMode
         
-        if self._current_mode != ProcessorMode.STREAMING:
+        if self._current_mode != ProcessorMode.HALF_DUPLEX:
             start = time.time()
             self.model.set_mode(ModelProcessorMode.STREAMING)
-            self._current_mode = ProcessorMode.STREAMING
-            logger.info(f"切换到 STREAMING 模式，耗时 {(time.time()-start)*1000:.1f}ms")
+            self._current_mode = ProcessorMode.HALF_DUPLEX
+            logger.info(f"切换到 HALF_DUPLEX 模式，耗时 {(time.time()-start)*1000:.1f}ms")
         
-        return self._streaming_view
+        return self._half_duplex_view
     
     def set_duplex_mode(self) -> DuplexView:
         """切换到 Duplex 模式
@@ -1446,7 +1448,7 @@ class UnifiedProcessor(BaseProcessor):
         包含 system prompt + 所有历史轮次 + 当前已生成的 token。
         
         注意：
-        - Streaming 模式：读 model.llm_past_key_values
+        - Half-Duplex 模式：读 model.llm_past_key_values
         - Duplex 模式：读 model.duplex.decoder.cache（独立 KV cache）
         - Chat 模式：仅在 chat() 调用期间有效
         - 返回 0 表示 KV cache 为空或模型未加载
@@ -1485,9 +1487,9 @@ class UnifiedProcessor(BaseProcessor):
         return self._chat_view
     
     @property
-    def streaming(self) -> StreamingView:
-        """Streaming 视图（不切换模式，仅获取视图）"""
-        return self._streaming_view
+    def half_duplex(self) -> HalfDuplexView:
+        """Half-Duplex 视图（不切换模式，仅获取视图）"""
+        return self._half_duplex_view
     
     @property
     def duplex(self) -> DuplexView:

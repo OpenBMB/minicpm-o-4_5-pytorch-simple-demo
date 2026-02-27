@@ -103,9 +103,9 @@ class ServiceSectionConfig(BaseModel):
         default=15.0,
         description="Chat 预估耗时基准（秒），Admin 可动态调整",
     )
-    eta_streaming_s: float = Field(
-        default=20.0,
-        description="Streaming 预估耗时基准（秒），Admin 可动态调整",
+    eta_half_duplex_s: float = Field(
+        default=180.0,
+        description="Half-Duplex 预估耗时基准（秒），Admin 可动态调整",
     )
     eta_audio_duplex_s: float = Field(
         default=120.0,
@@ -216,8 +216,8 @@ class ServiceConfig(BaseModel):
         return self.service.eta_chat_s
 
     @property
-    def eta_streaming_s(self) -> float:
-        return self.service.eta_streaming_s
+    def eta_half_duplex_s(self) -> float:
+        return self.service.eta_half_duplex_s
 
     @property
     def eta_audio_duplex_s(self) -> float:

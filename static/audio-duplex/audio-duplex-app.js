@@ -6,6 +6,7 @@
  */
 
 // Layer 0: Pure logic
+import { AudioDeviceSelector } from '../lib/audio-device-selector.js';
 import { resampleAudio, arrayBufferToBase64, escapeHtml } from '../duplex/lib/duplex-utils.js';
 import { DuplexSession } from '../duplex/lib/duplex-session.js';
 import { SessionRecorder } from '../duplex/lib/session-recorder.js';
@@ -131,9 +132,23 @@ loadFrontendDefaults().then(() => {
     _duplexPreset.init();
 });
 window._settingsPersistence = settingsPersistence;
+const adxDeviceSelector = new AudioDeviceSelector({
+    micSelectEl: document.getElementById('adxMicDevice'),
+    speakerSelectEl: document.getElementById('adxSpeakerDevice'),
+    refreshBtnEl: document.getElementById('adxBtnRefreshDevices'),
+    storagePrefix: 'audio_duplex',
+    onSpeakerChange: () => {
+        if (session && session.audioPlayer && session.audioPlayer._ctx) {
+            adxDeviceSelector.applySinkId(session.audioPlayer._ctx);
+        }
+    },
+});
+adxDeviceSelector.init();
+
 document.getElementById('btnResetSettings')?.addEventListener('click', () => {
     if (confirm('Reset all settings to defaults?')) {
         localStorage.removeItem('audio_duplex_preset');
+        adxDeviceSelector.clearSaved();
         settingsPersistence.clear();
     }
 });
@@ -157,12 +172,12 @@ const _duplexPreset = new PresetSelector({
     container: document.getElementById('presetSelectorDuplex'),
     page: 'audio_duplex',
     detailsEl: document.getElementById('duplexSysPromptDetails'),
-    onSelect: (preset) => {
+    onSelect: (preset, { audioLoaded } = {}) => {
         if (preset && preset.system_prompt) {
             document.getElementById('systemPrompt').value = preset.system_prompt;
             settingsPersistence.save();
         }
-        if (preset && preset.ref_audio && preset.ref_audio.data) {
+        if (audioLoaded && preset && preset.ref_audio && preset.ref_audio.data) {
             refAudio.setAudio(preset.ref_audio.data, preset.ref_audio.name, preset.ref_audio.duration);
         }
     },
@@ -415,8 +430,9 @@ class FileAudioProvider {
     // ==================== Mixed mode: phased feeding ====================
 
     async _setupMic() {
+        const _micId = adxDeviceSelector.getSelectedMicId();
         this._micStream = await navigator.mediaDevices.getUserMedia({
-            audio: { channelCount: 1 },
+            audio: { channelCount: 1, ...(_micId ? { deviceId: { exact: _micId } } : {}) },
             video: false,
         });
 
@@ -882,7 +898,12 @@ async function startSession() {
         setQueueButtonStates('assigned');
         playAlarmBell();
     };
-    session.onPrepared = async () => { await playSessionChime(); };
+    session.onPrepared = async () => {
+        if (session.audioPlayer && session.audioPlayer._ctx) {
+            adxDeviceSelector.applySinkId(session.audioPlayer._ctx);
+        }
+        await playSessionChime();
+    };
     session.onForceListenChange = (active) => setDefaultForceListenBtnState(active);
     session.onCleanup = () => {
         _duplexCountdown.stop();
@@ -1012,7 +1033,10 @@ async function startMicrophone() {
 
     await audioCtxIn.audioWorklet.addModule('/static/duplex/lib/capture-processor.js');
 
-    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const _micId = adxDeviceSelector.getSelectedMicId();
+    audioStream = await navigator.mediaDevices.getUserMedia({
+        audio: _micId ? { deviceId: { exact: _micId } } : true,
+    });
     audioSource = audioCtxIn.createMediaStreamSource(audioStream);
 
     analyserNode = audioCtxIn.createAnalyser();

@@ -82,7 +82,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
       <span class="nav-group-header">系统架构</span>
       <ul class="nav-group-children">
         <li><a href="architecture/index.html">架构概述</a></li>
-        <li><a href="architecture/streaming.html">Chat 模式</a></li>
+        <li><a href="architecture/chat.html">Chat 模式</a></li>
+        <li><a href="architecture/half-duplex.html">Half-Duplex 模式</a></li>
         <li><a href="architecture/duplex.html">Duplex 模式</a></li>
         <li><a href="architecture/internals.html">内部机制</a></li>
       </ul>
@@ -193,7 +194,7 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 </table>
 <p>类型别名：<code>ContentItem = Union[TextContent, ImageContent, AudioContent, VideoContent]</code></p>
 <h4 id="message">Message 模型</h4>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Message</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">Message</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
     <span class="n">role</span><span class="p">:</span> <span class="n">Role</span>
     <span class="n">content</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">ContentItem</span><span class="p">]]</span>
 </code></pre></div>
@@ -356,23 +357,23 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <h2 id="processors">processors/ — 推理处理器</h2>
 <h3 id="basepy">base.py — 基类</h3>
 <h4 id="baseprocessor">BaseProcessor（抽象基类）</h4>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">BaseProcessor</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">BaseProcessor</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
 
     <span class="nd">@property</span>
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">mode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorMode</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span> <span class="nf">mode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorMode</span><span class="p">:</span> <span class="o">...</span>
 
     <span class="nd">@property</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">capabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorCapabilities</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span> <span class="nf">capabilities</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessorCapabilities</span><span class="p">:</span> <span class="o">...</span>
 
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_load_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span> <span class="nf">_load_model</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 
     <span class="nd">@abstractmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_release_resources</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span> <span class="nf">_release_resources</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">is_ready</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span> <span class="nf">is_ready</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
 </code></pre></div>
 
 <h4 id="minicpmoprocessormixin">MiniCPMOProcessorMixin</h4>
@@ -410,8 +411,8 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <h3 id="unifiedpy">unified.py — 统一处理器</h3>
 <h4 id="unifiedprocessor">UnifiedProcessor</h4>
 <p>统一处理器，一次加载模型，支持 Streaming / Duplex 两种模式毫秒级热切换。</p>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">UnifiedProcessor</span><span class="p">(</span><span class="n">BaseProcessor</span><span class="p">):</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">UnifiedProcessor</span><span class="p">(</span><span class="n">BaseProcessor</span><span class="p">):</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">model_path</span><span class="p">,</span> <span class="n">pt_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">,</span>
         <span class="n">ref_audio_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">duplex_config</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">preload_both_tts</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="nb">compile</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
@@ -436,16 +437,16 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <td>释放所有资源</td>
 </tr>
 <tr>
-<td><code>set_streaming_mode()</code></td>
-<td>切换到 Streaming 模式，返回 <code>StreamingView</code></td>
+<td><code>set_half_duplex_mode()</code></td>
+<td>切换到 Half-Duplex 模式，返回 <code>HalfDuplexView</code></td>
 </tr>
 <tr>
 <td><code>set_duplex_mode()</code></td>
 <td>切换到 Duplex 模式，返回 <code>DuplexView</code></td>
 </tr>
 <tr>
-<td><code>streaming</code></td>
-<td>StreamingView 属性</td>
+<td><code>half_duplex</code></td>
+<td>HalfDuplexView 属性</td>
 </tr>
 <tr>
 <td><code>duplex</code></td>
@@ -539,14 +540,14 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <hr />
 <h2 id="capabilitiespy">capabilities.py — 能力声明系统</h2>
 <h3 id="processormode">ProcessorMode 枚举</h3>
-<div class="codehilite"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">ProcessorMode</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
-    <span class="n">STREAMING</span> <span class="o">=</span> <span class="s2">&quot;streaming&quot;</span>
+<div class="codehilite"><pre><span></span><code><span class="k">class</span> <span class="nc">ProcessorMode</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
+    <span class="n">HALF_DUPLEX</span> <span class="o">=</span> <span class="s2">&quot;half_duplex&quot;</span>
     <span class="n">DUPLEX</span> <span class="o">=</span> <span class="s2">&quot;duplex&quot;</span>
 </code></pre></div>
 
 <h3 id="processorcapabilities">ProcessorCapabilities 数据类</h3>
 <div class="codehilite"><pre><span></span><code><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="k">class</span><span class="w"> </span><span class="nc">ProcessorCapabilities</span><span class="p">:</span>
+<span class="k">class</span> <span class="nc">ProcessorCapabilities</span><span class="p">:</span>
     <span class="n">mode</span><span class="p">:</span> <span class="n">ProcessorMode</span>
     <span class="c1"># 输入能力</span>
     <span class="n">supports_text</span><span class="p">:</span> <span class="nb">bool</span>

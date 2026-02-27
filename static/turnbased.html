@@ -1275,13 +1275,13 @@ function initSystemContentEditors() {
     initPresetSelectors();
 }
 
-function _applyTurnbasedPreset(preset) {
+function _applyTurnbasedPreset(preset, { audioLoaded } = {}) {
     if (!preset || !preset.system_content) return;
     const items = preset.system_content.map(item => {
         if (item.type === 'audio') {
             return {
                 type: 'audio',
-                data: item.data || null,
+                data: (audioLoaded ? item.data : null) || null,
                 name: item.name || '',
                 duration: item.duration || 0,
             };
@@ -1303,8 +1303,8 @@ function initPresetSelectors() {
         container: document.getElementById('presetSelectorInit'),
         page: 'turnbased',
         detailsEl: document.getElementById('systemConfigCard'),
-        onSelect: (preset) => {
-            _applyTurnbasedPreset(preset);
+        onSelect: (preset, opts) => {
+            _applyTurnbasedPreset(preset, opts);
             if (_presetChat) _presetChat.select(preset.id, false);
         },
         storageKey: 'turnbased_preset',
@@ -1313,8 +1313,8 @@ function initPresetSelectors() {
         container: document.getElementById('presetSelectorChat'),
         page: 'turnbased',
         detailsEl: document.getElementById('sysConfigBar'),
-        onSelect: (preset) => {
-            _applyTurnbasedPreset(preset);
+        onSelect: (preset, opts) => {
+            _applyTurnbasedPreset(preset, opts);
             if (_presetInit) _presetInit.select(preset.id, false);
         },
         storageKey: 'turnbased_preset',
@@ -2510,6 +2510,9 @@ async function sendChatMessage(maxTokens) {
                 if (last) last.dataset.msgIndex = state.messages.length - 1;
 
                 if (msg.audio_data) appendAudioPlayer(msg.audio_data);
+                if (msg.recording_session_id && typeof _saveShareUI !== 'undefined') {
+                    _saveShareUI.setSessionId(msg.recording_session_id);
+                }
                 ws.close();
                 setGenerating(false);
             } else if (msg.type === 'error') {
@@ -3110,6 +3113,9 @@ async function sendStreamingMessage(maxTokens) {
                 const last = lastMsg[lastMsg.length - 1];
                 if (last) last.dataset.msgIndex = state.messages.length - 1;
 
+                if (msg.recording_session_id && typeof _saveShareUI !== 'undefined') {
+                    _saveShareUI.setSessionId(msg.recording_session_id);
+                }
                 ws.close();
                 setGenerating(false);
             } else if (msg.type === 'error') {

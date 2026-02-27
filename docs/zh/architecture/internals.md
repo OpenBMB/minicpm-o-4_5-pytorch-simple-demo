@@ -159,10 +159,10 @@ stateDiagram-v2
     LOADING --> IDLE: 模型加载完成
     LOADING --> ERROR: 加载失败
 
-    IDLE --> BUSY_STREAMING: 分配 Streaming 任务
+    IDLE --> BUSY_HALF_DUPLEX: 分配 Half-Duplex 任务
     IDLE --> DUPLEX_ACTIVE: 分配 Duplex 任务
 
-    BUSY_STREAMING --> IDLE: 推理完成
+    BUSY_HALF_DUPLEX --> IDLE: 会话结束/超时
 
     DUPLEX_ACTIVE --> DUPLEX_PAUSED: pause（客户端暂停）
     DUPLEX_PAUSED --> DUPLEX_ACTIVE: resume（客户端恢复）

@@ -43,10 +43,10 @@ response = chat.chat(ChatRequest(
 ))
 print(response.text)
 
-# Streaming 模式（毫秒级切换）
-streaming = processor.set_streaming_mode()
-streaming.prefill(StreamingRequest(...))
-for chunk in streaming.generate(session_id="user_001"):
+# Half-Duplex 模式（毫秒级切换）
+half_duplex = processor.set_half_duplex_mode()
+half_duplex.prefill(StreamingRequest(...))
+for chunk in half_duplex.generate(session_id="user_001"):
     print(chunk.text_delta, end="")
 
 # Duplex 模式（毫秒级切换）
@@ -84,7 +84,7 @@ from core.capabilities import (
     ProcessorCapabilities,
     CAPABILITIES,
     CHAT_CAPABILITIES,
-    STREAMING_CAPABILITIES,
+    HALF_DUPLEX_CAPABILITIES,
     DUPLEX_CAPABILITIES,
     get_capabilities,
     supports_feature,
@@ -95,7 +95,7 @@ from core.processors import (
     BaseProcessor,
     UnifiedProcessor,
     ChatView,
-    StreamingView,
+    HalfDuplexView,
     DuplexView,
 )
 
@@ -155,7 +155,7 @@ __all__ = [
     "ProcessorCapabilities",
     "CAPABILITIES",
     "CHAT_CAPABILITIES",
-    "STREAMING_CAPABILITIES",
+    "HALF_DUPLEX_CAPABILITIES",
     "DUPLEX_CAPABILITIES",
     "get_capabilities",
     "supports_feature",
@@ -164,7 +164,7 @@ __all__ = [
     "BaseProcessor",
     "UnifiedProcessor",
     "ChatView",
-    "StreamingView",
+    "HalfDuplexView",
     "DuplexView",
     
     # 工厂

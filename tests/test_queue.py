@@ -34,7 +34,7 @@ def make_pool(
     pool = WorkerPool(
         worker_addresses=addresses,
         max_queue_size=max_queue_size,
-        eta_config=EtaConfig(eta_chat_s=10.0, eta_streaming_s=15.0, eta_duplex_s=90.0),
+        eta_config=EtaConfig(eta_chat_s=10.0, eta_half_duplex_s=15.0, eta_duplex_s=90.0),
     )
     if all_idle:
         for w in pool.workers.values():
@@ -604,7 +604,7 @@ class TestEtaConfig:
 
         pool.eta_tracker.update_config(EtaConfig(
             eta_chat_s=20.0,
-            eta_streaming_s=30.0,
+            eta_half_duplex_s=30.0,
             eta_duplex_s=120.0,
         ))
 
@@ -639,7 +639,7 @@ class TestEtaAccuracy:
         """
         pool = make_pool(num_workers=1, all_idle=True)
         pool.eta_tracker.update_config(
-            EtaConfig(eta_chat_s=15.0, eta_streaming_s=15.0, eta_duplex_s=90.0)
+            EtaConfig(eta_chat_s=15.0, eta_half_duplex_s=15.0, eta_duplex_s=90.0)
         )
 
         # t=0s: Worker 接手任务 A
@@ -664,7 +664,7 @@ class TestEtaAccuracy:
         """任务超时（elapsed > eta）时兜底 15s，不显示 0 或负数"""
         pool = make_pool(num_workers=1, all_idle=True)
         pool.eta_tracker.update_config(
-            EtaConfig(eta_chat_s=10.0, eta_streaming_s=15.0, eta_duplex_s=90.0)
+            EtaConfig(eta_chat_s=10.0, eta_half_duplex_s=15.0, eta_duplex_s=90.0)
         )
 
         # Worker 接手任务
@@ -689,7 +689,7 @@ class TestEtaAccuracy:
         """2 Worker 交错繁忙，3 请求排队，ETA 递增"""
         pool = make_pool(num_workers=2, all_idle=True)
         pool.eta_tracker.update_config(
-            EtaConfig(eta_chat_s=20.0, eta_streaming_s=15.0, eta_duplex_s=90.0)
+            EtaConfig(eta_chat_s=20.0, eta_half_duplex_s=15.0, eta_duplex_s=90.0)
         )
 
         # Worker 0 接手 A（已跑 5s，剩余 15s）
@@ -728,7 +728,7 @@ class TestEtaAccuracy:
         """_get_running_tasks 返回的 estimated_remaining_s 随时间递减"""
         pool = make_pool(num_workers=1, all_idle=True)
         pool.eta_tracker.update_config(
-            EtaConfig(eta_chat_s=15.0, eta_streaming_s=15.0, eta_duplex_s=90.0)
+            EtaConfig(eta_chat_s=15.0, eta_half_duplex_s=15.0, eta_duplex_s=90.0)
         )
 
         ticket_a, future_a = pool.enqueue("chat", session_id="user_a")

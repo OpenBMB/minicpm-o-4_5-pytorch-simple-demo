@@ -1,4 +1,4 @@
-"""StreamingView 集成测试（数据驱动 + 状态测试）
+"""HalfDuplexView 集成测试（数据驱动 + 状态测试）
 
 测试 Streaming 模式的功能和状态管理。
 
@@ -44,7 +44,7 @@ from core.schemas import (
     AudioContent,
     ImageContent,
 )
-from core.processors import UnifiedProcessor, StreamingView
+from core.processors import UnifiedProcessor, HalfDuplexView
 
 
 # =============================================================================
@@ -53,7 +53,7 @@ from core.processors import UnifiedProcessor, StreamingView
 
 @pytest.fixture(scope="module")
 def processor():
-    """创建共享的 StreamingView 实例"""
+    """创建共享的 HalfDuplexView 实例"""
     from conftest import PT_PATH
     print(f"\n[Setup] 加载模型: {MODEL_PATH}")
     print(f"[Setup] 额外权重: {PT_PATH}")
@@ -62,7 +62,7 @@ def processor():
         pt_path=PT_PATH,
         ref_audio_path=str(REF_AUDIO_PATH),
     )
-    streaming_view = unified.set_streaming_mode()
+    streaming_view = unified.set_half_duplex_mode()
     yield streaming_view
     print("\n[Teardown] 释放模型")
     del unified
@@ -216,7 +216,7 @@ class TestStreamingData:
 # =============================================================================
 
 class TestCompleteTurn:
-    """测试 StreamingView.complete_turn() 便捷方法
+    """测试 HalfDuplexView.complete_turn() 便捷方法
     
     complete_turn 封装了 prefill + generate + 累加文本/音频的流程，
     适用于不需要实时流式输出的场景。

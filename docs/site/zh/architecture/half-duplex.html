@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Half-Duplex 模式 - MiniCPM-o 4.5 文档</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+:root {
+  --sidebar-w: 260px;
+  --bg: #fff; --bg-side: #f8f9fa; --bg-code: #f6f8fa;
+  --c1: #24292f; --c2: #57606a;
+  --border: #d0d7de; --accent: #0969da; --nav-active: #ddf4ff;
+}
+body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif; color:var(--c1); line-height:1.6; background:var(--bg); }
+.sidebar-toggle { position:fixed; top:12px; left:12px; z-index:1001; background:var(--bg-side); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:18px; cursor:pointer; display:none; }
+.sidebar { position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh; overflow-y:auto; background:var(--bg-side); border-right:1px solid var(--border); padding:20px 0; z-index:1000; transition:transform .3s; }
+.sidebar-header { padding:0 20px 16px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+.sidebar-header h2 { font-size:16px; font-weight:600; }
+.sidebar-subtitle { font-size:12px; color:var(--c2); }
+.lang-switch { display:inline-block; margin-top:6px; font-size:12px; color:var(--accent); text-decoration:none; padding:2px 8px; border:1px solid var(--border); border-radius:4px; transition:background .15s; }
+.lang-switch:hover { background:var(--nav-active); text-decoration:none; }
+
+.nav-list { list-style:none; padding:0 8px; }
+.nav-list > li > a { display:block; padding:7px 12px; color:var(--c2); text-decoration:none; font-size:14px; border-radius:6px; transition:background .15s,color .15s; }
+.nav-list > li > a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-list > li > a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.nav-group { margin-top:4px; }
+.nav-group-header { display:flex; align-items:center; gap:6px; padding:8px 12px; color:var(--c1); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; cursor:pointer; border-radius:6px; user-select:none; transition:background .15s; }
+.nav-group-header:hover { background:#eaeef2; }
+.nav-group-header::before { content:""; display:inline-block; width:0; height:0; border-left:5px solid var(--c2); border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; transition:transform .2s; transform:rotate(90deg); flex-shrink:0; }
+.nav-group.collapsed .nav-group-header::before { transform:rotate(0); }
+.nav-group-children { list-style:none; margin:0 0 4px 19px; padding:3px 0 3px 13px; border-left:2px solid #e1e4e8; overflow:hidden; max-height:500px; transition:max-height .25s ease,opacity .2s ease,padding .2s ease; opacity:1; }
+.nav-group.collapsed .nav-group-children { max-height:0; opacity:0; padding:0 0 0 13px; }
+.nav-group-children li a { display:block; padding:4px 10px; font-size:13px; color:var(--c2); text-decoration:none; border-radius:4px; transition:background .15s,color .15s; }
+.nav-group-children li a:hover { background:#e8e8e8; color:var(--c1); }
+.nav-group-children li a.active { background:var(--nav-active); color:var(--accent); font-weight:600; }
+
+.content { margin-left:var(--sidebar-w); max-width:900px; padding:40px 48px; }
+article h1 { font-size:28px; font-weight:600; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+article h2 { font-size:22px; font-weight:600; margin-top:32px; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #eaecef; }
+article h3 { font-size:18px; font-weight:600; margin-top:24px; margin-bottom:10px; }
+article h4 { font-size:15px; font-weight:600; margin-top:20px; margin-bottom:8px; }
+article p { margin-bottom:14px; }
+article ul,article ol { margin-bottom:14px; padding-left:24px; }
+article li { margin-bottom:4px; }
+article a { color:var(--accent); text-decoration:none; }
+article a:hover { text-decoration:underline; }
+article code { background:var(--bg-code); padding:2px 6px; border-radius:4px; font-size:13px; font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; }
+article pre { background:var(--bg-code); border:1px solid var(--border); border-radius:6px; padding:16px; overflow-x:auto; margin-bottom:16px; line-height:1.5; }
+article pre code { background:none; padding:0; font-size:13px; }
+article table { width:100%; border-collapse:collapse; margin-bottom:16px; font-size:14px; }
+article th,article td { border:1px solid var(--border); padding:8px 12px; text-align:left; }
+article th { background:var(--bg-code); font-weight:600; }
+article tr:nth-child(even) { background:#f8f9fa; }
+article hr { border:none; border-top:1px solid var(--border); margin:28px 0; }
+article blockquote { border-left:4px solid var(--accent); padding:8px 16px; margin:0 0 16px; color:var(--c2); background:#f8f9fa; border-radius:0 6px 6px 0; }
+article .mermaid { text-align:center; margin:20px 0; }
+footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); color:var(--c2); font-size:13px; }
+@media(max-width:768px) {
+  .sidebar { transform:translateX(-100%); }
+  .sidebar.open { transform:translateX(0); box-shadow:2px 0 8px rgba(0,0,0,.15); }
+  .sidebar-toggle { display:block; }
+  .content { margin-left:0; padding:50px 20px 40px; }
+  .content.shifted { margin-left:var(--sidebar-w); }
+}
+</style>
+</head>
+<body>
+<button class="sidebar-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>MiniCPM-o 4.5</h2>
+    <span class="sidebar-subtitle">项目文档</span>
+    <a href="../../en/architecture/half-duplex.html" class="lang-switch">English</a>
+  </div>
+  <ul class="nav-list">
+    <li><a href="../index.html">项目概述</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">系统架构</span>
+      <ul class="nav-group-children">
+        <li><a href="../architecture/index.html">架构概述</a></li>
+        <li><a href="../architecture/chat.html">Chat 模式</a></li>
+        <li><a href="../architecture/half-duplex.html" class="active">Half-Duplex 模式</a></li>
+        <li><a href="../architecture/duplex.html">Duplex 模式</a></li>
+        <li><a href="../architecture/internals.html">内部机制</a></li>
+      </ul>
+    </li>
+    <li><a href="../gateway.html">Gateway 模块</a></li>
+    <li><a href="../worker.html">Worker 模块</a></li>
+    <li><a href="../schema.html">Schema</a></li>
+    <li><a href="../model.html">模型模块</a></li>
+    <li><a href="../compile.html">torch.compile</a></li>
+    <li class="nav-group">
+      <span class="nav-group-header">前端模块</span>
+      <ul class="nav-group-children">
+        <li><a href="../frontend/index.html">前端概述</a></li>
+        <li><a href="../frontend/pages.html">页面与路由</a></li>
+        <li><a href="../frontend/audio.html">音频处理</a></li>
+        <li><a href="../frontend/duplex-session.html">双工会话</a></li>
+        <li><a href="../frontend/components.html">UI 组件</a></li>
+      </ul>
+    </li>
+    <li><a href="../api.html">API 参考</a></li>
+    <li><a href="../deployment.html">配置与部署</a></li>
+  </ul>
+</nav>
+<main class="content" id="content">
+  <article><h1 id="half-duplex-audio">Half-Duplex Audio 模式详解</h1>
+<p>Half-Duplex Audio 页面的核心推理模式。通过 <code>/ws/half_duplex/{session_id}</code> WebSocket 接口，实现基于 VAD 的半双工语音通话。</p>
+<h2 id="_1">一句话理解</h2>
+<blockquote>
+<p>用户说话时 VAD 自动检测语音边界，说完后将语音段喂给模型生成回复，等回复播完再继续听 —— 像打电话一样的轮流说话。</p>
+</blockquote>
+<h2 id="_2">与其他模式对比</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Chat 模式</th>
+<th>Half-Duplex 模式</th>
+<th>Duplex 模式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>交互方式</td>
+<td>轮次式（手动触发）</td>
+<td>轮次式（VAD 自动触发）</td>
+<td>全双工（同时收听和回应）</td>
+</tr>
+<tr>
+<td>输入处理</td>
+<td>一次性 prefill 完整消息</td>
+<td>VAD 检测语音段 → prefill</td>
+<td>每秒流式 prefill 音频/视频</td>
+</tr>
+<tr>
+<td>Worker 占用</td>
+<td>仅推理期间，完成即释放</td>
+<td>整个会话期间独占（默认 3 分钟）</td>
+<td>整个会话期间独占</td>
+</tr>
+<tr>
+<td>语音检测</td>
+<td>无（前端手动录制）</td>
+<td>服务端 SileroVAD</td>
+<td>无（模型自主判断）</td>
+</tr>
+<tr>
+<td>适用场景</td>
+<td>文本/多模态问答</td>
+<td>语音对话、免手操作</td>
+<td>实时语音/视频对话</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">整体流程</h2>
+<h3 id="_4">简化视角</h3>
+<pre class="mermaid">
+sequenceDiagram
+    participant U as 用户
+    participant VAD as SileroVAD
+    participant MD as Model
+
+    loop 半双工循环
+        U->>VAD: 持续发送音频
+        VAD->>VAD: 检测语音开始/结束
+        VAD->>MD: 语音段（用户说完了）
+        MD-->>U: 流式回复（文本 + 音频）
+        Note over U: 等播完再继续说
+    end
+</pre>
+
+<h3 id="_5">详细视角</h3>
+<pre class="mermaid">
+sequenceDiagram
+    participant FE as 前端
+    participant GW as Gateway
+    participant WK as Worker
+    participant VAD as StreamingVAD
+    participant MD as HalfDuplexView
+
+    FE->>GW: WS /ws/half_duplex/{session_id}
+    GW->>WK: 独占 Worker
+    FE->>WK: prepare (system_prompt + config)
+    WK->>MD: reset + prefill system prompt
+    WK->>VAD: 初始化 VAD
+
+    loop 半双工循环
+        FE->>WK: audio_chunk (连续发送)
+        WK->>VAD: feed(audio_chunk)
+        alt 用户正在说话
+            WK-->>FE: vad_state: speaking
+        else 用户停止说话
+            WK-->>FE: vad_state: false
+            WK-->>FE: generating
+            WK->>MD: prefill(语音段)
+            WK->>MD: generate(streaming)
+            loop 流式返回
+                MD-->>WK: text_delta + audio
+                WK-->>FE: chunk
+            end
+            WK-->>FE: turn_done
+            WK->>VAD: reset()
+        end
+    end
+
+    FE->>WK: stop / 超时
+    WK-->>FE: timeout
+</pre>
+
+<h2 id="vad">VAD 阶段</h2>
+<p>Half-Duplex 的核心是服务端 VAD（Voice Activity Detection），使用 SileroVAD ONNX 模型实时检测用户语音。</p>
+<h3 id="streamingvad">StreamingVAD</h3>
+<p><code>vad/vad.py</code> 中的 <code>StreamingVAD</code> 类封装了流式 VAD 逻辑：</p>
+<div class="codehilite"><pre><span></span><code><span class="n">vad</span> <span class="o">=</span> <span class="n">StreamingVAD</span><span class="p">(</span><span class="n">options</span><span class="o">=</span><span class="n">StreamingVadOptions</span><span class="p">(</span>
+    <span class="n">threshold</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>              <span class="c1"># 语音概率阈值</span>
+    <span class="n">min_speech_duration_ms</span><span class="o">=</span><span class="mi">128</span><span class="p">,</span> <span class="c1"># 最小语音段长度</span>
+    <span class="n">min_silence_duration_ms</span><span class="o">=</span><span class="mi">800</span><span class="p">,</span><span class="c1"># 最小静音长度（判定说完）</span>
+    <span class="n">speech_pad_ms</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>           <span class="c1"># 语音段两侧填充</span>
+<span class="p">))</span>
+
+<span class="c1"># 逐 chunk 喂入</span>
+<span class="k">for</span> <span class="n">audio_chunk</span> <span class="ow">in</span> <span class="n">audio_stream</span><span class="p">:</span>
+    <span class="n">speech_segment</span> <span class="o">=</span> <span class="n">vad</span><span class="o">.</span><span class="n">feed</span><span class="p">(</span><span class="n">audio_chunk</span><span class="p">)</span>  <span class="c1"># float32, 16kHz</span>
+    <span class="k">if</span> <span class="n">speech_segment</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># 用户说完了，speech_segment 是完整的语音 ndarray</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">prefill</span><span class="p">(</span><span class="n">speech_segment</span><span class="p">)</span>
+        <span class="n">model</span><span class="o">.</span><span class="n">generate</span><span class="p">()</span>
+</code></pre></div>
+
+<h3 id="_6">工作原理</h3>
+<ol>
+<li>前端每 0.5 秒发送一个 <code>audio_chunk</code>（16kHz float32 PCM）</li>
+<li><code>StreamingVAD.feed()</code> 按 1024 sample 窗口滑动，每个窗口调用 SileroVAD 计算语音概率</li>
+<li>概率 &gt;= threshold → 标记"说话开始"，累积音频到 buffer</li>
+<li>概率 &lt; (threshold - 0.15) 且持续 &gt;= min_silence_duration_ms → 判定"说完"</li>
+<li>返回累积的语音段，VAD 状态 reset</li>
+</ol>
+<h3 id="_7">防误触机制</h3>
+<ul>
+<li><strong>冷启动保护</strong>：<code>prepare</code> 后 0.5 秒内忽略所有 VAD，避免麦克风初始化噪声误触发</li>
+<li><strong>AI 播放期间静默</strong>：前端在 AI 音频播放期间不发送 <code>audio_chunk</code>，避免自激回声</li>
+<li><strong>播完恢复延迟</strong>：<code>turn_done</code> 后等 AI 音频播完 + 800ms 缓冲才恢复发送</li>
+</ul>
+<h2 id="prefill-generate">Prefill + Generate 阶段</h2>
+<p>VAD 检测到语音段后，使用 <code>HalfDuplexView</code> 进行推理。HalfDuplexView 复用了模型的 <code>streaming_prefill</code> + <code>streaming_generate</code> 能力：</p>
+<ol>
+<li>语音段 → Base64 编码 → <code>AudioContent</code> → <code>Message(role=USER)</code></li>
+<li><code>HalfDuplexView.prefill(request)</code> — 将用户语音 prefill 到 KV Cache</li>
+<li><code>HalfDuplexView.generate()</code> — 流式生成文本 + 音频 chunk</li>
+<li>每个 chunk 通过 WebSocket 发送给前端</li>
+</ol>
+<p>KV Cache 在整个会话期间保持，支持多轮上下文累积。</p>
+<h2 id="websocket">WebSocket 协议</h2>
+<h3 id="_8">端点</h3>
+<div class="codehilite"><pre><span></span><code>wss://host/ws/half_duplex/{session_id}
+</code></pre></div>
+
+<p>Gateway 将此连接代理到 Worker，Worker 在整个会话期间被独占。</p>
+<h3 id="_9">客户端 → 服务端</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prepare</code></td>
+<td><code>system_prompt</code>, <code>config</code>, <code>ref_audio_base64</code>, <code>system_content</code></td>
+<td>初始化会话</td>
+</tr>
+<tr>
+<td><code>audio_chunk</code></td>
+<td><code>audio_base64</code></td>
+<td>发送麦克风音频（float32 PCM 16kHz）</td>
+</tr>
+<tr>
+<td><code>stop</code></td>
+<td>—</td>
+<td>停止会话</td>
+</tr>
+</tbody>
+</table>
+<p><code>config</code> 结构：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;vad&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;threshold&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.8</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;min_speech_duration_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">128</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;min_silence_duration_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">800</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;speech_pad_ms&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">30</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;generation&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;max_new_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">256</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;length_penalty&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.1</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;temperature&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.7</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;tts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;session&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">&quot;timeout_s&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">180</span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="_10">服务端 → 客户端</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>queued</code></td>
+<td><code>position</code>, <code>estimated_wait_s</code></td>
+<td>排队中</td>
+</tr>
+<tr>
+<td><code>queue_done</code></td>
+<td>—</td>
+<td>离开队列</td>
+</tr>
+<tr>
+<td><code>prepared</code></td>
+<td><code>session_id</code>, <code>timeout_s</code>, <code>recording_session_id</code></td>
+<td>准备完成</td>
+</tr>
+<tr>
+<td><code>vad_state</code></td>
+<td><code>speaking</code></td>
+<td>VAD 状态变化（用户开始/停止说话）</td>
+</tr>
+<tr>
+<td><code>generating</code></td>
+<td><code>speech_duration_ms</code></td>
+<td>开始生成回复</td>
+</tr>
+<tr>
+<td><code>chunk</code></td>
+<td><code>text_delta</code>, <code>audio_data</code></td>
+<td>流式生成的一个 chunk</td>
+</tr>
+<tr>
+<td><code>turn_done</code></td>
+<td><code>turn_index</code>, <code>text</code></td>
+<td>一轮生成完成</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td><code>elapsed_s</code></td>
+<td>会话超时</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td><code>error</code></td>
+<td>错误信息</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_11">调用链路</h2>
+<div class="codehilite"><pre><span></span><code>前端 half_duplex.html
+  └─ WebSocket /ws/half_duplex/{session_id}
+      └─ Gateway（独占 WS 代理）
+          └─ Worker /ws/half_duplex
+              ├─ prepare
+              │   ├─ StreamingVAD 初始化
+              │   ├─ HalfDuplexView.prefill(system_prompt)
+              │   ├─ TTS init (ref_audio)
+              │   └─ TurnBasedSessionRecorder 初始化
+              └─ audio_chunk 循环
+                  ├─ StreamingVAD.feed(chunk)
+                  ├─ 语音段检测 → HalfDuplexView.prefill(user_audio)
+                  ├─ HalfDuplexView.generate() → 流式 chunk
+                  └─ VAD reset + 等待下一轮
+</code></pre></div>
+
+<h2 id="_12">前端参数透传</h2>
+<p>前端 Settings 面板中的参数通过 <code>prepare</code> 消息的 <code>config</code> 字段传到后端。参数保存在 <code>localStorage</code>，仅在 session 启动时发送，会话中修改不生效。</p>
+<table>
+<thead>
+<tr>
+<th>分类</th>
+<th>参数</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VAD</td>
+<td>threshold</td>
+<td>0.8</td>
+<td>语音检测阈值（越高越严格）</td>
+</tr>
+<tr>
+<td>VAD</td>
+<td>min_speech_duration_ms</td>
+<td>128</td>
+<td>最小语音段长度</td>
+</tr>
+<tr>
+<td>VAD</td>
+<td>min_silence_duration_ms</td>
+<td>800</td>
+<td>静音多久判定说完</td>
+</tr>
+<tr>
+<td>VAD</td>
+<td>speech_pad_ms</td>
+<td>30</td>
+<td>语音段两侧填充</td>
+</tr>
+<tr>
+<td>生成</td>
+<td>max_new_tokens</td>
+<td>256</td>
+<td>最大生成 token 数</td>
+</tr>
+<tr>
+<td>生成</td>
+<td>length_penalty</td>
+<td>1.1</td>
+<td>长度惩罚系数</td>
+</tr>
+<tr>
+<td>生成</td>
+<td>temperature</td>
+<td>0.7</td>
+<td>采样温度</td>
+</tr>
+<tr>
+<td>TTS</td>
+<td>enabled</td>
+<td>true</td>
+<td>是否生成语音回复</td>
+</tr>
+<tr>
+<td>会话</td>
+<td>timeout_s</td>
+<td>180</td>
+<td>会话超时时间（秒）</td>
+</tr>
+</tbody>
+</table></article>
+  <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose'});
+</script>
+<script>
+hljs.highlightAll();
+function toggleSidebar(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('content').classList.toggle('shifted');}
+document.querySelectorAll('.nav-group-header').forEach(function(h){h.addEventListener('click',function(){this.parentElement.classList.toggle('collapsed');});});
+document.addEventListener('click',function(e){var s=document.getElementById('sidebar'),t=document.querySelector('.sidebar-toggle');if(window.innerWidth<=768&&s.classList.contains('open')&&!s.contains(e.target)&&!t.contains(e.target)){s.classList.remove('open');document.getElementById('content').classList.remove('shifted');}});
+</script>
+</body>
+</html>

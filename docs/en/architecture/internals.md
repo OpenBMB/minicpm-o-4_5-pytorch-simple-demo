@@ -159,10 +159,10 @@ stateDiagram-v2
     LOADING --> IDLE: Model loaded
     LOADING --> ERROR: Loading failed
 
-    IDLE --> BUSY_STREAMING: Assigned Streaming task
+    IDLE --> BUSY_HALF_DUPLEX: Assigned Half-Duplex task
     IDLE --> DUPLEX_ACTIVE: Assigned Duplex task
 
-    BUSY_STREAMING --> IDLE: Inference complete
+    BUSY_HALF_DUPLEX --> IDLE: Session ended/timeout
 
     DUPLEX_ACTIVE --> DUPLEX_PAUSED: pause (client paused)
     DUPLEX_PAUSED --> DUPLEX_ACTIVE: resume (client resumed)
