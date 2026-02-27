@@ -16,7 +16,7 @@ class GatewayWorkerStatus(str, Enum):
     """Worker 状态（Gateway 追踪）"""
     IDLE = "idle"
     BUSY_CHAT = "busy_chat"
-    BUSY_STREAMING = "busy_streaming"
+    BUSY_HALF_DUPLEX = "busy_half_duplex"
     DUPLEX_ACTIVE = "duplex_active"
     DUPLEX_PAUSED = "duplex_paused"
     LOADING = "loading"
@@ -32,8 +32,6 @@ class WorkerInfo(BaseModel):
     gpu_id: int
     status: GatewayWorkerStatus
     current_session_id: Optional[str] = None
-    cached_hash: Optional[str] = None
-    last_cache_used_at: Optional[datetime] = None
     total_requests: int = 0
     avg_inference_time_ms: float = 0.0
     last_heartbeat: Optional[datetime] = None
@@ -50,7 +48,7 @@ class QueueTicket(BaseModel):
     位置和 ETA 随队列变化动态更新。
     """
     ticket_id: str
-    request_type: str  # "chat" | "streaming" | "duplex"
+    request_type: str  # "chat" | "half_duplex_audio" | "audio_duplex" | "omni_duplex"
     session_id: Optional[str] = None
     enqueued_at: datetime = Field(default_factory=datetime.now)
     position: int = 0  # 1-based，0 表示已分配
@@ -108,7 +106,7 @@ class ServiceStatus(BaseModel):
 class EtaConfig(BaseModel):
     """ETA 基准配置（Admin 可调）"""
     eta_chat_s: float = Field(default=15.0, description="Chat 预估耗时（秒）")
-    eta_streaming_s: float = Field(default=20.0, description="Streaming 预估耗时（秒）")
+    eta_half_duplex_s: float = Field(default=180.0, description="Half-Duplex 预估耗时（秒）")
     eta_audio_duplex_s: float = Field(default=120.0, description="Audio Duplex 预估耗时（秒）")
     eta_omni_duplex_s: float = Field(default=90.0, description="Omni Duplex 预估耗时（秒）")
     ema_alpha: Optional[float] = Field(default=None, description="EMA 平滑系数（0-1，越大越敏感），None 表示不修改")
@@ -119,11 +117,11 @@ class EtaStatus(BaseModel):
     config: EtaConfig
     ema_alpha: float = 0.3
     ema_chat_s: Optional[float] = None
-    ema_streaming_s: Optional[float] = None
+    ema_half_duplex_s: Optional[float] = None
     ema_audio_duplex_s: Optional[float] = None
     ema_omni_duplex_s: Optional[float] = None
     ema_chat_samples: int = 0
-    ema_streaming_samples: int = 0
+    ema_half_duplex_samples: int = 0
     ema_audio_duplex_samples: int = 0
     ema_omni_duplex_samples: int = 0
 

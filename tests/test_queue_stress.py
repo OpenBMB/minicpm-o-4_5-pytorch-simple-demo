@@ -31,7 +31,7 @@ def make_pool(
     pool = WorkerPool(
         worker_addresses=addresses,
         max_queue_size=max_queue_size,
-        eta_config=EtaConfig(eta_chat_s=5.0, eta_streaming_s=10.0, eta_duplex_s=60.0),
+        eta_config=EtaConfig(eta_chat_s=5.0, eta_half_duplex_s=10.0, eta_duplex_s=60.0),
     )
     for w in pool.workers.values():
         if all_busy:

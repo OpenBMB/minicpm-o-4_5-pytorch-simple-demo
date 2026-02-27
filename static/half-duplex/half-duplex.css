@@ -1,0 +1,140 @@
+/* ================================================================
+   half-duplex.css — Half-Duplex Audio page-specific styles
+   Built on top of duplex-shared.css
+   ================================================================ */
+
+/* ========== Override main grid: 4:5 like audio-duplex ========== */
+.main {
+    grid-template-columns: 4fr 5fr;
+}
+
+/* ========== Left Column layout ========== */
+.col-left .row-top {
+    display: flex;
+    gap: 10px;
+    flex: 1;
+    min-height: 0;
+    background: #fff;
+    border-radius: 10px;
+    padding: 8px;
+}
+.col-left .row-top .panel-media {
+    flex: 1;
+    min-width: 0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.col-left .row-bottom {
+    display: flex;
+    gap: 8px;
+    flex: none;
+}
+.col-left .row-bottom .panel-config {
+    flex: 1;
+}
+.col-left .row-bottom .panel-status {
+    flex: 1;
+}
+
+/* ========== Waveform Panel ========== */
+.panel-media.waveform-panel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+#waveformCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.waveform-overlay {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    z-index: 10;
+}
+.waveform-overlay.visible { display: flex; }
+.waveform-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ef4444;
+    animation: mic-pulse 1.2s infinite;
+}
+@keyframes mic-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+.waveform-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #666;
+    font-size: 14px;
+}
+
+/* ========== Status Lamp ========== */
+.panel-media { position: relative; }
+.status-lamp {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(12px);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    z-index: 10;
+}
+.status-lamp.visible { display: flex; }
+.status-lamp .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.status-lamp .timer {
+    font-size: 11px; font-weight: 500; opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}
+.status-lamp.live .dot { background: #ef4444; animation: pulse-dot 1.5s ease-in-out infinite; }
+.status-lamp.speaking .dot { background: #16a34a; animation: pulse-dot 0.8s ease-in-out infinite; }
+.status-lamp.generating .dot { background: #eab308; animation: pulse-dot 1s ease-in-out infinite; }
+.status-lamp.stopped .dot { background: #888; }
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* ========== VAD range input styling ========== */
+.panel-config input[type="range"] {
+    accent-color: #2d2d2d;
+    height: 4px;
+}
+
+
+/* ========== Mobile responsive ========== */
+@media (max-width: 768px) {
+    .col-left .row-top,
+    .col-left .row-bottom {
+        flex-direction: column;
+    }
+    .status-lamp {
+        font-size: 11px;
+        padding: 4px 10px;
+    }
+}

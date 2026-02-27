@@ -373,7 +373,7 @@ class StreamingChunk(BaseModel):
     # full_text 现在是完整的回复文本
     ```
     
-    **便捷方法**：如果只需要完整结果，使用 `StreamingView.complete_turn()`。
+    **便捷方法**：如果只需要完整结果，使用 `HalfDuplexView.complete_turn()`。
     
     Attributes:
         chunk_index: 块索引（从 0 开始）

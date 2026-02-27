@@ -6,6 +6,7 @@
  */
 
 // Layer 0: Pure logic
+import { AudioDeviceSelector } from '../lib/audio-device-selector.js';
 import { resampleAudio as downsample, arrayBufferToBase64, escapeHtml } from '../duplex/lib/duplex-utils.js';
 import { DuplexSession } from '../duplex/lib/duplex-session.js';
 import { SessionVideoRecorder } from '../duplex/lib/session-video-recorder.js';
@@ -120,10 +121,24 @@ loadFrontendDefaults().then(() => {
     _omniPreset.init();
 });
 window._settingsPersistence = settingsPersistence;
+const omniDeviceSelector = new AudioDeviceSelector({
+    micSelectEl: document.getElementById('omniMicDevice'),
+    speakerSelectEl: document.getElementById('omniSpeakerDevice'),
+    refreshBtnEl: document.getElementById('omniBtnRefreshDevices'),
+    storagePrefix: 'omni',
+    onSpeakerChange: () => {
+        if (session && session.audioPlayer && session.audioPlayer._ctx) {
+            omniDeviceSelector.applySinkId(session.audioPlayer._ctx);
+        }
+    },
+});
+omniDeviceSelector.init();
+
 document.getElementById('btnResetSettings')?.addEventListener('click', () => {
     if (confirm('Reset all settings to defaults?')) {
         if (recordingSettings) recordingSettings.clearStorage();
         localStorage.removeItem('omni_preset');
+        omniDeviceSelector.clearSaved();
         settingsPersistence.clear();
     }
 });
@@ -237,8 +252,10 @@ class LiveMediaProvider extends MediaProvider {
         if (!this._videoStream) {
             await this._openVideoStream(this._useFront);
         }
+        const _omniMicId = omniDeviceSelector.getSelectedMicId();
         this._audioStream = await navigator.mediaDevices.getUserMedia({
-            audio: { channelCount: 1 }, video: false
+            audio: { channelCount: 1, ...(_omniMicId ? { deviceId: { exact: _omniMicId } } : {}) },
+            video: false,
         });
         this._audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE_IN });
         if (this._audioCtx.state === 'suspended') await this._audioCtx.resume();
@@ -523,8 +540,9 @@ class FileMediaProvider extends MediaProvider {
     // ==================== Mic/Mixed modes: phased feeding ====================
 
     async _setupMic() {
+        const _omniMicId = omniDeviceSelector.getSelectedMicId();
         this._micStream = await navigator.mediaDevices.getUserMedia({
-            audio: { channelCount: 1 },
+            audio: { channelCount: 1, ...(_omniMicId ? { deviceId: { exact: _omniMicId } } : {}) },
             video: false,
         });
 
@@ -1422,7 +1440,12 @@ async function startSession() {
         syncFullscreenQueueButtons('assigned');
         playAlarmBell();
     };
-    session.onPrepared = async () => { await playSessionChime(); };
+    session.onPrepared = async () => {
+        if (session.audioPlayer && session.audioPlayer._ctx) {
+            omniDeviceSelector.applySinkId(session.audioPlayer._ctx);
+        }
+        await playSessionChime();
+    };
     session.onCleanup = () => {
         _omniCountdown.stop();
         if (_stopDingDong) { _stopDingDong(); _stopDingDong = null; }

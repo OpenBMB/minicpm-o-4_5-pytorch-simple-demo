@@ -42,7 +42,7 @@ from gateway_modules.models import (
     EtaConfig,
     EtaStatus,
 )
-from gateway_modules.worker_pool import WorkerPool, WorkerConnection, compute_history_hash
+from gateway_modules.worker_pool import WorkerPool, WorkerConnection
 from gateway_modules.ref_audio_registry import (
     RefAudioRegistry,
     RefAudioListResponse,
@@ -264,8 +264,6 @@ async def chat(request: Request):
     estimated_queue_s = ticket.estimated_wait_s
 
     worker.mark_busy(GatewayWorkerStatus.BUSY_CHAT, "chat")
-    worker.cached_hash = None  # Chat 请求会覆盖 KV cache
-    worker.last_cache_used_at = None
     task_start = datetime.now()
 
     try:
@@ -339,7 +337,6 @@ async def chat_ws_proxy(ws: WebSocket):
             return
 
         assigned_worker.mark_busy(GatewayWorkerStatus.BUSY_CHAT, "chat_ws")
-        assigned_worker.cached_hash = None
         task_start = datetime.now()
 
         # 连接 Worker WebSocket
@@ -377,257 +374,131 @@ async def chat_ws_proxy(ws: WebSocket):
             pass
 
 
-# ============ Streaming Stop（HTTP，转发到 Worker） ============
+# ============ Half-Duplex WebSocket（独占 Worker，FIFO 排队 + 代理到 Worker） ============
 
-@app.post("/api/streaming/stop")
-async def streaming_stop():
-    """停止正在进行的 Streaming 生成
+@app.websocket("/ws/half_duplex/{session_id}")
+async def half_duplex_ws(ws: WebSocket, session_id: str):
+    """Half-Duplex WebSocket 代理
 
-    转发到当前正在 streaming 的 Worker。
+    独占一个 Worker，直到用户停止或会话超时（默认 3 分钟）。
+    前端发送音频 chunk，Worker 用 VAD 检测语音后 prefill + generate。
     """
-    if worker_pool is None:
-        raise HTTPException(status_code=503, detail="Service not ready")
-
-    results = []
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        for w in worker_pool.workers.values():
-            if w.status == GatewayWorkerStatus.BUSY_STREAMING:
-                try:
-                    resp = await client.post(f"{w.url}/streaming/stop")
-                    results.append({"worker_id": w.worker_id, **resp.json()})
-                except Exception as e:
-                    results.append({"worker_id": w.worker_id, "success": False, "error": str(e)})
-
-    if not results:
-        return {"success": False, "message": "No streaming worker found"}
-    return {"success": True, "stopped": results}
-
-
-# ============ Streaming WebSocket（LRU 缓存命中 + FIFO 排队） ============
-
-@app.websocket("/ws/streaming/{session_id}")
-async def streaming_ws(ws: WebSocket, session_id: str):
-    """Streaming WebSocket 代理
-
-    缓存命中机制（纯 Request 模式，无 Session 概念）+ FIFO 排队：
-    1. 前端每轮发送完整消息历史 + 最新 user 输入
-    2. Gateway 计算 history_hash = hash(messages[:-1])
-    3. enqueue 时尝试 LRU 缓存命中路由
-    4. 无空闲 Worker → FIFO 排队，推送队列状态
-    5. Generate 完成后更新 Worker 的 cached_hash + last_cache_used_at
-    """
-    if not app_registry.is_enabled("turnbased"):
-        await ws.close(code=1008, reason="Turn-based Chat is currently disabled")
+    if not app_registry.is_enabled("half_duplex_audio"):
+        await ws.close(code=1008, reason="Half-Duplex Audio is currently disabled")
         return
     if worker_pool is None:
         await ws.close(code=1013, reason="Service not ready")
         return
 
+    session_id = _sanitize_session_id(session_id)
     await ws.accept()
-    logger.info(f"Streaming WS connected: session={session_id}")
-
-    assigned_worker: Optional[WorkerConnection] = None
-    worker_ws = None
-    prefill_raw_messages: List[Dict[str, Any]] = []
-    task_start: Optional[datetime] = None
 
     try:
-        while True:
-            raw = await ws.receive_text()
-            msg = json.loads(raw)
-            msg_type = msg.get("type", "")
+        ticket, future = worker_pool.enqueue("half_duplex_audio", session_id=session_id)
+    except WorkerPool.QueueFullError:
+        await ws.send_json({
+            "type": "error",
+            "error": f"Queue full ({worker_pool.max_queue_size} requests)",
+        })
+        await ws.close(code=1013, reason="Queue full")
+        return
 
-            if msg_type == "prefill":
-                raw_messages = msg.get("messages", [])
-                prefill_raw_messages = raw_messages
-
-                # 1. 计算历史 hash
-                if raw_messages and raw_messages[-1].get("role") == "user":
-                    history = raw_messages[:-1]
-                    history_hash = compute_history_hash(history) if history else ""
-                else:
-                    history_hash = ""
-
-                # 2. 入队（带 history_hash，支持缓存命中路由）
+    worker: Optional[WorkerConnection] = None
+    if future.done():
+        worker = future.result()
+    else:
+        try:
+            await ws.send_json({
+                "type": "queued",
+                "position": ticket.position,
+                "estimated_wait_s": ticket.estimated_wait_s,
+                "ticket_id": ticket.ticket_id,
+                "queue_length": worker_pool.queue_length,
+            })
+            while not future.done():
                 try:
-                    ticket, future = worker_pool.enqueue(
-                        "streaming",
-                        session_id=session_id,
-                        history_hash=history_hash if history_hash else None,
+                    worker = await asyncio.wait_for(
+                        asyncio.shield(future), timeout=3.0
                     )
-                except WorkerPool.QueueFullError:
-                    await ws.send_json({
-                        "type": "error",
-                        "error": f"Queue full ({worker_pool.max_queue_size} requests)",
-                    })
-                    continue
-
-                # 3. 等待分配（排队期间推送状态，检测前端断连）
-                worker: Optional[WorkerConnection] = None
-                if future.done():
-                    worker = future.result()
-                else:
-                    try:
+                    break
+                except asyncio.TimeoutError:
+                    updated = worker_pool.get_ticket(ticket.ticket_id)
+                    if updated:
                         await ws.send_json({
-                            "type": "queued",
-                            "position": ticket.position,
-                            "estimated_wait_s": ticket.estimated_wait_s,
-                            "ticket_id": ticket.ticket_id,
+                            "type": "queue_update",
+                            "position": updated.position,
+                            "estimated_wait_s": updated.estimated_wait_s,
                             "queue_length": worker_pool.queue_length,
                         })
-                        while not future.done():
-                            try:
-                                worker = await asyncio.wait_for(
-                                    asyncio.shield(future), timeout=3.0
-                                )
-                                break
-                            except asyncio.TimeoutError:
-                                updated = worker_pool.get_ticket(ticket.ticket_id)
-                                if updated:
-                                    await ws.send_json({
-                                        "type": "queue_update",
-                                        "position": updated.position,
-                                        "estimated_wait_s": updated.estimated_wait_s,
-                                        "queue_length": worker_pool.queue_length,
-                                    })
-                            except asyncio.CancelledError:
-                                worker_pool.cancel(ticket.ticket_id)
-                                continue
-                    except (WebSocketDisconnect, Exception) as e:
-                        logger.info(
-                            f"Streaming WS disconnected during queue wait: "
-                            f"session={session_id}, cancelling ticket {ticket.ticket_id} ({e})"
-                        )
-                        worker_pool.cancel(ticket.ticket_id)
-                        return
-                    if worker is None and future.done():
-                        worker = future.result()
+                except asyncio.CancelledError:
+                    worker_pool.cancel(ticket.ticket_id)
+                    return
+        except (WebSocketDisconnect, Exception) as e:
+            logger.info(f"Half-Duplex WS disconnected during queue: session={session_id} ({e})")
+            worker_pool.cancel(ticket.ticket_id)
+            return
+        if worker is None and future.done():
+            worker = future.result()
 
-                if worker is None:
-                    await ws.send_json({"type": "error", "error": "No worker available"})
-                    continue
+    if worker is None:
+        await ws.send_json({"type": "error", "error": "No worker available"})
+        await ws.close(code=1013, reason="No worker available")
+        return
 
-                # 发送 queue_done
-                await ws.send_json({"type": "queue_done"})
+    await ws.send_json({"type": "queue_done"})
+    logger.info(f"Half-Duplex WS connected: session={session_id} → {worker.worker_id}")
 
-                assigned_worker = worker
-                # 判断是否缓存命中
-                cache_hit = (
-                    history_hash
-                    and worker.cached_hash == history_hash
-                )
-                worker.mark_busy(
-                    GatewayWorkerStatus.BUSY_STREAMING, "streaming",
-                    session_id=session_id,
-                )
-                task_start = datetime.now()
+    worker.mark_busy(GatewayWorkerStatus.BUSY_HALF_DUPLEX, "half_duplex_audio", session_id=session_id)
+    task_start = datetime.now()
 
-                # 3. 构造转发消息
-                if cache_hit:
-                    forward_msg = {
-                        **msg,
-                        "messages": raw_messages[-1:],
-                        "clear_kv_cache": False,
-                    }
-                    logger.info(
-                        f"[{session_id}] Cache HIT → {worker.worker_id}, "
-                        f"prefill 1 new message (skip {len(raw_messages) - 1} cached)"
-                    )
-                else:
-                    forward_msg = {
-                        **msg,
-                        "messages": raw_messages,
-                        "clear_kv_cache": True,
-                    }
-                    logger.info(
-                        f"[{session_id}] Cache MISS → {worker.worker_id}, "
-                        f"full re-prefill ({len(raw_messages)} messages)"
-                    )
+    worker_ws = None
 
-                # 连接 Worker WebSocket
-                if worker_ws is None:
-                    import websockets
-                    ws_url = f"ws://{worker.host}:{worker.port}/ws/streaming"
-                    worker_ws = await websockets.connect(ws_url)
+    try:
+        import websockets
+        ws_url = f"ws://{worker.host}:{worker.port}/ws/half_duplex?session_id={session_id}"
 
-                await worker_ws.send(json.dumps(forward_msg))
-
-                worker_resp_raw = await worker_ws.recv()
-                await ws.send_text(worker_resp_raw)
-
-            elif msg_type == "generate":
-                if worker_ws is None:
-                    await ws.send_json({"type": "error", "error": "No active worker connection"})
-                    continue
-
-                await worker_ws.send(json.dumps(msg))
-
-                full_text = ""
-                worker_resp: Dict[str, Any] = {}
-                while True:
-                    worker_resp_raw = await worker_ws.recv()
-                    worker_resp = json.loads(worker_resp_raw)
-                    await ws.send_text(worker_resp_raw)
-
-                    if worker_resp.get("type") == "chunk" and worker_resp.get("text_delta"):
-                        full_text += worker_resp["text_delta"]
-
-                    if worker_resp.get("type") in ("done", "error"):
-                        break
-
-                # 一轮完成：先关闭旧 Worker WS，再释放 Worker
-                # 顺序很重要：先 cleanup 旧连接，再 dispatch 新请求，缩小竞态窗口
-                if worker_resp.get("type") == "done" and assigned_worker:
-                    complete_conversation = prefill_raw_messages + [
-                        {"role": "assistant", "content": full_text}
-                    ]
-                    assigned_worker.cached_hash = compute_history_hash(complete_conversation)
-                    assigned_worker.last_cache_used_at = datetime.now()
-                    logger.info(
-                        f"[{session_id}] Updated {assigned_worker.worker_id} "
-                        f"cached_hash={assigned_worker.cached_hash[:12]}... "
-                        f"({len(complete_conversation)} messages)"
-                    )
-
-                    if worker_ws:
-                        try:
-                            await worker_ws.close()
-                        except Exception:
-                            pass
-                        worker_ws = None
-
-                    duration = (datetime.now() - task_start).total_seconds() if task_start else 0
-                    worker_pool.release_worker(
-                        assigned_worker, request_type="streaming", duration_s=duration
-                    )
-                    assigned_worker = None
-                    task_start = None
-                elif assigned_worker:
-                    assigned_worker.cached_hash = None
-                    assigned_worker.last_cache_used_at = None
-
-                    if worker_ws:
-                        try:
-                            await worker_ws.close()
-                        except Exception:
-                            pass
-                        worker_ws = None
-
-                    duration = (datetime.now() - task_start).total_seconds() if task_start else 0
-                    worker_pool.release_worker(assigned_worker, request_type="streaming", duration_s=duration)
-                    assigned_worker = None
-                    task_start = None
-
-            elif msg_type == "close":
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                worker_ws = await websockets.connect(ws_url, open_timeout=5)
                 break
+            except Exception as conn_err:
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"Half-Duplex WS connect to {worker.worker_id} failed (attempt {attempt + 1}): "
+                        f"{conn_err}, retrying in 1s..."
+                    )
+                    await asyncio.sleep(1.0)
+                else:
+                    raise
 
-            else:
-                await ws.send_json({"type": "error", "error": f"Unknown type: {msg_type}"})
+        async def client_to_worker():
+            try:
+                async for raw in ws.iter_text():
+                    await worker_ws.send(raw)
+            except WebSocketDisconnect:
+                pass
 
-    except WebSocketDisconnect:
-        logger.info(f"Streaming WS disconnected: session={session_id}")
+        async def worker_to_client():
+            try:
+                async for raw in worker_ws:
+                    await ws.send_text(raw)
+            except Exception:
+                pass
+
+        done, pending = await asyncio.wait(
+            [
+                asyncio.create_task(client_to_worker()),
+                asyncio.create_task(worker_to_client()),
+            ],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        for task in pending:
+            task.cancel()
+
     except Exception as e:
-        logger.error(f"Streaming WS error: {e}", exc_info=True)
+        logger.error(f"Half-Duplex WS error: {e}", exc_info=True)
     finally:
         if worker_ws:
             try:
@@ -635,9 +506,10 @@ async def streaming_ws(ws: WebSocket, session_id: str):
             except Exception:
                 pass
 
-        if assigned_worker and assigned_worker.status == GatewayWorkerStatus.BUSY_STREAMING:
+        if worker:
             duration = (datetime.now() - task_start).total_seconds() if task_start else 0
-            worker_pool.release_worker(assigned_worker, request_type="streaming", duration_s=duration)
+            worker_pool.release_worker(worker, request_type="half_duplex_audio", duration_s=duration)
+            logger.info(f"Half-Duplex WS ended: session={session_id}, Worker released ({duration:.1f}s)")
 
 
 # ============ 前端诊断日志写入 ============
@@ -740,8 +612,6 @@ async def duplex_ws(ws: WebSocket, session_id: str):
     logger.info(f"Duplex WS connected: session={session_id} → {worker.worker_id}")
 
     worker.mark_busy(GatewayWorkerStatus.DUPLEX_ACTIVE, duplex_type, session_id=session_id)
-    worker.cached_hash = None
-    worker.last_cache_used_at = None
     task_start = datetime.now()
 
     worker_ws = None
@@ -1114,7 +984,7 @@ async def update_eta_config(new_config: EtaConfig):
     alpha_str = f", ema_alpha={new_config.ema_alpha}" if new_config.ema_alpha is not None else ""
     logger.info(
         f"ETA config updated: chat={new_config.eta_chat_s}s, "
-        f"streaming={new_config.eta_streaming_s}s, "
+        f"half_duplex={new_config.eta_half_duplex_s}s, "
         f"audio_duplex={new_config.eta_audio_duplex_s}s, "
         f"omni_duplex={new_config.eta_omni_duplex_s}s{alpha_str}"
     )
@@ -1134,8 +1004,6 @@ async def list_cache():
             {
                 "worker_id": w.worker_id,
                 "status": w.status.value,
-                "cached_hash": w.cached_hash[:12] + "..." if w.cached_hash else None,
-                "last_cache_used_at": w.last_cache_used_at.isoformat() if w.last_cache_used_at else None,
             }
             for w in worker_pool.workers.values()
         ],
@@ -1363,6 +1231,17 @@ async def omni():
     return HTMLResponse("<h1>Omni</h1><p>Omni page not found</p>")
 
 
+@app.get("/half_duplex", response_class=HTMLResponse)
+async def half_duplex():
+    """Half-Duplex Audio Demo 页面"""
+    if not app_registry.is_enabled("half_duplex_audio"):
+        return RedirectResponse(url="/", status_code=302)
+    page_path = os.path.join(static_dir, "half-duplex", "half_duplex.html")
+    if os.path.exists(page_path):
+        return FileResponse(page_path)
+    return HTMLResponse("<h1>Half-Duplex Audio</h1><p>Page not found</p>")
+
+
 @app.get("/audio_duplex", response_class=HTMLResponse)
 async def audio_duplex():
     """语音双工 Demo 页面（简化版 Omni，无视频）"""
@@ -1426,7 +1305,7 @@ def main():
         "timeout": args.timeout or cfg.request_timeout,
         "eta_config": {
             "eta_chat_s": cfg.eta_chat_s,
-            "eta_streaming_s": cfg.eta_streaming_s,
+            "eta_half_duplex_s": cfg.eta_half_duplex_s,
             "eta_audio_duplex_s": cfg.eta_audio_duplex_s,
             "eta_omni_duplex_s": cfg.eta_omni_duplex_s,
         },

@@ -15,7 +15,7 @@ chat = processor.set_chat_mode()
 response = chat.chat(request)
 
 # Streaming 模式（毫秒级切换）
-streaming = processor.set_streaming_mode()
+half_duplex = processor.set_half_duplex_mode()
 for chunk in streaming.generate(session_id):
     print(chunk.text_delta, end="")
 
@@ -35,7 +35,7 @@ result = duplex.generate()
 """
 
 from core.processors.base import BaseProcessor, MiniCPMOProcessorMixin
-from core.processors.unified import UnifiedProcessor, ChatView, StreamingView, DuplexView
+from core.processors.unified import UnifiedProcessor, ChatView, HalfDuplexView, DuplexView
 
 __all__ = [
     # 基类
@@ -44,6 +44,6 @@ __all__ = [
     # 统一处理器
     "UnifiedProcessor",
     "ChatView",
-    "StreamingView",
+    "HalfDuplexView",
     "DuplexView",
 ]
