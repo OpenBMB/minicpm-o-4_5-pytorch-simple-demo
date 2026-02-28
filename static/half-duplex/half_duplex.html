@@ -153,7 +153,7 @@
     <!-- ===== Right Column ===== -->
     <div class="col-right">
 
-    <!-- Preset + System Prompt -->
+    <!-- Preset + System Prompt (uses SystemContentEditor, same schema as turn-based) -->
     <div class="panel-sysconfig">
         <div style="padding:6px 0 8px 0;">
             <div id="presetSelectorHdx"></div>
@@ -162,11 +162,7 @@
             <summary style="display:none;">System Prompt Details</summary>
             <div class="cg-body">
                 <div class="cg-row">
-                    <textarea class="cg-input" id="systemPrompt" rows="3" placeholder="System prompt">You are a helpful voice assistant. Keep your responses concise and natural.</textarea>
-                </div>
-                <div class="cg-row">
-                    <span class="cg-label">Ref Audio</span>
-                    <div id="refAudioPlayerHdx"></div>
+                    <div id="sysContentEditorHdx"></div>
                 </div>
             </div>
         </details>
@@ -200,6 +196,7 @@
 <div id="save-share-container" style="position:fixed;bottom:16px;right:16px;z-index:100;max-width:300px;"></div>
 
 <script src="/static/ref-audio-player.js"></script>
+<script src="/static/system-content-editor.js"></script>
 <script src="/static/shared/preset-selector.js"></script>
 <script src="/static/shared/save-share.js"></script>
 <script src="/static/shared/app-nav.js"></script>

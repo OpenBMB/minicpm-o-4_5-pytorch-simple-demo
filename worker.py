@@ -1097,7 +1097,8 @@ async def half_duplex_ws(ws: WebSocket):
     """Half-Duplex Audio WebSocket
 
     协议：
-    1. Client → {"type": "prepare", "system_prompt": "...", "config": {...}}
+    1. Client → {"type": "prepare", "system_content": [...], "config": {...}}
+       system_content 格式与 turn-based 相同: [{type:"text",text:...}, {type:"audio",data:...}, ...]
     2. Client → {"type": "audio_chunk", "audio_base64": "..."} (连续)
     3. Server → {"type": "vad_state", "speaking": true/false}
     4. Server → {"type": "generating"}
@@ -1156,7 +1157,6 @@ async def half_duplex_ws(ws: WebSocket):
 
             if msg_type == "prepare":
                 config = msg.get("config", {})
-                system_prompt = msg.get("system_prompt", "You are a helpful assistant.")
 
                 vad_cfg = config.get("vad", {})
                 vad_options = VadOptions(
@@ -1181,36 +1181,28 @@ async def half_duplex_ws(ws: WebSocket):
 
                 worker.reset_half_duplex_session()
 
-                ref_audio_b64 = msg.get("ref_audio_base64")
+                # 解析 system_content 列表（与 turn-based 相同的 schema）
                 ref_audio_ndarray: Optional[np.ndarray] = None
-                if ref_audio_b64:
-                    ref_audio_bytes = base64.b64decode(ref_audio_b64)
-                    ref_audio_ndarray = np.frombuffer(ref_audio_bytes, dtype=np.float32)
-                    logger.info(f"[HalfDuplex] ref_audio: {len(ref_audio_ndarray)} samples")
-
-                system_content_items = msg.get("system_content")
-                if system_content_items and isinstance(system_content_items, list):
-                    content_items: List[ContentItem] = []
-                    for item in system_content_items:
-                        if not isinstance(item, dict):
-                            continue
-                        if item.get("type") == "text" and item.get("text"):
-                            content_items.append(TextContent(text=item["text"]))
-                        elif item.get("type") == "audio" and item.get("data"):
-                            content_items.append(AudioContent(data=item["data"]))
-                            if ref_audio_ndarray is None:
-                                try:
-                                    audio_bytes = base64.b64decode(item["data"])
-                                    ref_audio_ndarray = np.frombuffer(audio_bytes, dtype=np.float32)
-                                except Exception:
-                                    pass
-                    if content_items:
-                        sys_msg = Message(role=Role.SYSTEM, content=content_items)
-                    else:
-                        sys_msg = Message(role=Role.SYSTEM, content=system_prompt)
-                    logger.info(f"[HalfDuplex] system_content: {len(content_items)} items")
+                system_content_items = msg.get("system_content", [])
+                content_items: List[ContentItem] = []
+                for item in system_content_items:
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("type") == "text" and item.get("text"):
+                        content_items.append(TextContent(text=item["text"]))
+                    elif item.get("type") == "audio" and item.get("data"):
+                        content_items.append(AudioContent(data=item["data"]))
+                        if ref_audio_ndarray is None:
+                            try:
+                                audio_bytes = base64.b64decode(item["data"])
+                                ref_audio_ndarray = np.frombuffer(audio_bytes, dtype=np.float32)
+                            except Exception:
+                                pass
+                if content_items:
+                    sys_msg = Message(role=Role.SYSTEM, content=content_items)
                 else:
-                    sys_msg = Message(role=Role.SYSTEM, content=system_prompt)
+                    sys_msg = Message(role=Role.SYSTEM, content="You are a helpful assistant.")
+                logger.info(f"[HalfDuplex] system_content: {len(content_items)} items")
 
                 request = StreamingRequest(
                     session_id=session_id,
@@ -1237,7 +1229,7 @@ async def half_duplex_ws(ws: WebSocket):
                         app_type="half_duplex_audio",
                         worker_id=worker.gpu_id,
                         config_snapshot={
-                            "system_prompt": system_prompt,
+                            "system_content_count": len(content_items),
                             "vad": vad_cfg,
                             "generation": gen_cfg,
                             "tts_enabled": generate_audio,

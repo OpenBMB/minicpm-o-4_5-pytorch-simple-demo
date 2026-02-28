@@ -47,7 +47,7 @@ sequenceDiagram
 
     FE->>GW: WS /ws/half_duplex/{session_id}
     GW->>WK: 独占 Worker
-    FE->>WK: prepare (system_prompt + config)
+    FE->>WK: prepare (system_content + config)
     WK->>MD: reset + prefill system prompt
     WK->>VAD: 初始化 VAD
 
@@ -138,7 +138,7 @@ Gateway 将此连接代理到 Worker，Worker 在整个会话期间被独占。
 
 | 类型 | 字段 | 说明 |
 |------|------|------|
-| `prepare` | `system_prompt`, `config`, `ref_audio_base64`, `system_content` | 初始化会话 |
+| `prepare` | `system_content`, `config` | 初始化会话（system_content 格式与 turn-based 相同） |
 | `audio_chunk` | `audio_base64` | 发送麦克风音频（float32 PCM 16kHz） |
 | `stop` | — | 停止会话 |
 

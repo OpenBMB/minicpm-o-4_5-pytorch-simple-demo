@@ -67,7 +67,6 @@ const DEFAULTS = {
     genTemperature: 0.7,
     ttsEnabled: true,
     sessionTimeout: 180,
-    systemPrompt: 'You are a helpful voice assistant. Keep your responses concise and natural.',
 };
 
 function saveSettings() {
@@ -157,47 +156,63 @@ const deviceSelector = new AudioDeviceSelector({
 });
 
 // ============================================================
-// Ref Audio Player + Preset Selector (turnbased-style)
+// System Content Editor (same schema as turn-based)
 // ============================================================
 
-let _refAudioData = null;
+/** system_content 列表，与 turnbased 使用相同 schema */
+let _systemContentList = [
+    { type: 'text', text: '模仿音频样本的音色并生成新的内容。' },
+    { type: 'audio', data: null, name: '', duration: 0 },
+    { type: 'text', text: '你的任务是用这种声音模式来当一个助手。请认真、高质量地回复用户的问题。请用高自然度的方式和用户聊天。你是由面壁智能开发的人工智能助手：面壁小钢炮。' },
+];
 
-const refAudioPlayer = typeof RefAudioPlayer !== 'undefined'
-    ? new RefAudioPlayer(document.getElementById('refAudioPlayerHdx'))
-    : null;
+let _sceHdx = null;
+if (typeof SystemContentEditor !== 'undefined') {
+    _sceHdx = new SystemContentEditor(document.getElementById('sysContentEditorHdx'), {
+        theme: 'light',
+        onChange: (items) => {
+            _systemContentList = items;
+            saveSettings();
+        },
+    });
+    _sceHdx.setItems(_systemContentList);
+}
 
-let _currentSystemContent = null;
+/** 加载默认参考音频并填充到 system_content 中无数据的 audio 项 */
+async function _fetchDefaultRefAudio() {
+    try {
+        const resp = await fetch('/api/default_ref_audio');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        _systemContentList.forEach(item => {
+            if (item.type === 'audio' && !item.data) {
+                item.data = data.base64; item.name = data.name; item.duration = data.duration;
+            }
+        });
+        if (_sceHdx) _sceHdx.setItems(_systemContentList);
+    } catch (e) { console.warn('Failed to load default ref audio:', e); }
+}
+
+/** 应用 preset 到 SystemContentEditor（与 turnbased 相同逻辑） */
+function _applyPreset(preset, { audioLoaded } = {}) {
+    if (!preset || !preset.system_content) return;
+    const items = preset.system_content.map(item => {
+        if (item.type === 'audio') {
+            return { type: 'audio', data: (audioLoaded ? item.data : null) || null, name: item.name || '', duration: item.duration || 0 };
+        }
+        return { type: 'text', text: item.text || '' };
+    });
+    _systemContentList = items;
+    if (_sceHdx) _sceHdx.setItems(items);
+    saveSettings();
+}
 
 const _hdxPreset = typeof PresetSelector !== 'undefined'
     ? new PresetSelector({
         container: document.getElementById('presetSelectorHdx'),
         page: 'half_duplex_audio',
         detailsEl: document.getElementById('hdxSysPromptDetails'),
-        onSelect: (preset, { audioLoaded } = {}) => {
-            if (!preset) return;
-            if (preset.system_content) {
-                _currentSystemContent = preset.system_content;
-                const texts = preset.system_content
-                    .filter(it => it.type === 'text' && it.text)
-                    .map(it => it.text);
-                document.getElementById('systemPrompt').value = texts.join('\n');
-                if (audioLoaded) {
-                    const audioItem = preset.system_content.find(it => it.type === 'audio' && it.data);
-                    if (audioItem && refAudioPlayer) {
-                        refAudioPlayer.setAudio(audioItem.data, audioItem.name, audioItem.duration);
-                        _refAudioData = audioItem.data;
-                    }
-                }
-            } else if (preset.system_prompt) {
-                document.getElementById('systemPrompt').value = preset.system_prompt;
-                _currentSystemContent = null;
-            }
-            if (audioLoaded && preset.ref_audio && preset.ref_audio.data) {
-                if (refAudioPlayer) refAudioPlayer.setAudio(preset.ref_audio.data, preset.ref_audio.name, preset.ref_audio.duration);
-                _refAudioData = preset.ref_audio.data;
-            }
-            saveSettings();
-        },
+        onSelect: (preset, opts) => _applyPreset(preset, opts),
         storageKey: 'half_duplex_preset',
     })
     : null;
@@ -437,19 +452,11 @@ async function startSession() {
     ws = new WebSocket(url);
     ws.onopen = () => {
         const settings = getSettings();
-        const sysPrompt = document.getElementById('systemPrompt').value || DEFAULTS.systemPrompt;
-        const payload = {
+        ws.send(JSON.stringify({
             type: 'prepare',
-            system_prompt: sysPrompt,
+            system_content: _sceHdx ? _sceHdx.getItems() : _systemContentList,
             config: settings,
-        };
-        if (_currentSystemContent) {
-            payload.system_content = _currentSystemContent;
-        }
-        if (_refAudioData) {
-            payload.ref_audio_base64 = _refAudioData;
-        }
-        ws.send(JSON.stringify(payload));
+        }));
     };
 
     ws.onmessage = (e) => {
@@ -717,4 +724,5 @@ checkHealth();
 setInterval(checkHealth, 15000);
 deviceSelector.init();
 
+_fetchDefaultRefAudio();
 if (_hdxPreset) _hdxPreset.init();
