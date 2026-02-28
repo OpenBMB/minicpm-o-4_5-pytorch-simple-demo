@@ -65,26 +65,18 @@
         <details class="config-group" open>
             <summary>VAD</summary>
             <div class="cg-body">
-                <div class="cg-row inline" data-tip="Speech detection threshold (higher = stricter)">
+                <div class="cg-row inline" data-tip="VAD sensitivity. Higher value means less likely to trigger on noise.">
                     <span class="cg-label" style="flex:none;">Threshold</span>
                     <input type="range" id="vadThreshold" min="0.1" max="0.95" step="0.05" value="0.8" style="flex:1;">
                     <span class="cg-val" id="vadThresholdVal" style="font-size:11px;color:#888;width:28px;text-align:right;">0.8</span>
                 </div>
-                <div class="cg-row inline" data-tip="Minimum speech duration to trigger detection (ms)">
-                    <span class="cg-label" style="flex:none;">Min Speech</span>
-                    <input type="number" class="cg-input-sm" id="vadMinSpeech" value="128" min="50" max="1000" step="10">
-                    <span style="font-size:10px;color:#888;">ms</span>
-                </div>
-                <div class="cg-row inline" data-tip="Silence duration before ending speech segment (ms)">
+                <div class="cg-row inline" data-tip="How many milliseconds of silence before the system considers you finished speaking.">
                     <span class="cg-label" style="flex:none;">Min Silence</span>
                     <input type="number" class="cg-input-sm" id="vadMinSilence" value="800" min="100" max="3000" step="50">
                     <span style="font-size:10px;color:#888;">ms</span>
                 </div>
-                <div class="cg-row inline" data-tip="Padding added to speech boundaries (ms)">
-                    <span class="cg-label" style="flex:none;">Pad</span>
-                    <input type="number" class="cg-input-sm" id="vadSpeechPad" value="30" min="0" max="500" step="10">
-                    <span style="font-size:10px;color:#888;">ms</span>
-                </div>
+                <input type="hidden" id="vadMinSpeech" value="128">
+                <input type="hidden" id="vadSpeechPad" value="30">
             </div>
         </details>
         <details class="config-group" open>
@@ -95,7 +87,7 @@
                     <input type="number" class="cg-input-sm" id="genMaxTokens" value="256" min="32" max="2048" step="32">
                     <span style="font-size:10px;color:#888;">tok</span>
                 </div>
-                <div class="cg-row inline" data-tip="Controls response length, >1 = longer responses">
+                <div class="cg-row inline" data-tip="Length penalty for generation. Larger value produces longer responses.">
                     <span class="cg-label" style="flex:none;">Length Penalty</span>
                     <input type="number" class="cg-input-sm" id="genLengthPenalty" value="1.1" min="0.5" max="2.0" step="0.05">
                 </div>
@@ -124,7 +116,7 @@
             <div class="cg-body">
                 <div class="cg-row inline" data-tip="Session timeout in seconds (worker exclusive lock)">
                     <span class="cg-label" style="flex:none;">Timeout</span>
-                    <input type="number" class="cg-input-sm" id="sessionTimeout" value="180" min="30" max="600" step="30">
+                    <input type="number" class="cg-input-sm" id="sessionTimeout" value="300" min="30" max="600" step="30">
                     <span style="font-size:10px;color:#888;">sec</span>
                 </div>
                 <div class="cg-row inline" data-tip="Enable voice audio response (TTS)">

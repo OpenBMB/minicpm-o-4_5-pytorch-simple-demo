@@ -1123,7 +1123,7 @@ async def half_duplex_ws(ws: WebSocket):
     vad: Optional[StreamingVAD] = None
     turn_index = 0
     session_start = time.perf_counter()
-    timeout_s = 180
+    timeout_s = 300
     generate_audio = True
     max_new_tokens = 256
     length_penalty = 1.1
@@ -1176,7 +1176,7 @@ async def half_duplex_ws(ws: WebSocket):
                 generate_audio = tts_cfg.get("enabled", True)
 
                 session_cfg = config.get("session", {})
-                timeout_s = session_cfg.get("timeout_s", 180)
+                timeout_s = session_cfg.get("timeout_s", 300)
                 session_start = time.perf_counter()
 
                 worker.reset_half_duplex_session()

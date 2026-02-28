@@ -7,6 +7,7 @@
 
 import { AudioDeviceSelector } from '../lib/audio-device-selector.js';
 import { SessionRecorder } from '../duplex/lib/session-recorder.js';
+import { initDataTipTooltips } from '../duplex/ui/duplex-ui.js';
 
 const SAMPLE_RATE = 16000;
 const SAMPLE_RATE_OUT = 24000;
@@ -66,7 +67,7 @@ const DEFAULTS = {
     genLengthPenalty: 1.1,
     genTemperature: 0.7,
     ttsEnabled: true,
-    sessionTimeout: 180,
+    sessionTimeout: 300,
 };
 
 function saveSettings() {
@@ -493,7 +494,7 @@ function handleMessage(msg) {
             clearChat();
             setLampState('live', 'Listening');
             updateState('Listening');
-            startTimer(msg.timeout_s || 180);
+            startTimer(msg.timeout_s || 300);
             startCapture();
             initAudioPlayer();
             break;
@@ -534,6 +535,7 @@ function handleMessage(msg) {
             break;
 
         case 'timeout':
+            addSystemMessage('到达最大聊天长度，请重启');
             updateState('Timeout');
             endSession();
             break;
@@ -726,3 +728,4 @@ deviceSelector.init();
 
 _fetchDefaultRefAudio();
 if (_hdxPreset) _hdxPreset.init();
+initDataTipTooltips();
