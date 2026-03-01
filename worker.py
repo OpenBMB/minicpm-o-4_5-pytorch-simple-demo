@@ -1848,7 +1848,6 @@ def main():
     parser.add_argument("--gpu-id", type=int, default=None, help="GPU ID (inferred from port if not set)")
     parser.add_argument("--worker-index", type=int, default=0, help="Worker index (0, 1, 2, ...)")
     parser.add_argument("--duplex-pause-timeout", type=float, default=None, help="Duplex pause timeout (s)")
-    parser.add_argument("--compile", action="store_true", help="Enable torch.compile on core sub-modules for acceleration")
     args = parser.parse_args()
 
     port = args.port or cfg.worker_port(args.worker_index)
@@ -1860,7 +1859,7 @@ def main():
         "pt_path": args.pt_path or cfg.model.pt_path,
         "ref_audio_path": args.ref_audio_path or cfg.ref_audio_path,
         "duplex_pause_timeout": args.duplex_pause_timeout or cfg.duplex_pause_timeout,
-        "compile": args.compile or cfg.compile,
+        "compile": cfg.compile,
         "chat_vocoder": cfg.chat_vocoder,
         "attn_implementation": cfg.attn_implementation,
     })

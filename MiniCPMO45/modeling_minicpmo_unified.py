@@ -311,146 +311,154 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
         device: str = "cuda",
         chat_vocoder: str = "token2wav",
     ):
-        """统一初始化 - 一次加载，支持三种模式热切换
-        
+        """Unified initialization — load once, hot-switch between three modes.
+
         Args:
-            pt_path: 额外的 .pt 权重路径（可选），用于覆盖基础模型的权重。
-                     典型用法：先用 from_pretrained 加载基础模型，再用 pt_path 加载微调后的权重。
-            preload_both_tts: 是否预加载两个 TTS（推荐 True，额外 0.5GB 换取毫秒级切换）
-            duplex_config: 双工配置参数
-            device: 设备
-            chat_vocoder: Chat（非流式）模式使用的 vocoder。
-                "token2wav" = Step Audio Token2Wav（默认，轻量）；
-                "cosyvoice2" = CosyVoice2-0.5B（需额外依赖）。
-                当设为 "token2wav" 时不加载 CosyVoice2，节省 ~0.5GB 显存和依赖。
-            
-        调用后支持：
-        - set_mode(ProcessorMode.CHAT): 单工模式
-        - set_mode(ProcessorMode.STREAMING): 流式模式
-        - set_mode(ProcessorMode.DUPLEX): 双工模式
+            pt_path: Optional extra .pt weights to override base model weights.
+                Typical usage: load base model via from_pretrained, then overlay
+                fine-tuned weights via pt_path.
+            preload_both_tts: Whether to preload both TTS vocoders (recommended
+                True — trades ~0.5 GB VRAM for millisecond-level switching).
+            duplex_config: Duplex configuration dict.
+            device: Target device.
+            chat_vocoder: Vocoder for Chat (non-streaming) mode.
+                "token2wav" = Step Audio Token2Wav (default, lightweight);
+                "cosyvoice2" = CosyVoice2-0.5B (requires extra dependencies).
+                When set to "token2wav", CosyVoice2 is not loaded, saving
+                ~0.5 GB VRAM and its dependencies.
+
+        After this call the following mode switches are available:
+        - set_mode(ProcessorMode.CHAT)
+        - set_mode(ProcessorMode.STREAMING)
+        - set_mode(ProcessorMode.DUPLEX)
         """
-        logger.info("初始化统一模式...")
+        logger.info("Initializing unified mode...")
         self._chat_vocoder = chat_vocoder
-        logger.info(f"Chat vocoder 配置: {chat_vocoder}")
-        
-        # 加载额外的 .pt 权重覆盖基础模型（如果有）
+        logger.info(f"Chat vocoder config: {chat_vocoder}")
+
+        # Load extra .pt weights to override base model (if provided)
         if pt_path is not None:
-            logger.info(f"加载额外权重: {pt_path}")
+            logger.info(f"Loading extra weights: {pt_path}")
             state_dict = torch.load(pt_path, map_location="cpu")
             info = self.load_state_dict(state_dict, strict=False)
-            logger.info(f"权重加载完成 - Missing: {len(info.missing_keys)}, Unexpected: {len(info.unexpected_keys)}")
+            logger.info(f"Weights loaded — missing: {len(info.missing_keys)}, unexpected: {len(info.unexpected_keys)}")
             if info.unexpected_keys:
-                logger.warning(f"Unexpected keys: {info.unexpected_keys[:5]}...")  # 只显示前5个
+                logger.warning(f"Unexpected keys: {info.unexpected_keys[:5]}...")
             del state_dict
-        
-        # 更新双工配置
+
+        # Update duplex config
         if duplex_config:
             self._duplex_config.update(duplex_config)
-        
-        # 预加载 TTS vocoder（根据 chat_vocoder 决定是否加载 CosyVoice2）
+
+        # Preload TTS vocoder
         self.init_token2wav(streaming=True)
-        
-        # 创建 DuplexCapability 实例（组合模式）
+
+        # Create DuplexCapability instance (composition pattern)
         self.duplex = DuplexCapability(
             model=self,
             device=device,
             **self._duplex_config,
         )
-        
+
         self._unified_initialized = True
-        
-        # 默认 Streaming 模式
+
+        # Default to Streaming mode
         self.set_mode(ProcessorMode.STREAMING)
-        
-        logger.info("统一模式初始化完成")
-    
+
+        logger.info("Unified mode initialization complete")
+
     def set_mode(self, mode: ProcessorMode) -> None:
-        """设置当前模式（毫秒级切换）
-        
+        """Set the current processor mode (millisecond-level switch).
+
         Args:
-            mode: 目标模式 (CHAT / STREAMING / DUPLEX)
-        
+            mode: Target mode (CHAT / STREAMING / DUPLEX).
         """
         if mode == self._current_mode:
             return
-        
-        logger.info(f"切换模式: {self._current_mode} -> {mode}")
-        
-        # 重置状态
+
+        logger.info(f"Switching mode: {self._current_mode} -> {mode}")
+
+        # Reset session state
         self.reset_session(reset_token2wav_cache=True)
-        
-        # 双工模式额外重置
+
+        # Extra reset for duplex mode
         if mode == ProcessorMode.DUPLEX and hasattr(self, 'duplex') and self.duplex is not None:
             self.duplex._reset_streaming_state()
             self.duplex.decoder.reset()
-        
+
         self._current_mode = mode
-    
+
     def apply_torch_compile(
         self,
         mode: str = "default",
         dynamic: bool = True,
     ) -> "MiniCPMO":
-        """对核心子模块应用 torch.compile 加速
-        
-        应在 init_unified() 之后调用。DuplexCapability 等组件通过引用访问
-        同一个模型实例，因此 compile 后它们自动使用 compiled 版本。
-        
-        compile 目标（计算密集型子模块）：
-          - vpm: SiglipVisionTransformer（视觉编码器）
-          - llm.model: Qwen3Model backbone（LLM 核心，保留外层 lm_head + generate 逻辑）
-          - resampler: 视觉 resampler
-          - tts.model: LlamaModel backbone（TTS 核心）
-        
-        不 compile 的部分：
-          - apm (Whisper 音频编码器): streaming 特殊行为 + 动态 shape，compile 收益低
-          - tts.audio_tokenizer (Token2wav/CosyVoice2): 外部库，非标准 nn.Module
-          - MiniCPMO 外层: Python 控制流多，compile 收益低
-        
-        注意：torch.compile 只是包装，实际编译在首次 forward 时触发。
-        建议在 compile 后用真实数据做一次 warmup forward 以触发编译。
-        
+        """Apply torch.compile to compute-intensive sub-modules.
+
+        Must be called after init_unified().  DuplexCapability and other
+        components access the same model instance by reference, so they
+        automatically use the compiled versions after this call.
+
+        Compile targets (compute-intensive sub-modules):
+          - vpm: SiglipVisionTransformer (vision encoder)
+          - llm.model: Qwen3Model backbone (LLM core; outer lm_head + generate
+            logic is kept un-compiled)
+          - resampler: vision resampler
+          - tts.model: LlamaModel backbone (TTS core)
+
+        NOT compiled:
+          - apm (Whisper audio encoder): streaming-specific behavior + dynamic
+            shapes, low compile benefit
+          - tts.audio_tokenizer (Token2wav / CosyVoice2): external library, not
+            a standard nn.Module
+          - MiniCPMO outer wrapper: heavy Python control flow, low compile benefit
+
+        Note: torch.compile only wraps the modules; actual Triton compilation is
+        triggered on the first forward pass.  Call warmup_compile() afterwards to
+        trigger compilation proactively.
+
         Args:
-            mode: torch.compile 模式
-                - "default": 平衡编译时间和运行速度（推荐用于 streaming/duplex）
-                - "reduce-overhead": 使用 CUDA Graphs（仅适合静态 shape 场景）
-                - "max-autotune": 最大优化（编译时间很长）
-            dynamic: 是否启用动态 shape 支持（推荐 True，避免 shape 变化时重编译）
-        
+            mode: torch.compile mode.
+                - "default": balanced compile time vs runtime speed (recommended)
+                - "reduce-overhead": uses CUDA Graphs (static shapes only)
+                - "max-autotune": maximum optimization (very long compile time)
+            dynamic: Enable dynamic shape support (recommended True to avoid
+                recompilation when shapes change).
+
         Returns:
-            self（支持链式调用）
+            self (for method chaining).
         """
         import time as _time
-        logger.info(f"[torch.compile] 开始 compile 子模块 (mode={mode}, dynamic={dynamic})")
+        logger.info(f"[torch.compile] Compiling sub-modules (mode={mode}, dynamic={dynamic})")
         t0 = _time.time()
-        
+
         compile_kwargs = dict(mode=mode, dynamic=dynamic)
         compiled_modules: list = []
-        
+
         if hasattr(self, "vpm"):
             self.vpm = torch.compile(self.vpm, **compile_kwargs)
             compiled_modules.append("vpm")
-        
+
         if hasattr(self, "llm"):
             self.llm.model = torch.compile(self.llm.model, **compile_kwargs)
             compiled_modules.append("llm.model")
-        
+
         if hasattr(self, "resampler"):
             self.resampler = torch.compile(self.resampler, **compile_kwargs)
             compiled_modules.append("resampler")
-        
+
         if hasattr(self, "tts") and hasattr(self.tts, "model"):
             self.tts.model = torch.compile(self.tts.model, **compile_kwargs)
             compiled_modules.append("tts.model")
-        
-        # 启用 TF32 提升矩阵乘性能
+
+        # Enable TF32 for faster matmul on Ampere+ GPUs
         torch.set_float32_matmul_precision("high")
-        
+
         elapsed = _time.time() - t0
         self._compiled = True
         logger.info(
-            f"[torch.compile] 包装完成 ({elapsed:.2f}s)，"
-            f"compiled: {compiled_modules}。实际编译在首次 forward 时触发。"
+            f"[torch.compile] Wrapping done ({elapsed:.2f}s), "
+            f"compiled: {compiled_modules}. Actual compilation triggers on first forward."
         )
         return self
 
@@ -459,38 +467,41 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
         warmup_video_path: Optional[str] = None,
         ref_audio_path: Optional[str] = None,
         max_warmup_chunks: int = 10,
+        total_estimate_seconds: int = 400,
     ) -> None:
-        """用真实 omni full duplex 流程触发 torch.compile 的 Triton 内核编译
+        """Trigger Triton kernel compilation via a real omni full-duplex session.
 
-        与合成数据 warmup 不同，此方法使用真实 MP4 视频跑一遍完整的
-        duplex 推理（prepare → prefill → generate → finalize），在真实
-        推理链路中触发 4 个 compiled 子模块（vpm / resampler / llm.model /
-        tts.model）的 Triton 编译。apm 和 token2wav 不在 compile 目标中，
-        它们只是作为 duplex 流程的一部分自然运行。
+        Runs a complete duplex inference loop (prepare → prefill → generate →
+        finalize) using an actual MP4 video, exercising the four compiled
+        sub-modules (vpm / resampler / llm.model / tts.model) in their real
+        execution context.  apm and token2wav are NOT compile targets; they
+        simply run as part of the duplex pipeline.
 
-        每个 unit 的各阶段耗时会详细打印到日志中。
+        Per-unit timing breakdown is logged for each chunk.
 
         Args:
-            warmup_video_path: 预热用 MP4 视频路径。为 None 时使用
-                assets/samples/20260222-193626.mp4
-            ref_audio_path: TTS 参考音频路径。为 None 时使用
-                assets/ref_audio/ref_minicpm_signature.wav
-            max_warmup_chunks: 最多处理多少个 1 秒 chunk（默认 10）
+            warmup_video_path: MP4 video for warmup.  Defaults to
+                ``assets/samples/compile.mp4``.
+            ref_audio_path: Reference audio for TTS voice cloning.  Defaults to
+                ``assets/ref_audio/ref_minicpm_signature.wav``.
+            max_warmup_chunks: Maximum number of 1-second chunks to process.
         """
         if not getattr(self, "_compiled", False):
-            logger.warning("[warmup] 模型未 compile，跳过 warmup")
+            logger.warning("[warmup] model not compiled, skipping warmup")
             return
 
         if self.duplex is None:
-            logger.warning("[warmup] duplex 未初始化，跳过 warmup")
+            logger.warning("[warmup] duplex not initialized, skipping warmup")
             return
 
+        import sys
         import time as _time
+        import threading
 
         project_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
         if warmup_video_path is None:
             warmup_video_path = os.path.join(
-                project_root, "assets", "samples", "20260222-193626.mp4"
+                project_root, "assets", "samples", "compile.mp4"
             )
         if ref_audio_path is None:
             ref_audio_path = os.path.join(
@@ -498,65 +509,101 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
             )
 
         if not os.path.isfile(warmup_video_path):
-            logger.warning(f"[warmup] 预热视频不存在: {warmup_video_path}，跳过")
+            logger.warning("[warmup] warmup video not found: %s, skipping", warmup_video_path)
             return
         if not os.path.isfile(ref_audio_path):
-            logger.warning(f"[warmup] 参考音频不存在: {ref_audio_path}，跳过")
+            logger.warning("[warmup] ref audio not found: %s, skipping", ref_audio_path)
             return
 
-        logger.info(
-            "[warmup] 开始 omni duplex 真实预热 (video=%s, ref=%s, max_chunks=%d)",
-            warmup_video_path, ref_audio_path, max_warmup_chunks,
-        )
-        t_total = _time.time()
+        # ── Persistent spinner ──
+        _SPINNER = r"\|/-"
+        _TOTAL_EST_S = total_estimate_seconds
+        _G = "\033[32m"
+        _B = "\033[1m"
+        _R = "\033[0m"
 
-        # ── 1. 从 MP4 提取音频和视频帧 ──
-        t_extract = _time.time()
+        t_total = _time.time()
+        _spin_idx = [0]
+        _stage_info = ["(1/6) Initializing"]
+        _lock = threading.Lock()
+        _stop_evt = threading.Event()
+        _out = sys.stderr
+
+        def _render_spinner():
+            elapsed = _time.time() - t_total
+            remaining = max(0, _TOTAL_EST_S - elapsed)
+            s = _SPINNER[_spin_idx[0] % 4]
+            _spin_idx[0] += 1
+            info = _stage_info[0]
+            pct = min(100, int(elapsed / _TOTAL_EST_S * 100))
+            bar_w = 20
+            filled = int(bar_w * pct / 100)
+            bar = "█" * filled + "░" * (bar_w - filled)
+            return (
+                f"\r{_G}{_B}[{s}] {bar} {pct:3d}% | {info} "
+                f"| elapsed={elapsed:.0f}s remaining~{remaining:.0f}s{_R}\033[K"
+            )
+
+        def _spinner_loop():
+            while not _stop_evt.wait(0.15):
+                with _lock:
+                    _out.write(_render_spinner())
+                    _out.flush()
+
+        def _set_stage(stage_idx: int, total: int, name: str, detail: str = ""):
+            tag = f" {detail}" if detail else ""
+            _stage_info[0] = f"({stage_idx}/{total}) {name}{tag}"
+
+        def _log(msg: str):
+            with _lock:
+                _out.write(f"\r\033[K")
+                _out.flush()
+                logger.info(f"{_G}%s{_R}", msg)
+                _out.write(_render_spinner())
+                _out.flush()
+
+        spinner_thread = threading.Thread(target=_spinner_loop, daemon=True)
+        spinner_thread.start()
+
+        _log(f"[warmup] starting omni duplex warmup (video={warmup_video_path}, "
+             f"max_chunks={max_warmup_chunks}, est~{_TOTAL_EST_S}s)")
+
+        # ── 1. Extract audio chunks and video frames from MP4 ──
+        _set_stage(1, 6, "Extracting MP4")
         audio_chunks, frames = self._extract_mp4_chunks(
             warmup_video_path, max_chunks=max_warmup_chunks
         )
-        logger.info(
-            "[warmup] MP4 提取完成: %d audio chunks, %d frames (%.1fs)",
-            len(audio_chunks), len(frames), _time.time() - t_extract,
-        )
+        _log(f"[warmup] (1/6) MP4 extracted: {len(audio_chunks)} chunks, {len(frames)} frames")
         if not audio_chunks:
-            logger.warning("[warmup] 未能从 MP4 提取到音频，跳过")
+            _stop_evt.set()
+            with _lock:
+                _out.write("\r\033[K")
+                _out.flush()
+            logger.warning("[warmup] no audio extracted from MP4, skipping")
             return
 
-        # ── 2. 加载参考音频 ──
+        # ── 2. Load reference audio ──
+        _set_stage(2, 6, "Loading reference audio")
         import librosa as _librosa
         ref_audio, _ = _librosa.load(ref_audio_path, sr=16000, mono=True)
+        _log("[warmup] (2/6) Reference audio loaded")
 
-        # ── 3. 启动 duplex 会话 ──
-
-        t_prepare = _time.time()
+        # ── 3. Start duplex session ──
+        _set_stage(3, 6, "Duplex prepare")
         self.duplex.prepare(
             prefix_system_prompt="<|im_start|>system\nStreaming Omni Conversation.\n<|audio_start|>",
             suffix_system_prompt="<|audio_end|><|im_end|>",
             ref_audio=ref_audio,
             prompt_wav_path=ref_audio_path,
         )
-        cost_prepare = _time.time() - t_prepare
-        logger.info("[warmup] duplex prepare 完成 (%.2fs)", cost_prepare)
+        _log("[warmup] (3/6) Duplex prepare done")
 
-        # ── 4. 逐 chunk 推理并记录耗时 ──
+        # ── 4. Per-chunk warmup (Triton compilation) ──
         tts_triggered = False
         num_chunks = min(len(audio_chunks), len(frames)) if frames else len(audio_chunks)
 
-        logger.info(
-            "[warmup] ╔══════════════════════════════════════════════════════════════════╗"
-        )
-        logger.info(
-            "[warmup] ║  Unit  │ Prefill                                  │ Generate    ║"
-        )
-        logger.info(
-            "[warmup] ║       │ vis_proc vis_emb vis_feed │ aud_proc aud_emb aud_feed │ total   │ llm    tts_p  tts    t2w   │ total   │ decision ║"
-        )
-        logger.info(
-            "[warmup] ╠══════════════════════════════════════════════════════════════════╣"
-        )
-
         for i in range(num_chunks):
+            _set_stage(4, 6, "Triton compilation", f"unit {i}/{num_chunks}")
             frame_list = [frames[i]] if frames and i < len(frames) else None
 
             # ── Prefill ──
@@ -568,7 +615,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
                     max_slice_nums=1,
                 )
             except Exception as e:
-                logger.warning("[warmup] unit %d prefill 失败: %s", i, e)
+                _log(f"[warmup] unit {i} prefill failed: {e}")
                 break
             cost_prefill = _time.time() - t_pf
 
@@ -585,7 +632,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
             try:
                 gen_result = self.duplex.streaming_generate()
             except Exception as e:
-                logger.warning("[warmup] unit %d generate 失败: %s", i, e)
+                _log(f"[warmup] unit {i} generate failed: {e}")
                 break
             cost_generate = _time.time() - t_gen
 
@@ -603,39 +650,38 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
                 if text:
                     decision += f' "{text[:20]}"'
 
-            logger.info(
-                "[warmup] ║ %3d   │ %6.0f %6.0f %6.0f │ %6.0f %6.0f %6.0f │ %7.0f │ %6.0f %6.0f %6.0f %6.0f │ %7.0f │ %-8s ║",
-                i,
-                pf_vp, pf_ve, pf_vf,
-                pf_ap, pf_ae, pf_af,
-                pf_all,
-                gen_llm, gen_tts_p, gen_tts, gen_t2w,
-                gen_all,
-                decision,
+            elapsed = _time.time() - t_total
+            remaining = max(0, _TOTAL_EST_S - elapsed)
+            _log(
+                f"[warmup] unit={i}/{num_chunks} | prefill: vis_proc={pf_vp:.0f}ms vis_emb={pf_ve:.0f}ms "
+                f"vis_feed={pf_vf:.0f}ms aud_proc={pf_ap:.0f}ms aud_emb={pf_ae:.0f}ms "
+                f"aud_feed={pf_af:.0f}ms total={pf_all:.0f}ms | generate: llm={gen_llm:.0f}ms "
+                f"tts_prep={gen_tts_p:.0f}ms tts={gen_tts:.0f}ms token2wav={gen_t2w:.0f}ms "
+                f"total={gen_all:.0f}ms | decision={decision} | elapsed={elapsed:.0f}s remaining~{remaining:.0f}s"
             )
 
             # ── Finalize ──
-            t_fin = _time.time()
             try:
                 self.duplex.finalize_unit()
             except Exception as e:
-                logger.warning("[warmup] unit %d finalize 失败: %s", i, e)
+                _log(f"[warmup] unit {i} finalize failed: {e}")
                 break
 
             if gen_result.get("end_of_turn", False):
-                logger.info("[warmup] 模型发出 end_of_turn，提前结束")
+                _log("[warmup] model emitted end_of_turn, stopping early")
                 break
 
-        logger.info(
-            "[warmup] ╚══════════════════════════════════════════════════════════════════╝"
-        )
-
-        # ── 5. 如果 TTS 未被触发，做 fallback warmup ──
+        # ── 5. TTS fallback if model stayed in LISTEN throughout ──
         if not tts_triggered and hasattr(self, "tts") and hasattr(self.tts, "model"):
-            logger.info("[warmup] duplex 全程 LISTEN，TTS 未触发，执行 TTS fallback warmup...")
+            _set_stage(5, 6, "TTS fallback warmup")
+            _log("[warmup] (5/6) TTS was not triggered during duplex, running fallback...")
             self._warmup_tts_fallback()
+            _log("[warmup] (5/6) TTS fallback done")
+        else:
+            _log("[warmup] (5/6) TTS fallback skipped (already triggered)")
 
-        # ── 6. 清理 duplex 会话状态 ──
+        # ── 6. Clean up duplex session state ──
+        _set_stage(6, 6, "Cleanup")
         self.duplex._reset_streaming_state()
         self.duplex.decoder.reset()
         if hasattr(self.tts, "audio_tokenizer"):
@@ -644,11 +690,19 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
                 if hasattr(tokenizer, attr) and getattr(tokenizer, attr) is not None:
                     setattr(tokenizer, attr, None)
         self.reset_session(reset_token2wav_cache=True)
-
         torch.cuda.empty_cache()
+
+        # ── Stop spinner and print final line ──
+        _stop_evt.set()
+        spinner_thread.join(timeout=1)
+        with _lock:
+            _out.write("\r\033[K")
+            _out.flush()
+
         total = _time.time() - t_total
         logger.info(
-            "[warmup] omni duplex 预热完成 (总耗时 %.1fs, tts_triggered=%s)", total, tts_triggered
+            "%s[warmup] ✓ omni duplex warmup complete (total=%.1fs, tts_triggered=%s)%s",
+            _G, total, tts_triggered, _R,
         )
 
     def _extract_mp4_chunks(
@@ -657,11 +711,13 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
         max_chunks: int = 10,
         sample_rate: int = 16000,
     ) -> tuple:
-        """从 MP4 提取 1 秒音频 chunks 和对应的视频帧（仅依赖 ffmpeg + PIL）
+        """Extract 1-second audio chunks and corresponding video frames from MP4.
+
+        Uses ffmpeg for both audio extraction and frame extraction (no cv2).
 
         Returns:
-            (audio_chunks, frames): audio_chunks 是 list[np.ndarray]（16kHz mono），
-            frames 是 list[PIL.Image]
+            (audio_chunks, frames): audio_chunks is list[np.ndarray] (16kHz mono),
+            frames is list[PIL.Image].
         """
         import subprocess
         import tempfile
@@ -672,7 +728,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
         tmp_dir = tempfile.mkdtemp(prefix="warmup_")
 
         try:
-            # ── 提取音频 ──
+            # ── Extract audio ──
             tmp_wav_path = os.path.join(tmp_dir, "audio.wav")
             subprocess.run(
                 [
@@ -692,7 +748,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
             for i in range(n_audio):
                 audio_chunks.append(audio[i * chunk_size : (i + 1) * chunk_size])
 
-            # ── 提取视频帧（ffmpeg 1fps → JPEG）──
+            # ── Extract video frames (ffmpeg 1fps → JPEG) ──
             frames_dir = os.path.join(tmp_dir, "frames")
             os.makedirs(frames_dir, exist_ok=True)
             subprocess.run(
@@ -714,7 +770,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
                 )
 
         except Exception as e:
-            logger.warning("[warmup] MP4 提取失败: %s", e)
+            logger.warning("[warmup] MP4 extraction failed: %s", e)
         finally:
             import shutil
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -722,7 +778,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
         return audio_chunks, frames
 
     def _warmup_tts_fallback(self) -> None:
-        """TTS 子模块 fallback warmup（当 duplex 全程 LISTEN 时调用）"""
+        """TTS sub-module fallback warmup (called when duplex stayed in LISTEN)."""
         import time as _time
         device = next(self.tts.model.parameters()).device
         tts_hidden = self.tts.config.hidden_size
@@ -735,7 +791,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
             pos = torch.arange(prefill_len, dtype=torch.long, device=device).unsqueeze(0)
             out = self.tts.model(inputs_embeds=dummy, position_ids=pos, use_cache=True)
             torch.cuda.synchronize(device)
-            logger.info("[warmup]   tts prefill fallback 完成 (%.1fs)", _time.time() - t0)
+            logger.info("[warmup]   tts prefill fallback done (%.1fs)", _time.time() - t0)
 
             t1 = _time.time()
             dec = torch.randn(1, 1, tts_hidden, device=device, dtype=tts_dtype)
@@ -746,7 +802,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
             )
             torch.cuda.synchronize(device)
             del out
-            logger.info("[warmup]   tts decode fallback 完成 (%.1fs)", _time.time() - t1)
+            logger.info("[warmup]   tts decode fallback done (%.1fs)", _time.time() - t1)
 
     @property
     def current_mode(self) -> Optional[ProcessorMode]:

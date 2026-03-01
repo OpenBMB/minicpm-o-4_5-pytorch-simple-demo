@@ -1,44 +1,23 @@
 #!/bin/bash
-# MiniCPMO45 服务一键启动脚本
+# Usage:
+#     (1) bash start_all.sh
+#     (2) CUDA_VISIBLE_DEVICES=0,1,2,3 bash start_all.sh
 #
-# 端口配置（见 config.py）：
-#   Gateway: 10024（HTTPS，默认）
-#   Workers: 22400, 22401, 22402, ...（HTTP，内部通信）
-#
-# 使用方式：
-#     cd /user/sunweiyue/lib/swy-dev/minicpmo45_service
-#
-#     # 启动所有可用 GPU 的 Worker + Gateway（默认 HTTPS）
-#     bash start_all.sh
-#
-#     # 降级为 HTTP（不推荐，麦克风/摄像头等浏览器 API 需要 HTTPS）
-#     bash start_all.sh --http
-#
-#     # 启用 torch.compile 加速（首次推理会触发编译，后续加速）
-#     bash start_all.sh --compile
-#
-#     # 指定 GPU
-#     CUDA_VISIBLE_DEVICES=0,1,2,3 bash start_all.sh
+# torch.compile is controlled via config.json: "service": { "compile": true }
+# Pre-compile with: PYTHONPATH=. .venv/base/bin/python precompile.py
 
 set -e
 
 export TORCHINDUCTOR_CACHE_DIR=./torch_compile_cache
-# export CUDA_VISIBLE_DEVICES=0
 
-# ============ 解析脚本参数 ============
+# ============ Parse script arguments ============
 GATEWAY_PROTO="https"
 GATEWAY_EXTRA_ARGS=""
-WORKER_EXTRA_ARGS=""
-COMPILE_LABEL="OFF"
 for arg in "$@"; do
     case "$arg" in
         --http)
             GATEWAY_PROTO="http"
             GATEWAY_EXTRA_ARGS="--http"
-            ;;
-        --compile)
-            WORKER_EXTRA_ARGS="$WORKER_EXTRA_ARGS --compile"
-            COMPILE_LABEL="ON"
             ;;
     esac
 done
@@ -66,7 +45,6 @@ echo "=================================================="
 echo "  GPUs: $GPU_LIST ($NUM_GPUS)"
 echo "  Gateway: ${GATEWAY_PROTO}://localhost:$GATEWAY_PORT"
 echo "  Workers: localhost:$WORKER_BASE_PORT ~ localhost:$((WORKER_BASE_PORT + NUM_GPUS - 1)) (HTTP, internal)"
-echo "  Compile: $COMPILE_LABEL"
 echo "=================================================="
 
 cd "$PROJECT_DIR"
@@ -85,7 +63,6 @@ for GPU_ID in $(echo "$GPU_LIST" | tr ',' ' '); do
         --port $WORKER_PORT \
         --gpu-id $GPU_ID \
         --worker-index $GPU_IDX \
-        $WORKER_EXTRA_ARGS \
         > "tmp/worker_${GPU_IDX}.log" 2>&1 &
 
     echo $! > "tmp/worker_${GPU_IDX}.pid"
@@ -106,7 +83,7 @@ echo "Waiting for Workers to load models (~30-90s)..."
 sleep 5
 for i in $(seq 0 $((NUM_GPUS - 1))); do
     WORKER_PORT=$((WORKER_BASE_PORT + i))
-    MAX_RETRIES=180
+    MAX_RETRIES=3000
     RETRY=0
 
     while [ $RETRY -lt $MAX_RETRIES ]; do

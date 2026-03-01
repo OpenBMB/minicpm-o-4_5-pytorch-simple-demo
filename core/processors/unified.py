@@ -1168,39 +1168,39 @@ class DuplexView:
 # ============================================================
 
 class UnifiedProcessor(BaseProcessor):
-    """统一处理器 - 一次加载，支持 Chat/Streaming/Duplex 热切换
-    
-    核心特性：
-    - 模型只加载一次，所有模式共享
-    - 模式切换 < 1ms
-    - 每个模式返回专用的 View，API 类型安全
-    
-    使用方式：
+    """Unified processor — load once, hot-switch between Chat/Streaming/Duplex.
+
+    Key features:
+    - Model loaded once, shared across all modes
+    - Mode switching < 1ms
+    - Each mode returns a dedicated View with type-safe API
+
+    Usage:
         >>> processor = UnifiedProcessor(model_path=..., pt_path=...)
-        >>> 
-        >>> # Chat 模式
+        >>>
+        >>> # Chat mode
         >>> chat = processor.set_chat_mode()
         >>> response = chat.chat(request)
-        >>> 
-        >>> # Half-Duplex 模式
+        >>>
+        >>> # Half-Duplex mode
         >>> half_duplex = processor.set_half_duplex_mode()
         >>> half_duplex.prefill(request)
         >>> for chunk in half_duplex.generate(session_id):
         ...     print(chunk.text_delta, end="")
-        >>> 
-        >>> # Duplex 模式
+        >>>
+        >>> # Duplex mode
         >>> duplex = processor.set_duplex_mode()
         >>> duplex.prepare(...)
         >>> result = duplex.generate()
-    
+
     Attributes:
-        model_path: 基础模型路径（HuggingFace 格式目录）
-        pt_path: 额外的 .pt 权重路径（可选，用于覆盖基础模型权重）
-        device: 运行设备
-        ref_audio_path: 默认参考音频路径
-        model: MiniCPMO 统一模型实例
+        model_path: Base model path (HuggingFace format directory).
+        pt_path: Optional extra .pt weights path (overrides base model weights).
+        device: Target device.
+        ref_audio_path: Default reference audio path.
+        model: MiniCPMO unified model instance.
     """
-    
+
     def __init__(
         self,
         model_path: str,
@@ -1213,19 +1213,20 @@ class UnifiedProcessor(BaseProcessor):
         chat_vocoder: str = "token2wav",
         attn_implementation: str = "auto",
     ):
-        """初始化统一处理器
-        
+        """Initialize the unified processor.
+
         Args:
-            model_path: 基础模型路径（HuggingFace 格式目录）
-            pt_path: 额外的 .pt 权重路径（可选，用于覆盖基础模型权重）
-            device: 运行设备
-            ref_audio_path: 默认参考音频路径（TTS 声音克隆）。
-                若为 None，TTS 请求时若前端也未提供 ref_audio 则 fail-fast 报错。
-            duplex_config: 双工配置
-            preload_both_tts: 是否预加载两个 TTS（推荐 True）
-            compile: 是否对核心子模块应用 torch.compile 加速
-            chat_vocoder: Chat 模式 vocoder（"token2wav" 或 "cosyvoice2"）
-            attn_implementation: Attention 实现方式（"auto"/"flash_attention_2"/"sdpa"/"eager"）
+            model_path: Base model path (HuggingFace format directory).
+            pt_path: Optional extra .pt weights path (overrides base weights).
+            device: Target device.
+            ref_audio_path: Default reference audio path for TTS voice cloning.
+                If None, TTS requests fail-fast when the client also omits it.
+            duplex_config: Duplex configuration.
+            preload_both_tts: Whether to preload both TTS vocoders (recommended True).
+            compile: Whether to apply torch.compile to core sub-modules.
+            chat_vocoder: Chat mode vocoder ("token2wav" or "cosyvoice2").
+            attn_implementation: Attention implementation
+                ("auto" / "flash_attention_2" / "sdpa" / "eager").
         """
         self.pt_path = pt_path
         self.ref_audio_path = ref_audio_path
@@ -1234,64 +1235,63 @@ class UnifiedProcessor(BaseProcessor):
         self.compile = compile
         self.chat_vocoder = chat_vocoder
         self.attn_implementation = attn_implementation
-        
-        # View 实例（懒创建）
+
+        # View instances (lazily created)
         self._chat_view: Optional[ChatView] = None
         self._half_duplex_view: Optional[HalfDuplexView] = None
         self._duplex_view: Optional[DuplexView] = None
-        
-        # 当前模式
+
+        # Current mode
         self._current_mode: Optional[ProcessorMode] = None
-        
+
         super().__init__(model_path=model_path, device=device)
-    
+
     @property
     def mode(self) -> ProcessorMode:
-        """当前模式"""
+        """Current processor mode."""
         return self._current_mode or ProcessorMode.HALF_DUPLEX
-    
+
     def _resolve_attn_implementation(self) -> str:
-        """解析实际使用的 attention 实现方式
-        
-        当配置为 "auto" 时，自动检测环境：
-        - flash-attn 可用 → flash_attention_2
-        - flash-attn 不可用 → sdpa
-        
-        当配置为具体值时，直接使用（不可用则 fail-fast）。
-        
+        """Resolve the actual attention implementation to use.
+
+        When configured as "auto", auto-detects the environment:
+        - flash-attn available -> flash_attention_2
+        - flash-attn unavailable -> sdpa
+
+        When configured explicitly, uses the value directly (fail-fast if unavailable).
+
         Returns:
-            实际使用的 attn_implementation 字符串
+            The resolved attn_implementation string.
         """
         configured = self.attn_implementation
-        
+
         if configured != "auto":
-            # 用户显式指定，检查可用性后直接使用
             if configured == "flash_attention_2":
                 try:
                     from transformers.utils import is_flash_attn_2_available
                     if not is_flash_attn_2_available():
                         raise RuntimeError(
-                            "config.json 指定 attn_implementation='flash_attention_2'，"
-                            "但 flash-attn 包未安装或不可用。\n"
-                            "解决方案：\n"
-                            "  1. 安装 flash-attn: MAX_JOBS=16 pip install 'flash-attn>=2.6' --no-build-isolation\n"
-                            "  2. 或改为 'auto'/'sdpa' 以使用 PyTorch 内置 SDPA"
+                            "config.json specifies attn_implementation='flash_attention_2', "
+                            "but flash-attn is not installed or unavailable.\n"
+                            "Solutions:\n"
+                            "  1. Install flash-attn: MAX_JOBS=16 pip install 'flash-attn>=2.6' --no-build-isolation\n"
+                            "  2. Or set to 'auto'/'sdpa' to use PyTorch built-in SDPA"
                         )
                 except ImportError:
                     raise RuntimeError(
-                        "config.json 指定 attn_implementation='flash_attention_2'，"
-                        "但 transformers.utils.is_flash_attn_2_available 不可用。"
+                        "config.json specifies attn_implementation='flash_attention_2', "
+                        "but transformers.utils.is_flash_attn_2_available is not available."
                     )
-            logger.info(f"[Attention] 使用用户指定: {configured}")
+            logger.info(f"[Attention] Using user-specified: {configured}")
             return configured
-        
-        # auto 模式：检测 flash-attn 可用性
+
+        # Auto mode: detect flash-attn availability
         try:
             from transformers.utils import is_flash_attn_2_available
             flash_available = is_flash_attn_2_available()
         except ImportError:
             flash_available = False
-        
+
         if flash_available:
             try:
                 import flash_attn
@@ -1299,54 +1299,54 @@ class UnifiedProcessor(BaseProcessor):
             except (ImportError, AttributeError):
                 flash_version = "unknown"
             logger.info(
-                f"[Attention] auto → flash_attention_2 "
-                f"(flash-attn {flash_version} 可用，性能最优)"
+                f"[Attention] auto -> flash_attention_2 "
+                f"(flash-attn {flash_version} available, best performance)"
             )
             return "flash_attention_2"
         else:
             logger.info(
-                "[Attention] auto → sdpa "
-                "(flash-attn 不可用，使用 PyTorch 内置 SDPA。"
-                "如需 flash_attention_2，请安装: "
+                "[Attention] auto -> sdpa "
+                "(flash-attn unavailable, using PyTorch built-in SDPA. "
+                "For flash_attention_2, install: "
                 "MAX_JOBS=16 pip install 'flash-attn>=2.6' --no-build-isolation)"
             )
             return "sdpa"
-    
+
     def _load_model(self) -> None:
-        """加载统一模型"""
-        logger.info(f"加载统一模型: {self.model_path}")
+        """Load the unified model."""
+        logger.info(f"Loading unified model: {self.model_path}")
         if self.pt_path:
-            logger.info(f"额外权重: {self.pt_path}")
+            logger.info(f"Extra weights: {self.pt_path}")
         start = time.time()
-        
+
         from MiniCPMO45.modeling_minicpmo_unified import MiniCPMO, ProcessorMode as ModelProcessorMode
-        
-        # 解析 attention 实现方式（auto 时自动检测环境）
+
+        # Resolve attention implementation (auto-detect when set to "auto")
         resolved_attn = self._resolve_attn_implementation()
-        
-        # 加载基础模型（trust_remote_code=True 以加载模型代码）
+
+        # Load base model
         self.model = MiniCPMO.from_pretrained(
             self.model_path,
             trust_remote_code=True,
             _attn_implementation=resolved_attn,
         )
         self.model.bfloat16().eval()
-        
+
         if self.device == "cuda":
             self.model.cuda()
-        
+
         load_time = time.time() - start
         logger.info(
-            f"基础模型加载完成，耗时 {load_time:.1f}s, "
+            f"Base model loaded in {load_time:.1f}s, "
             f"attn_implementation={resolved_attn}"
         )
-        
-        # 统一初始化（支持三种模式）
-        logger.info("初始化统一模式...")
+
+        # Unified initialization (supports all three modes)
+        logger.info("Initializing unified mode...")
         init_start = time.time()
-        
+
         self.model.init_unified(
-            pt_path=self.pt_path,  # 加载额外权重覆盖基础模型
+            pt_path=self.pt_path,
             preload_both_tts=self.preload_both_tts,
             duplex_config={
                 "generate_audio": self.duplex_config.generate_audio,
@@ -1360,102 +1360,102 @@ class UnifiedProcessor(BaseProcessor):
             device=self.device,
             chat_vocoder=self.chat_vocoder,
         )
-        
+
         init_time = time.time() - init_start
-        logger.info(f"统一模式初始化完成，耗时 {init_time:.1f}s")
-        
-        # torch.compile 加速 + 预热（可选）
+        logger.info(f"Unified mode initialization done in {init_time:.1f}s")
+
+        # torch.compile acceleration + warmup (optional)
         if self.compile:
             compile_start = time.time()
             self.model.apply_torch_compile(mode="default", dynamic=True)
             self.model.warmup_compile(ref_audio_path=self.ref_audio_path)
             compile_time = time.time() - compile_start
-            logger.info(f"torch.compile + warmup 完成，总耗时 {compile_time:.1f}s")
-        
-        # 创建 View 实例
+            logger.info(f"torch.compile + warmup done in {compile_time:.1f}s")
+
+        # Create View instances
         self._chat_view = ChatView(self.model, self.ref_audio_path)
         self._half_duplex_view = HalfDuplexView(self.model, self.ref_audio_path)
         self._duplex_view = DuplexView(self.model, self.ref_audio_path, self.duplex_config)
-        
+
         total_time = time.time() - start
-        logger.info(f"UnifiedProcessor 初始化完成，总耗时 {total_time:.1f}s")
-    
+        logger.info(f"UnifiedProcessor initialization complete in {total_time:.1f}s")
+
     def _release_resources(self) -> None:
-        """释放资源"""
+        """Release model resources."""
         if self.model is not None:
             del self.model
             self.model = None
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-    
-    # ==================== 模式切换 ====================
-    
+
+    # ==================== Mode Switching ====================
+
     def set_chat_mode(self) -> ChatView:
-        """切换到 Chat 模式
-        
+        """Switch to Chat mode.
+
         Returns:
-            ChatView 实例
+            ChatView instance.
         """
         from MiniCPMO45.modeling_minicpmo_unified import ProcessorMode as ModelProcessorMode
-        
+
         if self._current_mode != ProcessorMode.CHAT:
             start = time.time()
             self.model.set_mode(ModelProcessorMode.CHAT)
             self._current_mode = ProcessorMode.CHAT
-            logger.info(f"切换到 CHAT 模式，耗时 {(time.time()-start)*1000:.1f}ms")
-        
+            logger.info(f"Switched to CHAT mode in {(time.time()-start)*1000:.1f}ms")
+
         return self._chat_view
-    
+
     def set_half_duplex_mode(self) -> HalfDuplexView:
-        """切换到 Half-Duplex 模式
-        
+        """Switch to Half-Duplex mode.
+
         Returns:
-            HalfDuplexView 实例
+            HalfDuplexView instance.
         """
         from MiniCPMO45.modeling_minicpmo_unified import ProcessorMode as ModelProcessorMode
-        
+
         if self._current_mode != ProcessorMode.HALF_DUPLEX:
             start = time.time()
             self.model.set_mode(ModelProcessorMode.STREAMING)
             self._current_mode = ProcessorMode.HALF_DUPLEX
-            logger.info(f"切换到 HALF_DUPLEX 模式，耗时 {(time.time()-start)*1000:.1f}ms")
-        
+            logger.info(f"Switched to HALF_DUPLEX mode in {(time.time()-start)*1000:.1f}ms")
+
         return self._half_duplex_view
-    
+
     def set_duplex_mode(self) -> DuplexView:
-        """切换到 Duplex 模式
-        
+        """Switch to Duplex mode.
+
         Returns:
-            DuplexView 实例
+            DuplexView instance.
         """
         from MiniCPMO45.modeling_minicpmo_unified import ProcessorMode as ModelProcessorMode
-        
+
         if self._current_mode != ProcessorMode.DUPLEX:
             start = time.time()
             self.model.set_mode(ModelProcessorMode.DUPLEX)
             self._current_mode = ProcessorMode.DUPLEX
-            logger.info(f"切换到 DUPLEX 模式，耗时 {(time.time()-start)*1000:.1f}ms")
-        
+            logger.info(f"Switched to DUPLEX mode in {(time.time()-start)*1000:.1f}ms")
+
         return self._duplex_view
-    
-    # ==================== KV Cache 状态 ====================
-    
+
+    # ==================== KV Cache State ====================
+
     @property
     def kv_cache_length(self) -> int:
-        """当前 LLM KV cache 的 token 总长度
-        
-        返回主干 LLM 的 KV cache 中已处理的 token 数。
-        包含 system prompt + 所有历史轮次 + 当前已生成的 token。
-        
-        注意：
-        - Half-Duplex 模式：读 model.llm_past_key_values
-        - Duplex 模式：读 model.duplex.decoder.cache（独立 KV cache）
-        - Chat 模式：仅在 chat() 调用期间有效
-        - 返回 0 表示 KV cache 为空或模型未加载
+        """Total token count in the LLM KV cache.
+
+        Returns the number of tokens processed in the backbone LLM's KV cache,
+        including system prompt + all history turns + currently generated tokens.
+
+        Notes:
+        - Half-Duplex mode: reads model.llm_past_key_values
+        - Duplex mode: reads model.duplex.decoder.cache (separate KV cache)
+        - Chat mode: only valid during a chat() call
+        - Returns 0 when KV cache is empty or model is not loaded
         """
         if self.model is None:
             return 0
-        # Duplex 模式使用 DuplexCapability 内部的 decoder cache
+        # Duplex mode uses the DuplexCapability's internal decoder cache
         if (self._current_mode == ProcessorMode.DUPLEX
                 and hasattr(self.model, 'duplex')
                 and self.model.duplex is not None
@@ -1469,7 +1469,6 @@ class UnifiedProcessor(BaseProcessor):
                     f"cache_type={cache_type}, cache is None={decoder.cache is None}"
                 )
             return length
-        # 非 Duplex 模式：如果当前实际是 Duplex 模式但条件不满足，记录警告
         if self._current_mode == ProcessorMode.DUPLEX:
             logger.warning(
                 f"[kv_cache_length] Mode is DUPLEX but conditions not met: "
@@ -1478,20 +1477,20 @@ class UnifiedProcessor(BaseProcessor):
                 f"has_decoder={hasattr(getattr(self.model, 'duplex', None) or object(), 'decoder')}"
             )
         return self.model._get_kv_cache_length()
-    
-    # ==================== 便捷属性 ====================
-    
+
+    # ==================== Convenience Properties ====================
+
     @property
     def chat(self) -> ChatView:
-        """Chat 视图（不切换模式，仅获取视图）"""
+        """Chat view (does not switch mode, only returns the view)."""
         return self._chat_view
-    
+
     @property
     def half_duplex(self) -> HalfDuplexView:
-        """Half-Duplex 视图（不切换模式，仅获取视图）"""
+        """Half-Duplex view (does not switch mode, only returns the view)."""
         return self._half_duplex_view
-    
+
     @property
     def duplex(self) -> DuplexView:
-        """Duplex 视图（不切换模式，仅获取视图）"""
+        """Duplex view (does not switch mode, only returns the view)."""
         return self._duplex_view

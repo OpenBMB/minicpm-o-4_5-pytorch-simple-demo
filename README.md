@@ -177,13 +177,39 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 bash start_all.sh
 
 After the service starts, visit https://localhost:8006. The self-signed certificate will trigger a browser warning — click "Advanced" → "Proceed" to continue.
 
-<details>
-<summary>Click to expand detailed instructions about startup options</summary>
+**5. torch.compile Acceleration**
 
-The following are advanced startup options, currently for developer reference.
+On older-generation GPUs such as A100 and RTX 4090, the per-unit computation time in Omni Full-Duplex mode is approximately 0.9s, approaching the 1-second real-time threshold and causing noticeable stuttering. `torch.compile` uses Triton to compile core sub-modules into optimized GPU kernels, reducing computation time to approximately **0.5s** — meeting real-time requirements for smooth, stutter-free interaction.
+
+Three steps to enable:
+
+**5a.** Enable compilation in `config.json`:
+
+```json
+{ "service": { "compile": true } }
+```
+
+**5b.** Run the pre-compilation script (one-time, ~15 min):
+
+```bash
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/base/bin/python precompile.py
+```
+
+Pre-compilation generates optimized Triton kernels and saves them to the `./torch_compile_cache` directory (`start_all.sh` reads the compilation cache from `TORCHINDUCTOR_CACHE_DIR`). The cache persists on disk and is automatically loaded on all subsequent starts (including process restarts), with no need to recompile.
+
+**5c.** Start the service:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3 bash start_all.sh
+```
+
+Workers automatically load the cached kernels from `./torch_compile_cache`. Loading takes approximately 5 minutes when the cache is available.
+
+<details>
+<summary>Click to expand other startup options</summary>
+
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 bash start_all.sh          # Specify GPUs
-bash start_all.sh --compile                          # torch.compile acceleration (experimental, unstable)
 bash start_all.sh --http                             # Downgrade to HTTP (not recommended, mic/camera APIs require HTTPS)
 ```
 
@@ -288,7 +314,7 @@ All configurations are centralized in `config.json` (copied from `config.example
 
 ```bash
 # Worker
-python worker.py --model-path /alt/model --pt-path /alt/weights.pt --ref-audio-path /alt/ref.wav --compile
+python worker.py --model-path /alt/model --pt-path /alt/weights.pt --ref-audio-path /alt/ref.wav
 
 # Gateway
 python gateway.py --port 10025 --workers localhost:22400,localhost:22401 --http
@@ -297,13 +323,12 @@ python gateway.py --port 10025 --workers localhost:22400,localhost:22401 --http
 
 ## Resource Consumption
 
-| Resource | Token2Wav (default) |
-|----------|---------------------|
-| VRAM (per Worker, after initialization) | ~21.5 GB |
-| Model loading time | ~16s |
-| Mode switching latency | < 0.1ms |
-
-> Compile mode incurs an additional ~60s compilation time on the first inference.
+| Resource | Token2Wav (default) | + torch.compile |
+|----------|---------------------|-----------------|
+| VRAM (per Worker, after initialization) | ~21.5 GB | ~21.5 GB |
+| Model loading time | ~16s | ~16s + ~5 min (warm) / ~15 min (cold) |
+| Mode switching latency | < 0.1ms | < 0.1ms |
+| Omni Full-Duplex per-unit latency (A100) | ~0.9s | **~0.5s** |
 
 ## Testing
 

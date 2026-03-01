@@ -181,13 +181,39 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 bash start_all.sh
 
 服务启动后访问 https://localhost:8006 即可。自签名证书会触发浏览器警告，点"高级"→"继续访问"。
 
-<details>
-<summary>点击展开关于启动选项的详细说明</summary>
+**5. torch.compile 加速**
 
-以下是高级启动选项，目前供开发者参考。
+在 A100、RTX 4090 等上一代 GPU 上，全模态全双工（Omni Full-Duplex）模式的单 unit 计算耗时约 0.9s，接近了 1 秒的实时阈值，会出现明显卡顿。`torch.compile` 通过 Triton 将核心子模块编译为优化后的 GPU kernel，可将计算耗时降至约 **0.5s**，满足实时要求，实现无卡顿的流畅交互。
+
+开启方式分为三步：
+
+**5a.** 在 `config.json` 中启用编译：
+
+```json
+{ "service": { "compile": true } }
+```
+
+**5b.** 运行预编译脚本（一次性，约 15 分钟）：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=. .venv/base/bin/python precompile.py
+```
+
+预编译会生成优化后的 Triton kernel 并保存到 `./torch_compile_cache` 目录（`start_all.sh` 会从 `TORCHINDUCTOR_CACHE_DIR` 读取编译缓存）。该缓存持久存储在磁盘上，后续所有启动（包括进程重启）都会自动加载，无需重复编译。
+
+**5c.** 启动服务：
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1,2,3 bash start_all.sh
+```
+
+Worker 启动时自动从 `./torch_compile_cache` 加载已缓存的 kernel。有缓存时加载约需 5 分钟。
+
+<details>
+<summary>点击展开其他启动选项</summary>
+
 ```bash
 CUDA_VISIBLE_DEVICES=0,1 bash start_all.sh          # 指定 GPU
-bash start_all.sh --compile                          # torch.compile 加速（实验性，效果尚不稳定）
 bash start_all.sh --http                             # 降级 HTTP（不推荐，麦克风/摄像头 API 需要 HTTPS）
 ```
 
@@ -292,7 +318,7 @@ minicpmo45_service/
 
 ```bash
 # Worker
-python worker.py --model-path /alt/model --pt-path /alt/weights.pt --ref-audio-path /alt/ref.wav --compile
+python worker.py --model-path /alt/model --pt-path /alt/weights.pt --ref-audio-path /alt/ref.wav
 
 # Gateway
 python gateway.py --port 10025 --workers localhost:22400,localhost:22401 --http
@@ -301,13 +327,12 @@ python gateway.py --port 10025 --workers localhost:22400,localhost:22401 --http
 
 ## 资源消耗
 
-| 资源 | Token2Wav（默认）
-|------|-------------------
-| 显存（每 Worker，初始化完成后） | ~21.5 GB
-| 模型加载时间 | ~16s
-| 模式切换延迟 | < 0.1ms
-
-> compile 模式首次推理额外 ~60s 编译耗时。
+| 资源 | Token2Wav（默认） | + torch.compile |
+|------|-------------------|-----------------|
+| 显存（每 Worker，初始化完成后） | ~21.5 GB | ~21.5 GB |
+| 模型加载时间 | ~16s | ~16s + ~5 min（有缓存）/ ~15 min（无缓存）|
+| 模式切换延迟 | < 0.1ms | < 0.1ms |
+| Omni Full-Duplex 单 unit 延迟（A100） | ~0.9s | **~0.5s** |
 
 ## 测试
 
