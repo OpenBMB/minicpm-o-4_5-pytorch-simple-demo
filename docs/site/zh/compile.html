@@ -110,14 +110,10 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <main class="content" id="content">
   <article><h1 id="torchcompile">torch.compile 加速</h1>
 <h2 id="_1">概述</h2>
-<p>本项目支持通过 <code>torch.compile</code> 对核心子模块进行 JIT 编译加速。编译后 Triton 内核替代 PyTorch eager 实现，可获得约 5-20% 的推理加速（取决于模块和硬件）。</p>
-<p>该功能为<strong>实验性</strong>，默认关闭。</p>
+<p>在 A100、RTX 4090 等上一代 GPU 上，Omni Full-Duplex 模式的单 unit 计算耗时约 0.9s，接近 1 秒的实时阈值，会出现明显卡顿。</p>
+<p><code>torch.compile</code> 通过 Triton 将核心子模块编译为优化后的 GPU kernel，可将计算耗时降至约 <strong>0.5s</strong>，满足实时要求，实现无卡顿的流畅交互。</p>
 <h2 id="_2">启用方式</h2>
-<h3 id="_3">命令行</h3>
-<div class="codehilite"><pre><span></span><code>bash<span class="w"> </span>start_all.sh<span class="w"> </span>--compile
-</code></pre></div>
-
-<h3 id="_4">配置文件</h3>
+<p>在 <code>config.json</code> 中设置：</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;service&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;compile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
@@ -125,15 +121,21 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <span class="p">}</span>
 </code></pre></div>
 
-<h3 id="worker">Worker 单独启动</h3>
-<div class="codehilite"><pre><span></span><code><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>worker.py<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>--worker-index<span class="w"> </span><span class="m">0</span><span class="w"> </span>--gpu-id<span class="w"> </span><span class="m">0</span><span class="w"> </span>--compile
+<h2 id="_3">预编译（推荐）</h2>
+<p><code>torch.compile</code> 的首次编译（冷启动）耗时约 15 分钟。为避免首次启动服务时的长时间等待，建议提前运行预编译脚本：</p>
+<div class="codehilite"><pre><span></span><code><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>precompile.py
 </code></pre></div>
 
-<h2 id="_5">编译链路</h2>
+<p>预编译生成的 Triton kernel 缓存保存在 <code>./torch_compile_cache</code> 目录下（由 <code>start_all.sh</code> 中的 <code>TORCHINDUCTOR_CACHE_DIR</code> 环境变量配置）。该缓存持久存储在磁盘上，后续所有启动都会自动复用，无需重复编译。</p>
+<p>预编译完成后正常启动服务：</p>
+<div class="codehilite"><pre><span></span><code><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span>,1,2,3<span class="w"> </span>bash<span class="w"> </span>start_all.sh
+</code></pre></div>
+
+<p>Worker 从缓存加载约需 5 分钟（对比冷编译的 15 分钟）。</p>
+<h2 id="_4">编译链路</h2>
 <pre class="mermaid">
 flowchart TB
-    subgraph workerStart [Worker 启动]
+    subgraph workerStart [Worker Startup]
         Load["load_model()"]
         UP["UnifiedProcessor.__init__()"]
         InitUnified["model.init_unified()"]
@@ -144,7 +146,7 @@ flowchart TB
 
     Load --> UP --> InitUnified --> Apply --> Warmup --> Ready
 
-    subgraph applyDetail [apply_torch_compile 内部]
+    subgraph applyDetail [apply_torch_compile]
         VPM["torch.compile(vpm)"]
         LLM["torch.compile(llm.model)"]
         RES["torch.compile(resampler)"]
@@ -158,19 +160,19 @@ flowchart TB
     Apply --> TTS
     Apply --> TF32
 
-    subgraph warmupDetail [warmup_compile 内部]
-        WV["vpm warmup\n224x224 dummy image"]
-        WL1["llm prefill warmup\n32 tokens"]
-        WL2["llm decode warmup\n1 token + KV cache"]
-        WT1["tts prefill warmup\n32 tokens"]
-        WT2["tts decode warmup\n1 token + KV cache"]
+    subgraph warmupDetail [warmup_compile — Real Duplex Session]
+        Extract["Extract MP4 audio + frames"]
+        Prepare["duplex.prepare()"]
+        Loop["Per-chunk loop:\nprefill → generate → finalize"]
+        TTSfb["TTS fallback\n(if not triggered)"]
+        Clean["Cleanup + empty_cache()"]
     end
 
-    Warmup --> WV --> WL1 --> WL2 --> WT1 --> WT2
+    Warmup --> Extract --> Prepare --> Loop --> TTSfb --> Clean
 </pre>
 
-<h2 id="_6">编译目标</h2>
-<h3 id="_7">被编译的子模块</h3>
+<h2 id="_5">编译目标</h2>
+<h3 id="_6">被编译的子模块</h3>
 <table>
 <thead>
 <tr>
@@ -202,8 +204,8 @@ flowchart TB
 </tr>
 </tbody>
 </table>
-<p>注意：只编译内层 backbone（如 <code>llm.model</code>），不编译外层 wrapper（如 <code>Qwen3ForCausalLM</code>），因为外层包含 Python 控制流（<code>generate()</code> 循环），编译收益低且容易导致 graph break。</p>
-<h3 id="_8">不编译的部分</h3>
+<p>只编译内层 backbone（如 <code>llm.model</code>），不编译外层 wrapper（如 <code>Qwen3ForCausalLM</code>），因为外层包含 Python 控制流（<code>generate()</code> 循环），编译收益低且容易导致 graph break。</p>
+<h3 id="_7">不编译的部分</h3>
 <table>
 <thead>
 <tr>
@@ -230,21 +232,7 @@ flowchart TB
 </tr>
 </tbody>
 </table>
-<h2 id="apply_torch_compile">apply_torch_compile() 实现</h2>
-<p>位于 <code>MiniCPMO45/modeling_minicpmo_unified.py</code>。</p>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">apply_torch_compile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-    <span class="n">compile_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="n">mode</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="n">dynamic</span><span class="p">)</span>
-
-    <span class="bp">self</span><span class="o">.</span><span class="n">vpm</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vpm</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">resampler</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">resampler</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">tts</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tts</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
-
-    <span class="n">torch</span><span class="o">.</span><span class="n">set_float32_matmul_precision</span><span class="p">(</span><span class="s2">&quot;high&quot;</span><span class="p">)</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">_compiled</span> <span class="o">=</span> <span class="kc">True</span>
-</code></pre></div>
-
-<h3 id="_9">编译参数</h3>
+<h2 id="_8">编译参数</h2>
 <table>
 <thead>
 <tr>
@@ -266,7 +254,7 @@ flowchart TB
 </tr>
 </tbody>
 </table>
-<h4 id="_10">编译模式选择</h4>
+<h3 id="_9">编译模式</h3>
 <table>
 <thead>
 <tr>
@@ -299,95 +287,115 @@ flowchart TB
 </table>
 <p>项目默认使用 <code>mode="default", dynamic=True</code>，因为推理场景中序列长度、图像尺寸等是动态变化的，<code>dynamic=True</code> 避免 shape 变化时重新编译。</p>
 <h3 id="tf32">TF32 精度提升</h3>
-<p><code>torch.set_float32_matmul_precision("high")</code> 启用 TF32（TensorFloat-32）矩阵乘法，在 Ampere+ 架构 GPU 上可额外加速约 5-10%，精度损失可忽略。</p>
-<h2 id="warmup_compile">warmup_compile() 实现</h2>
-<p><code>torch.compile</code> 只是包装，<strong>实际的 Triton 内核编译在首次 forward 时触发</strong>。如果不预热，第一个真实请求会承受额外的编译延迟（可能数十秒）。</p>
-<p><code>warmup_compile()</code> 用合成数据触发所有编译路径：</p>
-<h3 id="_11">预热步骤</h3>
-<p><strong>1. vpm + resampler</strong>
-- 构造 224x224 零值图片（最小尺寸，16x16=256 patches）
-- 执行一次 <code>vpm()</code> + <code>resampler()</code> forward
-- 触发视觉编码 Triton 内核编译</p>
-<p><strong>2. llm.model — prefill 路径</strong>
-- 构造 32 token 的 dummy embeddings
-- 执行 <code>llm.model(inputs_embeds=..., use_cache=True)</code> forward
-- 触发长序列 prefill 内核编译</p>
-<p><strong>3. llm.model — decode 路径</strong>
-- 构造 1 token 的 dummy embeddings + 上一步的 KV cache
-- 执行 decode forward
-- 触发单 token decode 内核编译（与 prefill 是不同的代码路径）</p>
-<p><strong>4. tts.model — prefill + decode 路径</strong>
-- 同 llm.model，分别触发 TTS 的 prefill 和 decode 内核编译</p>
-<h3 id="_12">为什么需要覆盖两条路径</h3>
-<p>LLM 和 TTS 的推理分为两个阶段：
-- <strong>Prefill</strong>：处理长序列输入，无 KV cache，矩阵 shape 较大
-- <strong>Decode</strong>：逐 token 生成，有 KV cache，矩阵 shape 为 1</p>
-<p>这两条路径的计算图不同。如果只预热 prefill，首次 decode 时仍会触发 recompile。</p>
-<h3 id="_13">预热后的清理</h3>
-<div class="codehilite"><pre><span></span><code><span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">empty_cache</span><span class="p">()</span>
+<p><code>torch.set_float32_matmul_precision("high")</code> 启用 TF32 矩阵乘法，在 Ampere+ GPU 上可额外加速约 5-10%，精度损失可忽略。</p>
+<h2 id="warmup_compile-duplex">warmup_compile() — 真实 Duplex 预热</h2>
+<p><code>torch.compile</code> 只是包装，<strong>实际的 Triton 内核编译在首次 forward 时触发</strong>。<code>warmup_compile()</code> 使用真实 MP4 视频跑一遍完整的 Omni Full-Duplex 推理（prepare → prefill → generate → finalize），在真实推理链路中触发所有 compiled 子模块的 Triton 编译。</p>
+<h3 id="_10">预热流程</h3>
+<ol>
+<li><strong>从 MP4 提取素材</strong> — ffmpeg 提取 16kHz 音频按 1s 切 chunk，每秒取 1 帧</li>
+<li><strong>加载参考音频</strong> — TTS 声音克隆用</li>
+<li><strong>启动 Duplex 会话</strong> — <code>duplex.prepare()</code> 初始化 StreamDecoder、预填 system prompt + ref audio</li>
+<li><strong>逐 chunk 推理</strong> — 每个 chunk 执行 <code>streaming_prefill</code> → <code>streaming_generate</code> → <code>finalize_unit</code>，触发 vpm / resampler / llm / tts 的 Triton 编译</li>
+<li><strong>TTS fallback</strong> — 若 duplex 全程 LISTEN 未触发 TTS，用合成数据单独预热 tts.model</li>
+<li><strong>清理</strong> — 重置 duplex 状态、释放 token2wav 缓存、<code>torch.cuda.empty_cache()</code></li>
+</ol>
+<h3 id="_11">预热日志</h3>
+<p>每个 unit 会打印详细的阶段耗时：</p>
+<div class="codehilite"><pre><span></span><code><span class="o">[</span><span class="n">warmup</span><span class="o">]</span><span class="w"> </span><span class="n">unit</span><span class="o">=</span><span class="mi">0</span><span class="o">/</span><span class="mi">10</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nl">prefill</span><span class="p">:</span><span class="w"> </span><span class="n">vis_proc</span><span class="o">=</span><span class="mi">120</span><span class="n">ms</span><span class="w"> </span><span class="n">vis_emb</span><span class="o">=</span><span class="mi">8500</span><span class="n">ms</span><span class="w"> </span><span class="n">vis_feed</span><span class="o">=</span><span class="mi">350</span><span class="n">ms</span>
+<span class="w">  </span><span class="n">aud_proc</span><span class="o">=</span><span class="mi">45</span><span class="n">ms</span><span class="w"> </span><span class="n">aud_emb</span><span class="o">=</span><span class="mi">1200</span><span class="n">ms</span><span class="w"> </span><span class="n">aud_feed</span><span class="o">=</span><span class="mi">180</span><span class="n">ms</span><span class="w"> </span><span class="n">total</span><span class="o">=</span><span class="mi">10500</span><span class="n">ms</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="nl">generate</span><span class="p">:</span><span class="w"> </span><span class="n">llm</span><span class="o">=</span><span class="mi">2100</span><span class="n">ms</span><span class="w"> </span><span class="n">tts_prep</span><span class="o">=</span><span class="mi">0</span><span class="n">ms</span><span class="w"> </span><span class="n">tts</span><span class="o">=</span><span class="mi">0</span><span class="n">ms</span><span class="w"> </span><span class="n">token2wav</span><span class="o">=</span><span class="mi">0</span><span class="n">ms</span><span class="w"> </span><span class="n">total</span><span class="o">=</span><span class="mi">2200</span><span class="n">ms</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="n">decision</span><span class="o">=</span><span class="n">LISTEN</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">elapsed</span><span class="o">=</span><span class="mi">125</span><span class="n">s</span><span class="w"> </span><span class="n">remaining</span><span class="o">~</span><span class="mi">875</span><span class="n">s</span>
 </code></pre></div>
 
-<p>编译过程产生的临时显存在预热完成后释放。</p>
-<h2 id="_14">调用链</h2>
-<div class="codehilite"><pre><span></span><code><span class="n">config</span><span class="o">.</span><span class="n">json</span><span class="p">:</span><span class="w"> </span><span class="n">compile</span><span class="o">=</span><span class="bp">true</span>
+<p>首个 chunk 因触发 Triton 编译耗时显著更长，后续 chunk 使用已编译的 kernel 会快很多。</p>
+<h2 id="_12">缓存机制</h2>
+<p>PyTorch Inductor 内置多层缓存，编译结果持久保存在 <code>TORCHINDUCTOR_CACHE_DIR</code> 目录下（项目默认 <code>./torch_compile_cache</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>缓存层</th>
+<th>作用</th>
+<th>默认状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Inductor Kernel Cache</td>
+<td>缓存生成的 Triton kernel .so 文件</td>
+<td>默认开启</td>
+</tr>
+<tr>
+<td>FX Graph Cache</td>
+<td>缓存编译后的 FX 计算图</td>
+<td>默认开启 (PyTorch 2.8+)</td>
+</tr>
+<tr>
+<td>Autotune Cache</td>
+<td>缓存 kernel 配置的 autotuning 结果</td>
+<td>默认开启</td>
+</tr>
+</tbody>
+</table>
+<p>缓存在以下情况下失效，需要重新编译：
+- PyTorch 版本升级
+- CUDA / Triton 版本变更
+- 模型代码结构变化（层数、结构等）
+- GPU 架构变更（如从 A100 换到 H100）</p>
+<h2 id="_13">调用链</h2>
+<div class="codehilite"><pre><span></span><code><span class="n">config</span><span class="o">.</span><span class="n">json</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;service&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s2">&quot;compile&quot;</span><span class="p">:</span><span class="w"> </span><span class="bp">true</span><span class="w"> </span><span class="p">}</span>
 <span class="w">    </span><span class="err">↓</span>
-<span class="n">worker</span><span class="o">.</span><span class="n">py</span><span class="p">:</span><span class="w"> </span><span class="n">WORKER_CONFIG</span><span class="p">[</span><span class="s2">&quot;compile&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">True</span>
+<span class="n">worker</span><span class="o">.</span><span class="n">py</span><span class="p">:</span><span class="w"> </span><span class="n">WORKER_CONFIG</span><span class="p">[</span><span class="s2">&quot;compile&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cfg</span><span class="o">.</span><span class="n">compile</span>
 <span class="w">    </span><span class="err">↓</span>
 <span class="n">MiniCPMOWorker</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">compile</span><span class="o">=</span><span class="n">True</span><span class="p">)</span>
 <span class="w">    </span><span class="err">↓</span>
 <span class="n">UnifiedProcessor</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">compile</span><span class="o">=</span><span class="n">True</span><span class="p">)</span>
 <span class="w">    </span><span class="err">↓</span>
 <span class="n">UnifiedProcessor</span><span class="o">.</span><span class="n">_load_model</span><span class="p">():</span>
-<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">init_unified</span><span class="p">()</span><span class="w">          </span><span class="c1"># 加载模型 + 双 TTS</span>
-<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">apply_torch_compile</span><span class="p">()</span><span class="w">   </span><span class="c1"># 包装子模块</span>
-<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">warmup_compile</span><span class="p">()</span><span class="w">        </span><span class="c1"># 触发编译</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">init_unified</span><span class="p">()</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">apply_torch_compile</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">dynamic</span><span class="o">=</span><span class="n">True</span><span class="p">)</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">warmup_compile</span><span class="p">(</span><span class="n">ref_audio_path</span><span class="o">=...</span><span class="p">)</span>
 </code></pre></div>
 
 <h2 id="duplexcapability">DuplexCapability 自动获益</h2>
-<p><code>DuplexCapability</code> 组件通过<strong>引用</strong>访问模型的 <code>llm</code>, <code>vpm</code>, <code>tts</code> 等子模块，不持有独立副本。因此 <code>apply_torch_compile()</code> 后，Duplex 推理自动使用已编译的版本，无需额外操作。</p>
-<h2 id="_15">性能与注意事项</h2>
-<h3 id="_16">时间开销</h3>
+<p><code>DuplexCapability</code> 通过<strong>引用</strong>访问模型的 <code>llm</code>, <code>vpm</code>, <code>tts</code> 等子模块，不持有独立副本。<code>apply_torch_compile()</code> 后，Duplex 推理自动使用已编译的版本，无需额外操作。</p>
+<h2 id="_14">性能</h2>
 <table>
 <thead>
 <tr>
-<th>阶段</th>
-<th>耗时（典型值）</th>
+<th>指标</th>
+<th>不编译</th>
+<th>编译后</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>apply_torch_compile()</code>（包装）</td>
-<td>~1s</td>
+<td>Omni Full-Duplex 单 unit 延迟 (A100)</td>
+<td>~0.9s</td>
+<td><strong>~0.5s</strong></td>
 </tr>
 <tr>
-<td><code>warmup_compile()</code>（实际编译）</td>
-<td>~60s</td>
+<td>首次启动额外耗时（冷编译）</td>
+<td>—</td>
+<td>~15 min</td>
 </tr>
 <tr>
-<td>总额外启动时间</td>
-<td>~60s</td>
+<td>首次启动额外耗时（有缓存）</td>
+<td>—</td>
+<td>~5 min</td>
+</tr>
+<tr>
+<td>运行时显存占用</td>
+<td>~21.5 GB</td>
+<td>~21.5 GB</td>
 </tr>
 </tbody>
 </table>
-<h3 id="_17">显存影响</h3>
+<h2 id="_15">已知限制</h2>
 <ul>
-<li>编译过程中会临时占用额外显存（编译器中间表示）</li>
-<li>预热完成后通过 <code>torch.cuda.empty_cache()</code> 释放</li>
-<li>运行时显存占用与非编译模式基本相同</li>
-</ul>
-<h3 id="_18">已知限制</h3>
-<ul>
-<li><strong>实验性</strong>：某些极端输入 shape 可能触发 recompile</li>
-<li><strong>首次推理延迟</strong>：如果遇到未覆盖的代码路径，仍可能触发 recompile</li>
-<li><strong>兼容性</strong>：需要 PyTorch 2.x+，部分旧版 CUDA 驱动可能不兼容 Triton</li>
-<li><strong>调试困难</strong>：编译后的代码难以单步调试</li>
-</ul>
-<h2 id="_19">基准测试</h2>
-<p>项目提供了 Duplex A/B 对比基准测试脚本：</p>
-<div class="codehilite"><pre><span></span><code><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>tests/bench_duplex_ws.py
-</code></pre></div>
-
-<p>该脚本对 normal 和 compile 模式各跑多轮，统计 LISTEN/SPEAK 稳态性能。需要同时运行两个 Worker（一个 normal，一个 compile）分别在不同端口上。</p></article>
+<li>某些极端输入 shape 可能触发 recompile</li>
+<li>需要 PyTorch 2.x+，部分旧版 CUDA 驱动可能不兼容 Triton</li>
+<li>编译后的代码难以单步调试</li>
+</ul></article>
   <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; 由 build_docs.py 自动生成</p></footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>

@@ -110,14 +110,10 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <main class="content" id="content">
   <article><h1 id="torchcompile-acceleration">torch.compile Acceleration</h1>
 <h2 id="overview">Overview</h2>
-<p>This project supports JIT compilation acceleration of core submodules via <code>torch.compile</code>. After compilation, Triton kernels replace PyTorch eager implementations, yielding approximately 5-20% inference speedup (depending on the module and hardware).</p>
-<p>This feature is <strong>experimental</strong> and disabled by default.</p>
+<p>On older-generation GPUs such as A100 and RTX 4090, the per-unit computation time in Omni Full-Duplex mode is approximately 0.9s, approaching the 1-second real-time threshold and causing noticeable stuttering.</p>
+<p><code>torch.compile</code> uses Triton to compile core sub-modules into optimized GPU kernels, reducing computation time to approximately <strong>0.5s</strong> — meeting real-time requirements for smooth, stutter-free interaction.</p>
 <h2 id="how-to-enable">How to Enable</h2>
-<h3 id="command-line">Command Line</h3>
-<div class="codehilite"><pre><span></span><code>bash<span class="w"> </span>start_all.sh<span class="w"> </span>--compile
-</code></pre></div>
-
-<h3 id="configuration-file">Configuration File</h3>
+<p>Set in <code>config.json</code>:</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">&quot;service&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;compile&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
@@ -125,11 +121,17 @@ footer { margin-top:60px; padding-top:16px; border-top:1px solid var(--border); 
 <span class="p">}</span>
 </code></pre></div>
 
-<h3 id="standalone-worker-start">Standalone Worker Start</h3>
-<div class="codehilite"><pre><span></span><code><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>worker.py<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>--worker-index<span class="w"> </span><span class="m">0</span><span class="w"> </span>--gpu-id<span class="w"> </span><span class="m">0</span><span class="w"> </span>--compile
+<h2 id="pre-compilation-recommended">Pre-compilation (Recommended)</h2>
+<p>The first-time compilation (cold start) takes approximately 15 minutes. To avoid this wait on the first service start, run the pre-compilation script ahead of time:</p>
+<div class="codehilite"><pre><span></span><code><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>precompile.py
 </code></pre></div>
 
+<p>The generated Triton kernel cache is saved to the <code>./torch_compile_cache</code> directory (configured via the <code>TORCHINDUCTOR_CACHE_DIR</code> environment variable in <code>start_all.sh</code>). The cache persists on disk and is automatically reused on all subsequent starts, with no need to recompile.</p>
+<p>After pre-compilation, start the service normally:</p>
+<div class="codehilite"><pre><span></span><code><span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span>,1,2,3<span class="w"> </span>bash<span class="w"> </span>start_all.sh
+</code></pre></div>
+
+<p>Loading from cache takes approximately 5 minutes (compared to 15 minutes for cold compilation).</p>
 <h2 id="compilation-pipeline">Compilation Pipeline</h2>
 <pre class="mermaid">
 flowchart TB
@@ -144,7 +146,7 @@ flowchart TB
 
     Load --> UP --> InitUnified --> Apply --> Warmup --> Ready
 
-    subgraph applyDetail [apply_torch_compile Internals]
+    subgraph applyDetail [apply_torch_compile]
         VPM["torch.compile(vpm)"]
         LLM["torch.compile(llm.model)"]
         RES["torch.compile(resampler)"]
@@ -158,25 +160,25 @@ flowchart TB
     Apply --> TTS
     Apply --> TF32
 
-    subgraph warmupDetail [warmup_compile Internals]
-        WV["vpm warmup\n224x224 dummy image"]
-        WL1["llm prefill warmup\n32 tokens"]
-        WL2["llm decode warmup\n1 token + KV cache"]
-        WT1["tts prefill warmup\n32 tokens"]
-        WT2["tts decode warmup\n1 token + KV cache"]
+    subgraph warmupDetail [warmup_compile — Real Duplex Session]
+        Extract["Extract MP4 audio + frames"]
+        Prepare["duplex.prepare()"]
+        Loop["Per-chunk loop:\nprefill → generate → finalize"]
+        TTSfb["TTS fallback\n(if not triggered)"]
+        Clean["Cleanup + empty_cache()"]
     end
 
-    Warmup --> WV --> WL1 --> WL2 --> WT1 --> WT2
+    Warmup --> Extract --> Prepare --> Loop --> TTSfb --> Clean
 </pre>
 
 <h2 id="compilation-targets">Compilation Targets</h2>
-<h3 id="compiled-submodules">Compiled Submodules</h3>
+<h3 id="compiled-sub-modules">Compiled Sub-modules</h3>
 <table>
 <thead>
 <tr>
-<th>Submodule</th>
+<th>Sub-module</th>
 <th>Original Class</th>
-<th>Reason for Compilation</th>
+<th>Reason</th>
 </tr>
 </thead>
 <tbody>
@@ -202,12 +204,12 @@ flowchart TB
 </tr>
 </tbody>
 </table>
-<p>Note: Only the inner backbone is compiled (e.g., <code>llm.model</code>), not the outer wrapper (e.g., <code>Qwen3ForCausalLM</code>), because the outer layer contains Python control flow (<code>generate()</code> loop), where compilation provides little benefit and easily causes graph breaks.</p>
+<p>Only the inner backbone is compiled (e.g., <code>llm.model</code>), not the outer wrapper (e.g., <code>Qwen3ForCausalLM</code>), because the outer layer contains Python control flow (<code>generate()</code> loop), where compilation provides little benefit and easily causes graph breaks.</p>
 <h3 id="parts-not-compiled">Parts Not Compiled</h3>
 <table>
 <thead>
 <tr>
-<th>Submodule</th>
+<th>Sub-module</th>
 <th>Reason</th>
 </tr>
 </thead>
@@ -230,21 +232,7 @@ flowchart TB
 </tr>
 </tbody>
 </table>
-<h2 id="apply_torch_compile-implementation">apply_torch_compile() Implementation</h2>
-<p>Located in <code>MiniCPMO45/modeling_minicpmo_unified.py</code>.</p>
-<div class="codehilite"><pre><span></span><code><span class="k">def</span> <span class="nf">apply_torch_compile</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-    <span class="n">compile_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="n">mode</span><span class="p">,</span> <span class="n">dynamic</span><span class="o">=</span><span class="n">dynamic</span><span class="p">)</span>
-
-    <span class="bp">self</span><span class="o">.</span><span class="n">vpm</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vpm</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">llm</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">resampler</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">resampler</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">tts</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tts</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="o">**</span><span class="n">compile_kwargs</span><span class="p">)</span>
-
-    <span class="n">torch</span><span class="o">.</span><span class="n">set_float32_matmul_precision</span><span class="p">(</span><span class="s2">&quot;high&quot;</span><span class="p">)</span>
-    <span class="bp">self</span><span class="o">.</span><span class="n">_compiled</span> <span class="o">=</span> <span class="kc">True</span>
-</code></pre></div>
-
-<h3 id="compilation-parameters">Compilation Parameters</h3>
+<h2 id="compilation-parameters">Compilation Parameters</h2>
 <table>
 <thead>
 <tr>
@@ -266,7 +254,7 @@ flowchart TB
 </tr>
 </tbody>
 </table>
-<h4 id="compilation-mode-selection">Compilation Mode Selection</h4>
+<h3 id="compilation-modes">Compilation Modes</h3>
 <table>
 <thead>
 <tr>
@@ -299,95 +287,115 @@ flowchart TB
 </table>
 <p>The project defaults to <code>mode="default", dynamic=True</code> because sequence lengths, image sizes, etc. vary dynamically during inference. <code>dynamic=True</code> avoids recompilation when shapes change.</p>
 <h3 id="tf32-precision-boost">TF32 Precision Boost</h3>
-<p><code>torch.set_float32_matmul_precision("high")</code> enables TF32 (TensorFloat-32) matrix multiplication, providing an additional ~5-10% speedup on Ampere+ architecture GPUs with negligible precision loss.</p>
-<h2 id="warmup_compile-implementation">warmup_compile() Implementation</h2>
-<p><code>torch.compile</code> only wraps the modules — <strong>actual Triton kernel compilation is triggered on the first forward pass</strong>. Without warmup, the first real request would incur additional compilation latency (potentially tens of seconds).</p>
-<p><code>warmup_compile()</code> triggers all compilation paths using synthetic data:</p>
+<p><code>torch.set_float32_matmul_precision("high")</code> enables TF32 matrix multiplication, providing an additional ~5-10% speedup on Ampere+ GPUs with negligible precision loss.</p>
+<h2 id="warmup_compile-real-duplex-warmup">warmup_compile() — Real Duplex Warmup</h2>
+<p><code>torch.compile</code> only wraps the modules — <strong>actual Triton kernel compilation is triggered on the first forward pass</strong>. <code>warmup_compile()</code> runs a complete Omni Full-Duplex inference session using a real MP4 video (prepare → prefill → generate → finalize), triggering Triton compilation for all compiled sub-modules in their real execution context.</p>
 <h3 id="warmup-steps">Warmup Steps</h3>
-<p><strong>1. vpm + resampler</strong>
-- Constructs a 224x224 zero-value image (minimum size, 16x16=256 patches)
-- Executes one <code>vpm()</code> + <code>resampler()</code> forward pass
-- Triggers vision encoding Triton kernel compilation</p>
-<p><strong>2. llm.model — prefill path</strong>
-- Constructs 32-token dummy embeddings
-- Executes <code>llm.model(inputs_embeds=..., use_cache=True)</code> forward pass
-- Triggers long-sequence prefill kernel compilation</p>
-<p><strong>3. llm.model — decode path</strong>
-- Constructs 1-token dummy embeddings + KV cache from the previous step
-- Executes decode forward pass
-- Triggers single-token decode kernel compilation (a different code path from prefill)</p>
-<p><strong>4. tts.model — prefill + decode paths</strong>
-- Same as llm.model, separately triggers TTS prefill and decode kernel compilation</p>
-<h3 id="why-both-paths-must-be-covered">Why Both Paths Must Be Covered</h3>
-<p>LLM and TTS inference consists of two phases:
-- <strong>Prefill</strong>: Processes long sequence input, no KV cache, larger matrix shapes
-- <strong>Decode</strong>: Generates tokens one at a time, with KV cache, matrix shape of 1</p>
-<p>These two paths have different computation graphs. If only prefill is warmed up, the first decode will still trigger a recompile.</p>
-<h3 id="post-warmup-cleanup">Post-Warmup Cleanup</h3>
-<div class="codehilite"><pre><span></span><code><span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">empty_cache</span><span class="p">()</span>
+<ol>
+<li><strong>Extract media from MP4</strong> — ffmpeg extracts 16kHz audio in 1s chunks, one frame per second</li>
+<li><strong>Load reference audio</strong> — for TTS voice cloning</li>
+<li><strong>Start duplex session</strong> — <code>duplex.prepare()</code> initializes StreamDecoder, prefills system prompt + ref audio</li>
+<li><strong>Per-chunk inference</strong> — each chunk runs <code>streaming_prefill</code> → <code>streaming_generate</code> → <code>finalize_unit</code>, triggering Triton compilation for vpm / resampler / llm / tts</li>
+<li><strong>TTS fallback</strong> — if the model stayed in LISTEN throughout and TTS was not triggered, warms up tts.model with synthetic data</li>
+<li><strong>Cleanup</strong> — resets duplex state, releases token2wav caches, <code>torch.cuda.empty_cache()</code></li>
+</ol>
+<h3 id="warmup-logs">Warmup Logs</h3>
+<p>Each unit prints a detailed timing breakdown:</p>
+<div class="codehilite"><pre><span></span><code><span class="o">[</span><span class="n">warmup</span><span class="o">]</span><span class="w"> </span><span class="n">unit</span><span class="o">=</span><span class="mi">0</span><span class="o">/</span><span class="mi">10</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nl">prefill</span><span class="p">:</span><span class="w"> </span><span class="n">vis_proc</span><span class="o">=</span><span class="mi">120</span><span class="n">ms</span><span class="w"> </span><span class="n">vis_emb</span><span class="o">=</span><span class="mi">8500</span><span class="n">ms</span><span class="w"> </span><span class="n">vis_feed</span><span class="o">=</span><span class="mi">350</span><span class="n">ms</span>
+<span class="w">  </span><span class="n">aud_proc</span><span class="o">=</span><span class="mi">45</span><span class="n">ms</span><span class="w"> </span><span class="n">aud_emb</span><span class="o">=</span><span class="mi">1200</span><span class="n">ms</span><span class="w"> </span><span class="n">aud_feed</span><span class="o">=</span><span class="mi">180</span><span class="n">ms</span><span class="w"> </span><span class="n">total</span><span class="o">=</span><span class="mi">10500</span><span class="n">ms</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="nl">generate</span><span class="p">:</span><span class="w"> </span><span class="n">llm</span><span class="o">=</span><span class="mi">2100</span><span class="n">ms</span><span class="w"> </span><span class="n">tts_prep</span><span class="o">=</span><span class="mi">0</span><span class="n">ms</span><span class="w"> </span><span class="n">tts</span><span class="o">=</span><span class="mi">0</span><span class="n">ms</span><span class="w"> </span><span class="n">token2wav</span><span class="o">=</span><span class="mi">0</span><span class="n">ms</span><span class="w"> </span><span class="n">total</span><span class="o">=</span><span class="mi">2200</span><span class="n">ms</span><span class="w"> </span><span class="o">|</span>
+<span class="w">  </span><span class="n">decision</span><span class="o">=</span><span class="n">LISTEN</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">elapsed</span><span class="o">=</span><span class="mi">125</span><span class="n">s</span><span class="w"> </span><span class="n">remaining</span><span class="o">~</span><span class="mi">875</span><span class="n">s</span>
 </code></pre></div>
 
-<p>Temporary VRAM used during compilation is released after warmup completes.</p>
+<p>The first chunk takes significantly longer due to Triton compilation; subsequent chunks use the already-compiled kernels and are much faster.</p>
+<h2 id="cache-mechanism">Cache Mechanism</h2>
+<p>PyTorch Inductor has built-in multi-layer caching. Compilation results persist in the <code>TORCHINDUCTOR_CACHE_DIR</code> directory (project default: <code>./torch_compile_cache</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Cache Layer</th>
+<th>Purpose</th>
+<th>Default State</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Inductor Kernel Cache</td>
+<td>Caches generated Triton kernel .so files</td>
+<td>Enabled by default</td>
+</tr>
+<tr>
+<td>FX Graph Cache</td>
+<td>Caches compiled FX computation graphs</td>
+<td>Enabled by default (PyTorch 2.8+)</td>
+</tr>
+<tr>
+<td>Autotune Cache</td>
+<td>Caches kernel autotuning results</td>
+<td>Enabled by default</td>
+</tr>
+</tbody>
+</table>
+<p>The cache is invalidated and recompilation is required when:
+- PyTorch version is upgraded
+- CUDA / Triton version changes
+- Model code structure changes (number of layers, architecture, etc.)
+- GPU architecture changes (e.g., switching from A100 to H100)</p>
 <h2 id="call-chain">Call Chain</h2>
-<div class="codehilite"><pre><span></span><code><span class="n">config</span><span class="o">.</span><span class="n">json</span><span class="p">:</span><span class="w"> </span><span class="n">compile</span><span class="o">=</span><span class="bp">true</span>
+<div class="codehilite"><pre><span></span><code><span class="n">config</span><span class="o">.</span><span class="n">json</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;service&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s2">&quot;compile&quot;</span><span class="p">:</span><span class="w"> </span><span class="bp">true</span><span class="w"> </span><span class="p">}</span>
 <span class="w">    </span><span class="err">↓</span>
-<span class="n">worker</span><span class="o">.</span><span class="n">py</span><span class="p">:</span><span class="w"> </span><span class="n">WORKER_CONFIG</span><span class="p">[</span><span class="s2">&quot;compile&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">True</span>
+<span class="n">worker</span><span class="o">.</span><span class="n">py</span><span class="p">:</span><span class="w"> </span><span class="n">WORKER_CONFIG</span><span class="p">[</span><span class="s2">&quot;compile&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cfg</span><span class="o">.</span><span class="n">compile</span>
 <span class="w">    </span><span class="err">↓</span>
 <span class="n">MiniCPMOWorker</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">compile</span><span class="o">=</span><span class="n">True</span><span class="p">)</span>
 <span class="w">    </span><span class="err">↓</span>
 <span class="n">UnifiedProcessor</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">compile</span><span class="o">=</span><span class="n">True</span><span class="p">)</span>
 <span class="w">    </span><span class="err">↓</span>
 <span class="n">UnifiedProcessor</span><span class="o">.</span><span class="n">_load_model</span><span class="p">():</span>
-<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">init_unified</span><span class="p">()</span><span class="w">          </span><span class="c1"># Load model + dual TTS</span>
-<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">apply_torch_compile</span><span class="p">()</span><span class="w">   </span><span class="c1"># Wrap submodules</span>
-<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">warmup_compile</span><span class="p">()</span><span class="w">        </span><span class="c1"># Trigger compilation</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">init_unified</span><span class="p">()</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">apply_torch_compile</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">dynamic</span><span class="o">=</span><span class="n">True</span><span class="p">)</span>
+<span class="w">    </span><span class="n">model</span><span class="o">.</span><span class="n">warmup_compile</span><span class="p">(</span><span class="n">ref_audio_path</span><span class="o">=...</span><span class="p">)</span>
 </code></pre></div>
 
 <h2 id="duplexcapability-automatically-benefits">DuplexCapability Automatically Benefits</h2>
-<p>The <code>DuplexCapability</code> component accesses the model's <code>llm</code>, <code>vpm</code>, <code>tts</code>, and other submodules <strong>by reference</strong> and does not hold independent copies. Therefore, after <code>apply_torch_compile()</code>, Duplex inference automatically uses the compiled versions with no additional action required.</p>
-<h2 id="performance-considerations">Performance &amp; Considerations</h2>
-<h3 id="time-overhead">Time Overhead</h3>
+<p><code>DuplexCapability</code> accesses the model's <code>llm</code>, <code>vpm</code>, <code>tts</code>, and other sub-modules <strong>by reference</strong> and does not hold independent copies. After <code>apply_torch_compile()</code>, Duplex inference automatically uses the compiled versions with no additional action required.</p>
+<h2 id="performance">Performance</h2>
 <table>
 <thead>
 <tr>
-<th>Phase</th>
-<th>Duration (Typical)</th>
+<th>Metric</th>
+<th>Without compile</th>
+<th>With compile</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>apply_torch_compile()</code> (wrapping)</td>
-<td>~1s</td>
+<td>Omni Full-Duplex per-unit latency (A100)</td>
+<td>~0.9s</td>
+<td><strong>~0.5s</strong></td>
 </tr>
 <tr>
-<td><code>warmup_compile()</code> (actual compilation)</td>
-<td>~60s</td>
+<td>Additional startup time (cold compilation)</td>
+<td>—</td>
+<td>~15 min</td>
 </tr>
 <tr>
-<td>Total additional startup time</td>
-<td>~60s</td>
+<td>Additional startup time (cached)</td>
+<td>—</td>
+<td>~5 min</td>
+</tr>
+<tr>
+<td>Runtime VRAM usage</td>
+<td>~21.5 GB</td>
+<td>~21.5 GB</td>
 </tr>
 </tbody>
 </table>
-<h3 id="vram-impact">VRAM Impact</h3>
+<h2 id="known-limitations">Known Limitations</h2>
 <ul>
-<li>The compilation process temporarily uses additional VRAM (compiler intermediate representations)</li>
-<li>Released via <code>torch.cuda.empty_cache()</code> after warmup completes</li>
-<li>Runtime VRAM usage is essentially the same as non-compiled mode</li>
-</ul>
-<h3 id="known-limitations">Known Limitations</h3>
-<ul>
-<li><strong>Experimental</strong>: Certain extreme input shapes may trigger recompilation</li>
-<li><strong>First inference latency</strong>: If an uncovered code path is encountered, recompilation may still be triggered</li>
-<li><strong>Compatibility</strong>: Requires PyTorch 2.x+; some older CUDA drivers may be incompatible with Triton</li>
-<li><strong>Debugging difficulty</strong>: Compiled code is difficult to step through in a debugger</li>
-</ul>
-<h2 id="benchmarking">Benchmarking</h2>
-<p>The project provides a Duplex A/B comparison benchmark script:</p>
-<div class="codehilite"><pre><span></span><code><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span>.venv/base/bin/python<span class="w"> </span>tests/bench_duplex_ws.py
-</code></pre></div>
-
-<p>This script runs multiple rounds in both normal and compile modes, collecting steady-state LISTEN/SPEAK performance statistics. It requires two Workers running simultaneously (one normal, one compile) on different ports.</p></article>
+<li>Certain extreme input shapes may trigger recompilation</li>
+<li>Requires PyTorch 2.x+; some older CUDA drivers may be incompatible with Triton</li>
+<li>Compiled code is difficult to step through in a debugger</li>
+</ul></article>
   <footer><p>MiniCPM-o 4.5 PyTorch Simple Demo &mdash; Generated by build_docs.py</p></footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>

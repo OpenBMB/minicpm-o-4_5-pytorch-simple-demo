@@ -185,7 +185,7 @@ sequenceDiagram
 
     FE->>GW: WS /ws/half_duplex/{session_id}
     GW->>WK: 独占 Worker
-    FE->>WK: prepare (system_prompt + config)
+    FE->>WK: prepare (system_content + config)
     WK->>MD: reset + prefill system prompt
     WK->>VAD: 初始化 VAD
 
@@ -273,8 +273,8 @@ sequenceDiagram
 <tbody>
 <tr>
 <td><code>prepare</code></td>
-<td><code>system_prompt</code>, <code>config</code>, <code>ref_audio_base64</code>, <code>system_content</code></td>
-<td>初始化会话</td>
+<td><code>system_content</code>, <code>config</code></td>
+<td>初始化会话（system_content 格式与 turn-based 相同）</td>
 </tr>
 <tr>
 <td><code>audio_chunk</code></td>
