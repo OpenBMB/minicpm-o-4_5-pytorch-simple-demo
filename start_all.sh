@@ -22,6 +22,9 @@
 
 set -e
 
+export TORCHINDUCTOR_CACHE_DIR=./torch_compile_cache
+# export CUDA_VISIBLE_DEVICES=0
+
 # ============ 解析脚本参数 ============
 GATEWAY_PROTO="https"
 GATEWAY_EXTRA_ARGS=""

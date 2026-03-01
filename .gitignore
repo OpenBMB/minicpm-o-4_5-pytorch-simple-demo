@@ -39,3 +39,5 @@ resources/
 playbook/
 
 public/
+
+torch_compile_cache/

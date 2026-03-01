@@ -120,7 +120,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
 
         # init tts module
         if self.config.init_tts:
-            self.tts = self.init_tts_module()
+            self.tts = self.init_speech_decoder()
 
         self.terminators = ["<|im_end|>", "<|endoftext|>"]
 
@@ -264,7 +264,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
 
         return MiniCPMWhisperEncoder(self.config.audio_config)
 
-    def init_tts_module(self):
+    def init_speech_decoder(self):
         if self.config._attn_implementation == "flash_attention_2":
             self.config.tts_config.attn_implementation = "flash_attention_2"
         else:
@@ -272,7 +272,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
 
         return MiniCPMTTS(config=self.config.tts_config, audio_tokenizer=None)
 
-    def init_tts(self, streaming=False, model_dir=None, enable_float16=False, n_timesteps=5):
+    def init_token2wav(self, streaming=False, model_dir=None, enable_float16=False, n_timesteps=5):
         if streaming:
             if self.config.tts_config.audio_tokenizer_type != "s3tokenizer_step_audio":
                 logger.warning("audio tokenizer type is set to s3tokenizer_step_audio")
@@ -284,6 +284,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
                 raise ImportError(f"please install Token2wav via: pip install stepaudio2-minicpmo")
 
             model_dir = self._ensure_asset_dir("assets/token2wav", model_dir)
+            logger.info(f"Token2wav model_dir: {model_dir}, enable_float16: {enable_float16}, n_timesteps: {n_timesteps}")
             self.tts.audio_tokenizer = Token2wav(model_dir, float16=enable_float16, n_timesteps=n_timesteps)
             return self.tts.audio_tokenizer
         else:
@@ -347,8 +348,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
             self._duplex_config.update(duplex_config)
         
         # 预加载 TTS vocoder（根据 chat_vocoder 决定是否加载 CosyVoice2）
-        if preload_both_tts:
-            self._init_both_tts()
+        self.init_token2wav(streaming=True)
         
         # 创建 DuplexCapability 实例（组合模式）
         self.duplex = DuplexCapability(
@@ -364,64 +364,17 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
         
         logger.info("统一模式初始化完成")
     
-    def _init_both_tts(self):
-        """预加载 TTS vocoder
-        
-        根据 self._chat_vocoder 决定加载哪些 vocoder：
-        - "token2wav": 仅加载 Token2wav（所有模式共用），不加载 CosyVoice2
-        - "cosyvoice2": 加载 Token2wav（Streaming/Duplex）+ CosyVoice2（Chat）
-        """
-        chat_vocoder = getattr(self, '_chat_vocoder', 'token2wav')
-        
-        # Token2wav (streaming TTS) - ~0.33 GB，始终加载
-        try:
-            from stepaudio2 import Token2wav
-            model_dir = self._ensure_asset_dir("assets/token2wav")
-            self._tts_streaming = Token2wav(model_dir)
-            logger.info("Token2wav 加载完成")
-        except ImportError:
-            raise ImportError("请安装 Token2wav: pip install stepaudio2-minicpmo")
-        
-
-        self._tts_non_streaming = None
-        
-        # 默认使用 streaming TTS
-        self.tts.audio_tokenizer = self._tts_streaming
-        self.tts.config.audio_tokenizer_type = "s3tokenizer_step_audio"
-    
     def set_mode(self, mode: ProcessorMode) -> None:
         """设置当前模式（毫秒级切换）
         
         Args:
             mode: 目标模式 (CHAT / STREAMING / DUPLEX)
         
-        TTS vocoder 切换逻辑：
-        - STREAMING / DUPLEX → 始终使用 Token2wav
-        - CHAT → 取决于 _chat_vocoder 配置：
-            - "token2wav" → 使用 Token2wav（与 Streaming/Duplex 相同实例）
-            - "cosyvoice2" → 使用 CosyVoice2（_tts_non_streaming）
         """
         if mode == self._current_mode:
             return
         
         logger.info(f"切换模式: {self._current_mode} -> {mode}")
-        
-        # 切换 TTS tokenizer 和配置
-        if self._tts_streaming is not None:
-            if mode == ProcessorMode.CHAT and self._tts_non_streaming is not None:
-                # Chat + CosyVoice2 模式
-                self.tts.audio_tokenizer = self._tts_non_streaming
-                self.tts.config.audio_tokenizer_type = "s3tokenizer"
-            else:
-                # 其他情况统一用 Token2wav（包括 Chat + token2wav 配置）
-                self.tts.audio_tokenizer = self._tts_streaming
-                self.tts.config.audio_tokenizer_type = "s3tokenizer_step_audio"
-        else:
-            # 未预加载（fallback：动态加载）
-            if mode == ProcessorMode.CHAT and getattr(self, '_chat_vocoder', 'token2wav') == 'cosyvoice2':
-                self.init_tts(streaming=False)
-            else:
-                self.init_tts(streaming=True)
         
         # 重置状态
         self.reset_session(reset_token2wav_cache=True)
@@ -575,6 +528,7 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
         ref_audio, _ = _librosa.load(ref_audio_path, sr=16000, mono=True)
 
         # ── 3. 启动 duplex 会话 ──
+
         t_prepare = _time.time()
         self.duplex.prepare(
             prefix_system_prompt="<|im_start|>system\nStreaming Omni Conversation.\n<|audio_start|>",
