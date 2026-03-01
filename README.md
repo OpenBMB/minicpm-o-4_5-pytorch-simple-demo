@@ -8,11 +8,12 @@ This demo system is officially provided by the `MiniCPM-o 4.5` model training te
 
 | Mode | Features | I/O Modalities | Paradigm
 |------|----------|------|------
-| **Turn-based Chat** | Low-latency streaming interaction; requires button or VAD (Voice Activity Detection) to trigger responses; high response accuracy; strong basic capabilities | Audio + Text input, Audio + Text output | Turn-based
+| **Turn-based Chat** | Low-latency streaming interaction; button-triggered responses; supports offline video/audio understanding and analysis; high response accuracy; strong basic capabilities | Audio + Text + Video input, Audio + Text output | Turn-based
+| **Half-Duplex Audio** | VAD auto-detects speech boundaries for hands-free voice conversation; higher TTS voice quality; more accurate responses; stronger user experience | Voice input, Text + Voice output | Half-duplex
 | **Omnimodal Full-Duplex** | Real-time omnimodal full-duplex interaction; visual and voice input with simultaneous voice output; model autonomously decides when to speak; powerful cutting-edge capabilities | Vision + Audio input, Text + Voice output | Full-duplex
 | **Audio Full-Duplex** | Real-time audio full-duplex interaction; voice input and voice output happen simultaneously; model autonomously decides when to speak; powerful cutting-edge capabilities | Audio input, Text + Voice output | Full-duplex
 
-The 3 currently supported modes share a single model instance with millisecond-level hot-switching (< 0.1ms). More modes will be supported soon.
+The 4 currently supported modes share a single model instance with millisecond-level hot-switching (< 0.1ms).
 
 **Additional features:**
 
@@ -271,7 +272,8 @@ minicpmo45_service/
 
 | Page | URL |
 |------|-----|
-| Non-streaming | https://localhost:8006 |
+| Turn-based Chat | https://localhost:8006 |
+| Half-Duplex Audio | https://localhost:8006/half_duplex |
 | Omnimodal Full-Duplex | https://localhost:8006/omni |
 | Audio Full-Duplex | https://localhost:8006/audio_duplex |
 | Dashboard | https://localhost:8006/admin |
