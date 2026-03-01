@@ -501,151 +501,298 @@ class MiniCPMO(MiniCPMOPreTrainedModel):
         )
         return self
 
-    def warmup_compile(self) -> None:
-        """用合成数据触发 torch.compile 的 Triton 内核编译
-        
-        对每个 compiled 子模块构造 dummy tensor，模拟真实推理路径做 forward。
-        应在 apply_torch_compile() 之后调用。
-        
-        关键：必须覆盖 prefill（长序列，无 KV cache）和 decode（单 token，
-        有 KV cache）两种代码路径，否则首次真实推理仍会触发 recompile。
-        
-        构造的数据：
-          - vpm: 1张 224x224 零值图片
-          - resampler: vpm 输出直接喂入
-          - llm.model: prefill 16 tokens + decode 1 token（带 KV cache）
-          - tts.model: prefill 16 tokens + decode 1 token（带 KV cache）
+    def warmup_compile(
+        self,
+        warmup_video_path: Optional[str] = None,
+        ref_audio_path: Optional[str] = None,
+        max_warmup_chunks: int = 10,
+    ) -> None:
+        """用真实 omni full duplex 流程触发 torch.compile 的 Triton 内核编译
+
+        与合成数据 warmup 不同，此方法使用真实 MP4 视频跑一遍完整的
+        duplex 推理（prepare → prefill → generate → finalize），在真实
+        推理链路中触发 4 个 compiled 子模块（vpm / resampler / llm.model /
+        tts.model）的 Triton 编译。apm 和 token2wav 不在 compile 目标中，
+        它们只是作为 duplex 流程的一部分自然运行。
+
+        每个 unit 的各阶段耗时会详细打印到日志中。
+
+        Args:
+            warmup_video_path: 预热用 MP4 视频路径。为 None 时使用
+                assets/samples/20260222-193626.mp4
+            ref_audio_path: TTS 参考音频路径。为 None 时使用
+                assets/ref_audio/ref_minicpm_signature.wav
+            max_warmup_chunks: 最多处理多少个 1 秒 chunk（默认 10）
         """
         if not getattr(self, "_compiled", False):
             logger.warning("[warmup] 模型未 compile，跳过 warmup")
             return
-        
+
+        if self.duplex is None:
+            logger.warning("[warmup] duplex 未初始化，跳过 warmup")
+            return
+
         import time as _time
-        logger.info("[warmup] 开始编译预热（合成数据，覆盖 prefill + decode 路径）...")
+
+        project_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+        if warmup_video_path is None:
+            warmup_video_path = os.path.join(
+                project_root, "assets", "samples", "20260222-193626.mp4"
+            )
+        if ref_audio_path is None:
+            ref_audio_path = os.path.join(
+                project_root, "assets", "ref_audio", "ref_minicpm_signature.wav"
+            )
+
+        if not os.path.isfile(warmup_video_path):
+            logger.warning(f"[warmup] 预热视频不存在: {warmup_video_path}，跳过")
+            return
+        if not os.path.isfile(ref_audio_path):
+            logger.warning(f"[warmup] 参考音频不存在: {ref_audio_path}，跳过")
+            return
+
+        logger.info(
+            "[warmup] 开始 omni duplex 真实预热 (video=%s, ref=%s, max_chunks=%d)",
+            warmup_video_path, ref_audio_path, max_warmup_chunks,
+        )
         t_total = _time.time()
-        
-        device = next(self.llm.parameters()).device
-        
-        with torch.no_grad():
-            # ── 1. vpm + resampler ──
-            if hasattr(self, "vpm") and hasattr(self, "resampler"):
-                logger.info("[warmup] 编译 vpm + resampler ...")
-                t1 = _time.time()
-                try:
-                    vpm_dtype = next(self.vpm.parameters()).dtype
-                    # 最小图片: 224x224（patch_size=14 → 16x16=256 patches）
-                    dummy_image = torch.zeros(1, 3, 224, 224, device=device, dtype=vpm_dtype)
-                    patches_h, patches_w = 16, 16
-                    tgt_sizes = torch.tensor([[patches_h, patches_w]], dtype=torch.int32)
-                    patch_mask = torch.ones(
-                        1, 1, patches_h * patches_w, dtype=torch.bool, device=device
-                    )
-                    vpm_out = self.vpm(
-                        dummy_image,
-                        patch_attention_mask=patch_mask,
-                        tgt_sizes=tgt_sizes,
-                    )
-                    _ = self.resampler(vpm_out.last_hidden_state, tgt_sizes)
-                    torch.cuda.synchronize(device)
-                    logger.info(f"[warmup] vpm + resampler 编译完成 ({_time.time()-t1:.1f}s)")
-                except Exception as e:
-                    logger.warning(f"[warmup] vpm + resampler 编译失败: {e}")
-            
-            # ── 2. llm.model（prefill + decode 两条路径）──
-            if hasattr(self, "llm"):
-                logger.info("[warmup] 编译 llm.model（prefill + decode）...")
-                t2 = _time.time()
-                try:
-                    llm_hidden = self.llm.config.hidden_size
-                    llm_dtype = self.llm.model.embed_tokens.weight.dtype
-                    
-                    # Step 1: Prefill（长序列，创建 KV cache）
-                    prefill_len = 32
-                    dummy_embeds = torch.randn(
-                        1, prefill_len, llm_hidden, device=device, dtype=llm_dtype
-                    )
-                    pos_ids = torch.arange(
-                        prefill_len, dtype=torch.long, device=device
-                    ).unsqueeze(0)
-                    prefill_out = self.llm.model(
-                        inputs_embeds=dummy_embeds,
-                        position_ids=pos_ids,
-                        use_cache=True,
-                    )
-                    torch.cuda.synchronize(device)
-                    logger.info(f"[warmup]   llm prefill 编译完成 ({_time.time()-t2:.1f}s)")
-                    
-                    # Step 2: Decode（单 token，复用 KV cache）
-                    t2d = _time.time()
-                    decode_embeds = torch.randn(
-                        1, 1, llm_hidden, device=device, dtype=llm_dtype
-                    )
-                    decode_pos = torch.tensor(
-                        [[prefill_len]], dtype=torch.long, device=device
-                    )
-                    _ = self.llm.model(
-                        inputs_embeds=decode_embeds,
-                        position_ids=decode_pos,
-                        past_key_values=prefill_out.past_key_values,
-                        use_cache=True,
-                    )
-                    torch.cuda.synchronize(device)
-                    del prefill_out
-                    logger.info(f"[warmup]   llm decode 编译完成 ({_time.time()-t2d:.1f}s)")
-                    logger.info(f"[warmup] llm.model 总计 ({_time.time()-t2:.1f}s)")
-                except Exception as e:
-                    logger.warning(f"[warmup] llm.model 编译失败: {e}")
-            
-            # ── 3. tts.model（prefill + decode 两条路径）──
-            if hasattr(self, "tts") and hasattr(self.tts, "model"):
-                logger.info("[warmup] 编译 tts.model（prefill + decode）...")
-                t3 = _time.time()
-                try:
-                    tts_hidden = self.tts.config.hidden_size
-                    tts_dtype = self.tts.model.embed_tokens.weight.dtype
-                    tts_device = next(self.tts.model.parameters()).device
-                    
-                    # Step 1: Prefill（条件序列，创建 KV cache）
-                    prefill_len = 32
-                    dummy_tts = torch.randn(
-                        1, prefill_len, tts_hidden, device=tts_device, dtype=tts_dtype
-                    )
-                    tts_pos = torch.arange(
-                        prefill_len, dtype=torch.long, device=tts_device
-                    ).unsqueeze(0)
-                    tts_prefill_out = self.tts.model(
-                        inputs_embeds=dummy_tts,
-                        position_ids=tts_pos,
-                        use_cache=True,
-                    )
-                    torch.cuda.synchronize(tts_device)
-                    logger.info(f"[warmup]   tts prefill 编译完成 ({_time.time()-t3:.1f}s)")
-                    
-                    # Step 2: Decode（单 token，复用 KV cache）
-                    t3d = _time.time()
-                    decode_tts = torch.randn(
-                        1, 1, tts_hidden, device=tts_device, dtype=tts_dtype
-                    )
-                    decode_tts_pos = torch.tensor(
-                        [[prefill_len]], dtype=torch.long, device=tts_device
-                    )
-                    _ = self.tts.model(
-                        inputs_embeds=decode_tts,
-                        position_ids=decode_tts_pos,
-                        past_key_values=tts_prefill_out.past_key_values,
-                        use_cache=True,
-                    )
-                    torch.cuda.synchronize(tts_device)
-                    del tts_prefill_out
-                    logger.info(f"[warmup]   tts decode 编译完成 ({_time.time()-t3d:.1f}s)")
-                    logger.info(f"[warmup] tts.model 总计 ({_time.time()-t3:.1f}s)")
-                except Exception as e:
-                    logger.warning(f"[warmup] tts.model 编译失败: {e}")
-        
-        # 清理编译过程中的临时显存
+
+        # ── 1. 从 MP4 提取音频和视频帧 ──
+        t_extract = _time.time()
+        audio_chunks, frames = self._extract_mp4_chunks(
+            warmup_video_path, max_chunks=max_warmup_chunks
+        )
+        logger.info(
+            "[warmup] MP4 提取完成: %d audio chunks, %d frames (%.1fs)",
+            len(audio_chunks), len(frames), _time.time() - t_extract,
+        )
+        if not audio_chunks:
+            logger.warning("[warmup] 未能从 MP4 提取到音频，跳过")
+            return
+
+        # ── 2. 加载参考音频 ──
+        import librosa as _librosa
+        ref_audio, _ = _librosa.load(ref_audio_path, sr=16000, mono=True)
+
+        # ── 3. 启动 duplex 会话 ──
+        t_prepare = _time.time()
+        self.duplex.prepare(
+            prefix_system_prompt="<|im_start|>system\nStreaming Omni Conversation.\n<|audio_start|>",
+            suffix_system_prompt="<|audio_end|><|im_end|>",
+            ref_audio=ref_audio,
+            prompt_wav_path=ref_audio_path,
+        )
+        cost_prepare = _time.time() - t_prepare
+        logger.info("[warmup] duplex prepare 完成 (%.2fs)", cost_prepare)
+
+        # ── 4. 逐 chunk 推理并记录耗时 ──
+        tts_triggered = False
+        num_chunks = min(len(audio_chunks), len(frames)) if frames else len(audio_chunks)
+
+        logger.info(
+            "[warmup] ╔══════════════════════════════════════════════════════════════════╗"
+        )
+        logger.info(
+            "[warmup] ║  Unit  │ Prefill                                  │ Generate    ║"
+        )
+        logger.info(
+            "[warmup] ║       │ vis_proc vis_emb vis_feed │ aud_proc aud_emb aud_feed │ total   │ llm    tts_p  tts    t2w   │ total   │ decision ║"
+        )
+        logger.info(
+            "[warmup] ╠══════════════════════════════════════════════════════════════════╣"
+        )
+
+        for i in range(num_chunks):
+            frame_list = [frames[i]] if frames and i < len(frames) else None
+
+            # ── Prefill ──
+            t_pf = _time.time()
+            try:
+                prefill_result = self.duplex.streaming_prefill(
+                    audio_waveform=audio_chunks[i],
+                    frame_list=frame_list,
+                    max_slice_nums=1,
+                )
+            except Exception as e:
+                logger.warning("[warmup] unit %d prefill 失败: %s", i, e)
+                break
+            cost_prefill = _time.time() - t_pf
+
+            pf_vp = prefill_result.get("cost_vision_process", 0) * 1000
+            pf_ve = prefill_result.get("cost_vision_embed", 0) * 1000
+            pf_vf = prefill_result.get("cost_vision_feed", 0) * 1000
+            pf_ap = prefill_result.get("cost_audio_process", 0) * 1000
+            pf_ae = prefill_result.get("cost_audio_embed", 0) * 1000
+            pf_af = prefill_result.get("cost_audio_feed", 0) * 1000
+            pf_all = cost_prefill * 1000
+
+            # ── Generate ──
+            t_gen = _time.time()
+            try:
+                gen_result = self.duplex.streaming_generate()
+            except Exception as e:
+                logger.warning("[warmup] unit %d generate 失败: %s", i, e)
+                break
+            cost_generate = _time.time() - t_gen
+
+            is_listen = gen_result.get("is_listen", True)
+            gen_llm = gen_result.get("cost_llm", 0) * 1000 if gen_result.get("cost_llm") else 0
+            gen_tts_p = gen_result.get("cost_tts_prep", 0) * 1000 if gen_result.get("cost_tts_prep") else 0
+            gen_tts = gen_result.get("cost_tts", 0) * 1000 if gen_result.get("cost_tts") else 0
+            gen_t2w = gen_result.get("cost_token2wav", 0) * 1000 if gen_result.get("cost_token2wav") else 0
+            gen_all = cost_generate * 1000
+            decision = "LISTEN" if is_listen else "SPEAK"
+
+            if not is_listen:
+                tts_triggered = True
+                text = gen_result.get("text", "")
+                if text:
+                    decision += f' "{text[:20]}"'
+
+            logger.info(
+                "[warmup] ║ %3d   │ %6.0f %6.0f %6.0f │ %6.0f %6.0f %6.0f │ %7.0f │ %6.0f %6.0f %6.0f %6.0f │ %7.0f │ %-8s ║",
+                i,
+                pf_vp, pf_ve, pf_vf,
+                pf_ap, pf_ae, pf_af,
+                pf_all,
+                gen_llm, gen_tts_p, gen_tts, gen_t2w,
+                gen_all,
+                decision,
+            )
+
+            # ── Finalize ──
+            t_fin = _time.time()
+            try:
+                self.duplex.finalize_unit()
+            except Exception as e:
+                logger.warning("[warmup] unit %d finalize 失败: %s", i, e)
+                break
+
+            if gen_result.get("end_of_turn", False):
+                logger.info("[warmup] 模型发出 end_of_turn，提前结束")
+                break
+
+        logger.info(
+            "[warmup] ╚══════════════════════════════════════════════════════════════════╝"
+        )
+
+        # ── 5. 如果 TTS 未被触发，做 fallback warmup ──
+        if not tts_triggered and hasattr(self, "tts") and hasattr(self.tts, "model"):
+            logger.info("[warmup] duplex 全程 LISTEN，TTS 未触发，执行 TTS fallback warmup...")
+            self._warmup_tts_fallback()
+
+        # ── 6. 清理 duplex 会话状态 ──
+        self.duplex._reset_streaming_state()
+        self.duplex.decoder.reset()
+        if hasattr(self.tts, "audio_tokenizer"):
+            tokenizer = self.tts.audio_tokenizer
+            for attr in ("stream_cache", "hift_cache_dict", "cache"):
+                if hasattr(tokenizer, attr) and getattr(tokenizer, attr) is not None:
+                    setattr(tokenizer, attr, None)
+        self.reset_session(reset_token2wav_cache=True)
+
         torch.cuda.empty_cache()
         total = _time.time() - t_total
-        logger.info(f"[warmup] 所有模块编译预热完成 ({total:.1f}s)")
+        logger.info(
+            "[warmup] omni duplex 预热完成 (总耗时 %.1fs, tts_triggered=%s)", total, tts_triggered
+        )
+
+    def _extract_mp4_chunks(
+        self,
+        video_path: str,
+        max_chunks: int = 10,
+        sample_rate: int = 16000,
+    ) -> tuple:
+        """从 MP4 提取 1 秒音频 chunks 和对应的视频帧（仅依赖 ffmpeg + PIL）
+
+        Returns:
+            (audio_chunks, frames): audio_chunks 是 list[np.ndarray]（16kHz mono），
+            frames 是 list[PIL.Image]
+        """
+        import subprocess
+        import tempfile
+        from PIL import Image
+
+        audio_chunks: list = []
+        frames: list = []
+        tmp_dir = tempfile.mkdtemp(prefix="warmup_")
+
+        try:
+            # ── 提取音频 ──
+            tmp_wav_path = os.path.join(tmp_dir, "audio.wav")
+            subprocess.run(
+                [
+                    "ffmpeg", "-i", video_path,
+                    "-ar", str(sample_rate), "-ac", "1",
+                    "-t", str(max_chunks),
+                    "-f", "wav", "-y", tmp_wav_path,
+                ],
+                capture_output=True,
+                check=True,
+            )
+            import librosa as _librosa
+            audio, _ = _librosa.load(tmp_wav_path, sr=sample_rate, mono=True)
+
+            chunk_size = sample_rate
+            n_audio = min(max_chunks, len(audio) // chunk_size)
+            for i in range(n_audio):
+                audio_chunks.append(audio[i * chunk_size : (i + 1) * chunk_size])
+
+            # ── 提取视频帧（ffmpeg 1fps → JPEG）──
+            frames_dir = os.path.join(tmp_dir, "frames")
+            os.makedirs(frames_dir, exist_ok=True)
+            subprocess.run(
+                [
+                    "ffmpeg", "-i", video_path,
+                    "-t", str(max_chunks),
+                    "-vf", "fps=1",
+                    os.path.join(frames_dir, "frame_%04d.jpg"),
+                ],
+                capture_output=True,
+                check=True,
+            )
+            frame_files = sorted(
+                f for f in os.listdir(frames_dir) if f.endswith(".jpg")
+            )
+            for fname in frame_files[:n_audio]:
+                frames.append(
+                    Image.open(os.path.join(frames_dir, fname)).convert("RGB")
+                )
+
+        except Exception as e:
+            logger.warning("[warmup] MP4 提取失败: %s", e)
+        finally:
+            import shutil
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        return audio_chunks, frames
+
+    def _warmup_tts_fallback(self) -> None:
+        """TTS 子模块 fallback warmup（当 duplex 全程 LISTEN 时调用）"""
+        import time as _time
+        device = next(self.tts.model.parameters()).device
+        tts_hidden = self.tts.config.hidden_size
+        tts_dtype = self.tts.model.embed_tokens.weight.dtype
+
+        with torch.no_grad():
+            t0 = _time.time()
+            prefill_len = 32
+            dummy = torch.randn(1, prefill_len, tts_hidden, device=device, dtype=tts_dtype)
+            pos = torch.arange(prefill_len, dtype=torch.long, device=device).unsqueeze(0)
+            out = self.tts.model(inputs_embeds=dummy, position_ids=pos, use_cache=True)
+            torch.cuda.synchronize(device)
+            logger.info("[warmup]   tts prefill fallback 完成 (%.1fs)", _time.time() - t0)
+
+            t1 = _time.time()
+            dec = torch.randn(1, 1, tts_hidden, device=device, dtype=tts_dtype)
+            dec_pos = torch.tensor([[prefill_len]], dtype=torch.long, device=device)
+            _ = self.tts.model(
+                inputs_embeds=dec, position_ids=dec_pos,
+                past_key_values=out.past_key_values, use_cache=True,
+            )
+            torch.cuda.synchronize(device)
+            del out
+            logger.info("[warmup]   tts decode fallback 完成 (%.1fs)", _time.time() - t1)
 
     @property
     def current_mode(self) -> Optional[ProcessorMode]:

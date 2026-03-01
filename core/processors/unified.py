@@ -1368,7 +1368,7 @@ class UnifiedProcessor(BaseProcessor):
         if self.compile:
             compile_start = time.time()
             self.model.apply_torch_compile(mode="default", dynamic=True)
-            self.model.warmup_compile()
+            self.model.warmup_compile(ref_audio_path=self.ref_audio_path)
             compile_time = time.time() - compile_start
             logger.info(f"torch.compile + warmup 完成，总耗时 {compile_time:.1f}s")
         
