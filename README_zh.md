@@ -2,7 +2,7 @@
 
 [English Documentation](README.md) | [详细文档](https://openbmb.github.io/minicpm-o-4_5-pytorch-simple-demo/site/zh/index.html)
 
-[可直接使用的在线演示系统](https://35.226.63.1:8008/)
+[可直接使用的在线演示系统](https://35.226.63.1:8008/) | [Discord](https://discord.gg/UTbTeCQe) | [飞书群](assets/images/feishu-group.png)
 
 本演示系统为 `MiniCPM-o 4.5` 模型训练团队官方提供的演示系统。本演示系统使用 PyTorch + CUDA 推理后端，结合简易的前后端设计，旨在以透明、简洁、无性能损失的方式，全面地演示 MiniCPM-o 4.5 的音视频全模态全双工能力。
 
