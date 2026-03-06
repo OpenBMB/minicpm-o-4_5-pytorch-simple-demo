@@ -394,6 +394,36 @@ body.video-fullscreen .fullscreen-controls { display: flex; }
     min-width: 28px;
 }
 
+/* ========== Length Penalty Presets ========== */
+.lp-presets {
+    display: flex;
+    gap: 6px;
+}
+.lp-preset-btn {
+    font-size: 11px;
+    font-family: inherit;
+    font-weight: 500;
+    padding: 3px 12px;
+    border: 1px solid #ddd;
+    border-radius: 14px;
+    background: #fafaf7;
+    color: #999;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+.lp-preset-btn:hover {
+    background: #f0ede8;
+    color: #555;
+    border-color: #ccc;
+}
+.lp-preset-btn.active {
+    background: #2d2d2d;
+    color: #fff;
+    border-color: #2d2d2d;
+}
+
 /* ========== Mic Waveform Bar ========== */
 .omni-waveform-bar {
     flex: none;
