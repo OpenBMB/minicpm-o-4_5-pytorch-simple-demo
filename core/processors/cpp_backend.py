@@ -76,10 +76,12 @@ class CppBackendWorker:
         self._http_client = None  # httpx.Client (sync)
         self._temp_dir = tempfile.mkdtemp(prefix="cpp_backend_")
         self._output_dir = os.path.join(llamacpp_root, f"tools/omni/output_{self._cpp_server_port}")
+        self._last_duplex_mode: Optional[bool] = None
 
         self._duplex_chunk_counter: int = 0
         self._current_session_id: Optional[str] = None
         self._round_number: int = 0
+        self._sent_wav_files: set = set()
 
     # ================================================================
     # Model loading (maps to omni_init)
@@ -96,6 +98,7 @@ class CppBackendWorker:
 
         self._start_cpp_server()
         self._call_omni_init(media_type=2, duplex_mode=True)
+        self._last_duplex_mode = True
 
         self.state.status = WorkerStatus.IDLE
         logger.info(f"[GPU {self.gpu_id}] C++ backend ready")
@@ -115,15 +118,19 @@ class CppBackendWorker:
         prompt_wav_path: Optional[str] = None,
     ) -> str:
         """Duplex 准备 → update_session_config"""
+        self._reset_output_dir()
+        self._duplex_chunk_counter = 0
+        self._round_number = 0
+        self._sent_wav_files = set()
         voice_audio = ref_audio_path or self.ref_audio_path or ""
         self._call_update_session_config(
             media_type=2,
             duplex_mode=True,
             voice_audio=voice_audio,
         )
-        self._duplex_chunk_counter = 0
-        self._round_number = 0
-        self._reset_output_dir()
+        os.makedirs(os.path.join(self._output_dir, "tts_wav"), exist_ok=True)
+        os.makedirs(os.path.join(self._output_dir, "tts_txt"), exist_ok=True)
+        os.makedirs(os.path.join(self._output_dir, "llm_debug"), exist_ok=True)
         return system_prompt_text or "Streaming Duplex Conversation."
 
     def duplex_prefill(
@@ -197,17 +204,13 @@ class CppBackendWorker:
                 if event.get("stop"):
                     end_of_turn = True
 
-        wav_audio_b64, wav_text = self._collect_wav_output()
-        if wav_text and not texts:
-            texts = [wav_text]
-
         text = "".join(texts)
         cost_all_ms = (time.perf_counter() - t0) * 1000
 
         return DuplexGenerateResult(
             is_listen=is_listen,
             text=text,
-            audio_data=wav_audio_b64,
+            audio_data=None,
             end_of_turn=end_of_turn,
             current_time=self._duplex_chunk_counter,
             cost_all_ms=round(cost_all_ms, 1),
@@ -285,14 +288,55 @@ class CppBackendWorker:
         max_new_tokens: int = 256,
         length_penalty: float = 1.1,
     ) -> "Iterator[StreamingChunk]":
-        """Half-Duplex 生成：流式读取 SSE，先 yield 文本 chunk，再 yield 音频 chunk"""
+        """Half-Duplex 生成：流式读取 SSE 文本，同时交错 yield 已生成的 WAV 音频"""
         from core.schemas.streaming import StreamingChunk
+        import soundfile as sf
 
         t0 = time.perf_counter()
         cur_round = self._round_number
         chunk_idx = 0
 
         logger.info(f"[HalfDuplex] decode start, round_idx={cur_round}")
+
+        sent_wav: set = set()
+        tts_dir_cache: Optional[str] = None
+
+        def _find_tts_dir():
+            nonlocal tts_dir_cache
+            if tts_dir_cache and os.path.isdir(tts_dir_cache):
+                return tts_dir_cache
+            rd = self._find_latest_round_dir()
+            if rd:
+                d = os.path.join(rd, "tts_wav")
+                if os.path.isdir(d):
+                    tts_dir_cache = d
+                    return d
+            return None
+
+        def _yield_new_wavs():
+            d = _find_tts_dir()
+            if not d:
+                return
+            try:
+                files = sorted(
+                    [f for f in os.listdir(d) if f.startswith("wav_") and f.endswith(".wav")],
+                    key=lambda f: int(re.search(r"wav_(\d+)", f).group(1)) if re.search(r"wav_(\d+)", f) else 0,
+                )
+            except OSError:
+                return
+            for wf in files:
+                if wf in sent_wav:
+                    continue
+                wp = os.path.join(d, wf)
+                try:
+                    data, _sr = sf.read(wp)
+                    if len(data) > 0:
+                        if data.dtype != np.float32:
+                            data = data.astype(np.float32)
+                        yield base64.b64encode(data.tobytes()).decode("utf-8")
+                        sent_wav.add(wf)
+                except Exception:
+                    pass
 
         sse_text_pieces = []
         try:
@@ -335,12 +379,24 @@ class CppBackendWorker:
                             chunk_idx += 1
                         if event.get("stop"):
                             break
+
+                    if generate_audio:
+                        for audio_b64 in _yield_new_wavs():
+                            yield StreamingChunk(
+                                chunk_index=chunk_idx,
+                                audio_data=audio_b64,
+                                is_final=False,
+                                duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+                            )
+                            chunk_idx += 1
         except Exception as e:
             logger.error(f"[HalfDuplex] SSE stream error: {e}")
 
         decode_elapsed = (time.perf_counter() - t0) * 1000
         sse_text = "".join(sse_text_pieces)
-        logger.info(f"[HalfDuplex] decode done in {decode_elapsed:.0f}ms, text={len(sse_text)} chars")
+        wav_during_sse = len(sent_wav)
+        logger.info(f"[HalfDuplex] decode done in {decode_elapsed:.0f}ms, text={len(sse_text)} chars, "
+                     f"wav_sent_during_sse={wav_during_sse}")
 
         self._round_number += 1
 
@@ -353,19 +409,36 @@ class CppBackendWorker:
                 yield StreamingChunk(chunk_index=0, is_final=True)
             return
 
-        audio_chunk_count = 0
-        for audio_b64 in self._iter_wav_chunks_incremental():
-            elapsed = (time.perf_counter() - t0) * 1000
-            yield StreamingChunk(
-                chunk_index=chunk_idx,
-                audio_data=audio_b64,
-                is_final=False,
-                duration_ms=round(elapsed, 1),
-            )
-            chunk_idx += 1
-            audio_chunk_count += 1
+        audio_chunk_count = wav_during_sse
+        t_post = time.time()
+        while time.time() - t_post < 120.0:
+            for audio_b64 in _yield_new_wavs():
+                yield StreamingChunk(
+                    chunk_index=chunk_idx,
+                    audio_data=audio_b64,
+                    is_final=False,
+                    duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+                )
+                chunk_idx += 1
+                audio_chunk_count += 1
 
-        logger.info(f"[HalfDuplex] streamed {audio_chunk_count} wav chunks")
+            d = _find_tts_dir()
+            if d and os.path.exists(os.path.join(d, "generation_done.flag")):
+                for audio_b64 in _yield_new_wavs():
+                    yield StreamingChunk(
+                        chunk_index=chunk_idx,
+                        audio_data=audio_b64,
+                        is_final=False,
+                        duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+                    )
+                    chunk_idx += 1
+                    audio_chunk_count += 1
+                break
+
+            time.sleep(0.15)
+
+        logger.info(f"[HalfDuplex] streamed {audio_chunk_count} wav chunks "
+                     f"({wav_during_sse} during SSE, {audio_chunk_count - wav_during_sse} after)")
 
         if chunk_idx == 0:
             yield StreamingChunk(chunk_index=0, is_final=True, text_delta=sse_text or None)
@@ -376,7 +449,7 @@ class CppBackendWorker:
         """重置 Half-Duplex 会话"""
         voice_audio = self.ref_audio_path or ""
         self._call_update_session_config(
-            media_type=1,
+            media_type=2,
             duplex_mode=False,
             voice_audio=voice_audio,
         )
@@ -529,7 +602,11 @@ class CppBackendWorker:
         def _log_reader():
             try:
                 for line in self._cpp_process.stdout:
-                    logger.debug(f"[CPP] {line.rstrip()}")
+                    stripped = line.rstrip()
+                    if any(kw in stripped for kw in ("TTS", "T2W", "LLM->TTS", "wav_", "tts_thread", "generate_audio", "speek_done", "break_event")):
+                        logger.info(f"[CPP] {stripped}")
+                    else:
+                        logger.debug(f"[CPP] {stripped}")
             except Exception:
                 pass
 
@@ -594,6 +671,33 @@ class CppBackendWorker:
         duplex_mode: bool = True,
         voice_audio: str = "",
     ) -> None:
+        mode_changed = (self._last_duplex_mode is not None and
+                        self._last_duplex_mode != duplex_mode)
+
+        if mode_changed:
+            # Full re-init when switching between duplex/simplex.
+            # This restarts all TTS/T2W threads with the correct function,
+            # avoiding subtle state corruption from mode switches.
+            logger.info(f"duplex_mode changed ({self._last_duplex_mode} → {duplex_mode}), "
+                        f"calling omni_init for clean restart")
+            self._call_omni_init(media_type=media_type, duplex_mode=duplex_mode)
+            self._last_duplex_mode = duplex_mode
+            # omni_init already prefills voice_audio if set in ref_audio_path
+            return
+
+        self._last_duplex_mode = duplex_mode
+
+        # Same mode — lightweight reset via break + update_session_config
+        try:
+            self._http_client.post(
+                f"{self._cpp_server_url}/v1/stream/break",
+                json={"reason": "session_config_change"},
+                timeout=10.0,
+            )
+            time.sleep(0.1)
+        except Exception:
+            pass
+
         req_body: Dict[str, Any] = {
             "media_type": media_type,
             "duplex_mode": duplex_mode,
@@ -666,8 +770,21 @@ class CppBackendWorker:
         """增量式收集 WAV：每出现一个新 WAV 文件就立即 yield base64 音频，不等全部完成"""
         import soundfile as sf
 
-        round_dir = self._find_latest_round_dir()
+        # Wait up to 15s for the round directory to appear (C++ TTS creates it async)
+        round_dir = None
+        t_wait = time.time()
+        while time.time() - t_wait < 15.0:
+            round_dir = self._find_latest_round_dir()
+            if round_dir:
+                break
+            # Also check base output dir for duplex-mode WAV files
+            direct_tts = os.path.join(self._output_dir, "tts_wav")
+            if os.path.isdir(direct_tts):
+                round_dir = self._output_dir
+                break
+            time.sleep(0.2)
         if not round_dir:
+            logger.warning("_iter_wav_chunks_incremental: no round/tts_wav dir found after 15s")
             return
 
         tts_wav_dir = os.path.join(round_dir, "tts_wav")
@@ -748,6 +865,57 @@ class CppBackendWorker:
         logger.warning(f"Timed out waiting for generation_done.flag ({timeout}s)")
         return False
 
+    def _collect_wav_output_nowait(self, sse_text: str = "") -> tuple:
+        """非阻塞版 WAV 收集：只拿新增的 WAV 文件，跳过已发送的，不做任何等待。
+
+        用于 duplex 场景——TTS 异步生成 WAV，每个 chunk 只取增量部分。
+        """
+        import soundfile as sf
+
+        round_dir = self._find_latest_round_dir()
+        if not round_dir:
+            direct_tts = os.path.join(self._output_dir, "tts_wav")
+            if os.path.isdir(direct_tts):
+                round_dir = self._output_dir
+        if not round_dir:
+            return None, sse_text
+
+        tts_wav_dir = os.path.join(round_dir, "tts_wav")
+        if not os.path.exists(tts_wav_dir):
+            return None, sse_text
+
+        all_files = os.listdir(tts_wav_dir)
+        if all_files:
+            logger.info(f"[WAV nowait] dir={tts_wav_dir}, all_files={sorted(all_files)[:10]}, sent={len(self._sent_wav_files)}")
+
+        wav_files = sorted(
+            [f for f in os.listdir(tts_wav_dir) if f.startswith("wav_") and f.endswith(".wav")],
+            key=lambda f: int(re.search(r"wav_(\d+)", f).group(1)) if re.search(r"wav_(\d+)", f) else 0,
+        )
+        new_files = [f for f in wav_files if f not in self._sent_wav_files]
+        if not new_files:
+            return None, sse_text
+
+        all_audio = []
+        for wf in new_files:
+            wp = os.path.join(tts_wav_dir, wf)
+            try:
+                data, sr = sf.read(wp)
+                if len(data) > 0:
+                    if data.dtype != np.float32:
+                        data = data.astype(np.float32)
+                    all_audio.append(data)
+                    self._sent_wav_files.add(wf)
+            except Exception:
+                pass
+
+        if not all_audio:
+            return None, sse_text
+
+        combined = np.concatenate(all_audio)
+        audio_b64 = base64.b64encode(combined.astype(np.float32).tobytes()).decode("utf-8")
+        return audio_b64, sse_text
+
     def _collect_wav_output(self, sse_text: str = "") -> tuple:
         """收集所有 WAV 文件，合并为一个 base64 float32 PCM 字符串 + 文本
 
@@ -757,6 +925,22 @@ class CppBackendWorker:
         import soundfile as sf
 
         round_dir = self._find_latest_round_dir()
+        # Also check base output dir for duplex-mode WAV files
+        if not round_dir:
+            direct_tts = os.path.join(self._output_dir, "tts_wav")
+            if os.path.isdir(direct_tts):
+                round_dir = self._output_dir
+        if not round_dir:
+            # Wait briefly — TTS may still be creating the directory
+            for _ in range(30):
+                time.sleep(0.2)
+                round_dir = self._find_latest_round_dir()
+                if round_dir:
+                    break
+                direct_tts = os.path.join(self._output_dir, "tts_wav")
+                if os.path.isdir(direct_tts):
+                    round_dir = self._output_dir
+                    break
         if not round_dir:
             return None, sse_text
 
@@ -802,6 +986,10 @@ class CppBackendWorker:
         import soundfile as sf
 
         round_dir = self._find_latest_round_dir()
+        if not round_dir:
+            direct_tts = os.path.join(self._output_dir, "tts_wav")
+            if os.path.isdir(direct_tts):
+                round_dir = self._output_dir
         if not round_dir:
             if sse_text:
                 return [(None, sse_text)]

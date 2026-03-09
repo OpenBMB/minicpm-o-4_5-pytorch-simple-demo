@@ -549,6 +549,7 @@ function handleMessage(msg) {
 }
 
 function endSession() {
+    aiSpeaking = false;
     stopCapture();
     stopAllAudio();
     stopTimer();

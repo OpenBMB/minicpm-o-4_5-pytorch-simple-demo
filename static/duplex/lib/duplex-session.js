@@ -346,6 +346,11 @@ export class DuplexSession {
     _handleMessage(msg) {
         switch (msg.type) {
             case 'result': this._handleResult(msg); break;
+            case 'audio_only':
+                if (msg.audio_data) {
+                    this.audioPlayer.playChunk(msg.audio_data, performance.now());
+                }
+                break;
             case 'error':
                 if (this.paused && msg.error && msg.error.includes('paused')) break;
                 this.onSystemLog(`Error: ${msg.error}`);
@@ -404,10 +409,12 @@ export class DuplexSession {
 
         // Audio player management
         if (!result.is_listen) {
-            if (!this.audioPlayer.turnActive) this.audioPlayer.beginTurn();
-            if (result.audio_data) this.audioPlayer.playChunk(result.audio_data, recvTime);
-            if (result.end_of_turn) this.audioPlayer.endTurn();
-        } else {
+            if (result.audio_data) {
+                if (!this.audioPlayer.turnActive) this.audioPlayer.beginTurn();
+                this.audioPlayer.playChunk(result.audio_data, recvTime);
+            }
+            if (result.end_of_turn && this.audioPlayer.turnActive) this.audioPlayer.endTurn();
+        } else if (result.end_of_turn) {
             if (this.audioPlayer.turnActive) this.audioPlayer.endTurn();
         }
 

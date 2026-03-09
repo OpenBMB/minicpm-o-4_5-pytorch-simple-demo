@@ -1504,6 +1504,7 @@ async def duplex_ws(ws: WebSocket):
     # Duplex 会重置模型状态（prepare 会调用），Gateway 侧已清除 cached_hash
 
     pause_timeout_task: Optional[asyncio.Task] = None
+    wav_poll_task: Optional[asyncio.Task] = None
 
     # finalize 异步栅栏：保证 finalize 完成后才能进入下一轮 prefill
     finalize_done = asyncio.Event()
@@ -1633,6 +1634,31 @@ async def duplex_ws(ws: WebSocket):
                         "prompt_length": len(prompt),
                         **({"recording_session_id": rec_sid} if rec_sid else {}),
                     })
+
+                    if hasattr(worker, '_collect_wav_output_nowait'):
+                        async def _wav_poll_loop():
+                            """独立异步任务：持续轮询 C++ T2W 生成的 WAV 文件并推送给前端"""
+                            poll_interval = 0.1
+                            while True:
+                                try:
+                                    audio_b64, _ = await asyncio.to_thread(
+                                        worker._collect_wav_output_nowait
+                                    )
+                                    if audio_b64:
+                                        await ws.send_json({
+                                            "type": "audio_only",
+                                            "audio_data": audio_b64,
+                                        })
+                                        logger.info(f"[WAV poll] sent audio_only ({len(audio_b64)} chars)")
+                                    await asyncio.sleep(poll_interval)
+                                except asyncio.CancelledError:
+                                    break
+                                except Exception as poll_err:
+                                    logger.warning(f"[WAV poll] error: {poll_err}")
+                                    await asyncio.sleep(poll_interval)
+                        wav_poll_task = asyncio.create_task(_wav_poll_loop())
+                        logger.info("WAV poll task started for C++ duplex backend")
+
                 except Exception as e:
                     logger.error(f"Duplex prepare failed: {e}", exc_info=True)
                     await ws.send_json({"type": "error", "error": str(e)})
@@ -1850,6 +1876,13 @@ async def duplex_ws(ws: WebSocket):
                 logger.error(f"[SessionRecorder] finalize failed: {e}", exc_info=True)
 
         # 清理
+        if wav_poll_task and not wav_poll_task.done():
+            wav_poll_task.cancel()
+            try:
+                await wav_poll_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
         if pause_timeout_task and not pause_timeout_task.done():
             pause_timeout_task.cancel()
 
