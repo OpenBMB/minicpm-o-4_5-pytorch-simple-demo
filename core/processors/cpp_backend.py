@@ -77,6 +77,7 @@ class CppBackendWorker:
         self._temp_dir = tempfile.mkdtemp(prefix="cpp_backend_")
         self._output_dir = os.path.join(llamacpp_root, f"tools/omni/output_{self._cpp_server_port}")
         self._last_duplex_mode: Optional[bool] = None
+        self._last_media_type: int = 2
 
         self._duplex_chunk_counter: int = 0
         self._current_session_id: Optional[str] = None
@@ -116,6 +117,7 @@ class CppBackendWorker:
         system_prompt_text: Optional[str] = None,
         ref_audio_path: Optional[str] = None,
         prompt_wav_path: Optional[str] = None,
+        media_type: int = 2,
     ) -> str:
         """Duplex 准备 → update_session_config"""
         self._reset_output_dir()
@@ -124,7 +126,7 @@ class CppBackendWorker:
         self._sent_wav_files = set()
         voice_audio = ref_audio_path or self.ref_audio_path or ""
         self._call_update_session_config(
-            media_type=2,
+            media_type=media_type,
             duplex_mode=True,
             voice_audio=voice_audio,
         )
@@ -201,8 +203,8 @@ class CppBackendWorker:
                     texts.append(event["text"])
                 if event.get("content"):
                     texts.append(event["content"])
-                if event.get("stop"):
-                    end_of_turn = True
+                # if event.get("stop"):
+                #     end_of_turn = True
 
         text = "".join(texts)
         cost_all_ms = (time.perf_counter() - t0) * 1000
@@ -232,8 +234,16 @@ class CppBackendWorker:
             logger.warning(f"duplex_stop break call failed: {e}")
 
     def duplex_cleanup(self) -> None:
-        """清理输出目录"""
+        """清理输出目录 + 清空 KV cache，确保下次会话从干净状态开始"""
         self._reset_output_dir()
+        try:
+            self._call_update_session_config(
+                media_type=self._last_media_type,
+                duplex_mode=self._last_duplex_mode if self._last_duplex_mode is not None else True,
+                voice_audio=self.ref_audio_path or "",
+            )
+        except Exception as e:
+            logger.warning(f"duplex_cleanup session reset failed: {e}")
         gc.collect()
 
     # ================================================================
@@ -671,21 +681,30 @@ class CppBackendWorker:
         duplex_mode: bool = True,
         voice_audio: str = "",
     ) -> None:
-        mode_changed = (self._last_duplex_mode is not None and
-                        self._last_duplex_mode != duplex_mode)
+        mode_changed = (
+            self._last_duplex_mode is not None and
+            self._last_duplex_mode != duplex_mode
+        )
+        media_type_changed = (self._last_media_type != media_type)
 
-        if mode_changed:
-            # Full re-init when switching between duplex/simplex.
+        if mode_changed or media_type_changed:
+            # Full re-init when switching duplex_mode or media_type.
             # This restarts all TTS/T2W threads with the correct function,
             # avoiding subtle state corruption from mode switches.
-            logger.info(f"duplex_mode changed ({self._last_duplex_mode} → {duplex_mode}), "
-                        f"calling omni_init for clean restart")
+            logger.info(
+                "session mode changed "
+                f"(duplex: {self._last_duplex_mode} -> {duplex_mode}, "
+                f"media_type: {self._last_media_type} -> {media_type}), "
+                "calling omni_init for clean restart"
+            )
             self._call_omni_init(media_type=media_type, duplex_mode=duplex_mode)
             self._last_duplex_mode = duplex_mode
+            self._last_media_type = media_type
             # omni_init already prefills voice_audio if set in ref_audio_path
             return
 
         self._last_duplex_mode = duplex_mode
+        self._last_media_type = media_type
 
         # Same mode — lightweight reset via break + update_session_config
         try:

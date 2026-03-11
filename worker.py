@@ -455,6 +455,7 @@ class MiniCPMOWorker:
         system_prompt_text: Optional[str] = None,
         ref_audio_path: Optional[str] = None,
         prompt_wav_path: Optional[str] = None,
+        media_type: int = 2,
     ) -> str:
         """Duplex 准备
 
@@ -465,11 +466,16 @@ class MiniCPMOWorker:
                 若不提供则 fallback 到 ref_audio_path。
         """
         duplex_view = self.processor.set_duplex_mode()
-        return duplex_view.prepare(
-            system_prompt_text=system_prompt_text,
-            ref_audio_path=ref_audio_path or self.ref_audio_path,
-            prompt_wav_path=prompt_wav_path,
-        )
+        kwargs = {
+            "system_prompt_text": system_prompt_text,
+            "ref_audio_path": ref_audio_path or self.ref_audio_path,
+            "prompt_wav_path": prompt_wav_path,
+        }
+        # C++ backend supports media_type (1=audio, 2=audio+vision); pytorch backend may not.
+        try:
+            return duplex_view.prepare(media_type=media_type, **kwargs)
+        except TypeError:
+            return duplex_view.prepare(**kwargs)
 
     def duplex_prefill(
         self,
@@ -1598,15 +1604,17 @@ async def duplex_ws(ws: WebSocket):
                 )
 
                 try:
+                    duplex_type = "omni_duplex" if client_session_id.startswith("omni") else "audio_duplex"
+                    duplex_media_type = 2 if duplex_type == "omni_duplex" else 1
+
                     prompt = await asyncio.to_thread(
                         worker.duplex_prepare,
                         system_prompt_text=system_prompt,
                         ref_audio_path=actual_ref_audio_path,
                         prompt_wav_path=actual_tts_audio_path,
+                        media_type=duplex_media_type,
                     )
-                    logger.info(f"Duplex prepared (deferred_finalize={use_deferred_finalize})")
-
-                    duplex_type = "omni_duplex" if client_session_id.startswith("omni") else "audio_duplex"
+                    logger.info(f"Duplex prepared ({duplex_type}, media_type={duplex_media_type}, deferred_finalize={use_deferred_finalize})")
                     from config import get_config
                     cfg = get_config()
                     if cfg.recording.enabled:
@@ -1820,9 +1828,16 @@ async def duplex_ws(ws: WebSocket):
                         # 模式 B：同步 finalize 后再发送（仍享受合并 feed 优化）
                         await asyncio.to_thread(worker.duplex_finalize)
                         await ws.send_json({"type": "result", **result_dict})
+                except WebSocketDisconnect:
+                    logger.info("Duplex websocket disconnected during result send")
+                    break
                 except Exception as e:
                     logger.error(f"Duplex prefill/generate failed: {e}", exc_info=True)
-                    await ws.send_json({"type": "error", "error": str(e)})
+                    try:
+                        await ws.send_json({"type": "error", "error": str(e)})
+                    except (WebSocketDisconnect, RuntimeError):
+                        # 连接已关闭时不再尝试发送，避免二次异常污染日志
+                        break
 
             elif msg_type == "pause":
                 logger.info("Duplex paused")
