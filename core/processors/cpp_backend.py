@@ -525,8 +525,10 @@ class CppBackendWorker:
         self._reset_output_dir()
         self._round_number = 0
 
-        cnt = 0
-        for msg in msgs:
+        # cnt = 0
+        # for msg in msgs:
+        cnt = self._round_number
+        for msg in msgs[-1:]:
             content_list = msg.get("content", [])
             if isinstance(content_list, str):
                 continue
