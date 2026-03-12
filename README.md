@@ -259,6 +259,71 @@ pkill -f "gateway.py|worker.py"
 ```
 
 <br/>
+
+### Docker Deployment
+
+You can also run the service inside Docker. This approach packages all dependencies into a single image — just mount one workspace directory and you're good to go.
+
+**Prerequisites:**
+- Docker Engine 19.03+
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (`nvidia-docker`)
+- NVIDIA GPU with > 28 GB VRAM
+
+**1. Build the image:**
+
+```bash
+docker build -t minicpm-o-demo .
+```
+
+**2. Prepare the workspace directory:**
+
+Create a single workspace directory with your model weights and optional config:
+
+```bash
+mkdir -p my-workspace/models
+
+# Copy or symlink model weights
+ln -s /path/to/MiniCPM-o-4_5 my-workspace/models/MiniCPM-o-4_5
+
+# (Optional) Custom config — model_path should point to /workspace/models/MiniCPM-o-4_5
+cp config.example.json my-workspace/config.json
+```
+
+The workspace directory layout:
+```
+my-workspace/
+├── models/MiniCPM-o-4_5/   # Model weights (required)
+├── config.json              # Custom config (optional, fallback to defaults)
+├── certs/                   # TLS certs (optional, for HTTPS)
+├── data/                    # Auto-created: persistent session data
+└── torch_compile_cache/     # Auto-created: compilation cache
+```
+
+**3. Run with `docker run`:**
+
+```bash
+docker run --gpus all -p 8006:8006 \
+    -v $(pwd)/my-workspace:/workspace \
+    minicpm-o-demo
+```
+
+**3 (alternative). Run with Docker Compose:**
+
+Edit `docker-compose.yml` to set the workspace volume path, then:
+
+```bash
+docker compose up -d
+```
+
+**Environment variables supported by the container:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GATEWAY_PROTO` | `http` | `http` or `https` |
+| `GATEWAY_PORT` | from config (8006) | Gateway listen port |
+| `CUDA_VISIBLE_DEVICES` | all GPUs | Comma-separated GPU indices |
+
+<br/>
 <br/>
 
 

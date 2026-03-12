@@ -262,6 +262,71 @@ pkill -f "gateway.py|worker.py"
 ```
 
 <br/>
+
+### Docker 部署
+
+你也可以通过 Docker 运行本服务。这种方式将所有依赖打包在一个镜像中，只需挂载一个工作目录即可启动。
+
+**前置条件：**
+- Docker Engine 19.03+
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)（`nvidia-docker`）
+- 显存大于 28 GB 的 NVIDIA GPU
+
+**1. 构建镜像：**
+
+```bash
+docker build -t minicpm-o-demo .
+```
+
+**2. 准备工作目录：**
+
+创建一个工作目录，放入模型权重和可选的配置文件：
+
+```bash
+mkdir -p my-workspace/models
+
+# 复制或软链接模型权重
+ln -s /path/to/MiniCPM-o-4_5 my-workspace/models/MiniCPM-o-4_5
+
+# （可选）自定义配置 —— model_path 应指向 /workspace/models/MiniCPM-o-4_5
+cp config.example.json my-workspace/config.json
+```
+
+工作目录结构：
+```
+my-workspace/
+├── models/MiniCPM-o-4_5/   # 模型权重（必需）
+├── config.json              # 自定义配置（可选，不提供则使用默认值）
+├── certs/                   # TLS 证书（可选，用于 HTTPS）
+├── data/                    # 自动创建：持久化会话数据
+└── torch_compile_cache/     # 自动创建：编译缓存
+```
+
+**3. 使用 `docker run` 运行：**
+
+```bash
+docker run --gpus all -p 8006:8006 \
+    -v $(pwd)/my-workspace:/workspace \
+    minicpm-o-demo
+```
+
+**3（替代方案）. 使用 Docker Compose 运行：**
+
+编辑 `docker-compose.yml` 设置工作目录路径，然后：
+
+```bash
+docker compose up -d
+```
+
+**容器支持的环境变量：**
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `GATEWAY_PROTO` | `http` | `http` 或 `https` |
+| `GATEWAY_PORT` | 来自 config（8006） | Gateway 监听端口 |
+| `CUDA_VISIBLE_DEVICES` | 所有 GPU | 逗号分隔的 GPU 索引 |
+
+<br/>
 <br/>
 
 
