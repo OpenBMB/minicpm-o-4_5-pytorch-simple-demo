@@ -95,6 +95,14 @@ class ServiceSectionConfig(BaseModel):
         default=22400,
         description="Worker 起始端口（Worker 0 = 22400, Worker 1 = 22401, ...）",
     )
+    num_workers: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Gateway 默认连接的 Worker 数量（仅当启动 gateway 时未传 --workers / --num-workers 时使用；"
+            "start_all.sh 会显式传入 --workers 覆盖此项）"
+        ),
+    )
     max_queue_size: int = Field(
         default=1000,
         description="最大排队请求数",
@@ -167,7 +175,7 @@ class CppBackendConfig(BaseModel):
     )
     llm_model: str = Field(
         default="",
-        description="LLM GGUF 文件名（留空则自动检测，优先 Q4_K_M）",
+        description="LLM GGUF 文件名（留空则自动检测，优先 Q8_0，其次 Q4_K_M）",
     )
     cpp_server_port: Optional[int] = Field(
         default=None,
@@ -243,6 +251,10 @@ class ServiceConfig(BaseModel):
     @property
     def worker_base_port(self) -> int:
         return self.service.worker_base_port
+
+    @property
+    def num_workers(self) -> int:
+        return self.service.num_workers
 
     @property
     def max_queue_size(self) -> int:

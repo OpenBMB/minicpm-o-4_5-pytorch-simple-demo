@@ -690,7 +690,13 @@ async def duplex_ws(ws: WebSocket, session_id: str):
 
         if worker:
             duration = (datetime.now() - task_start).total_seconds() if task_start else 0
-            worker_pool.release_worker(worker, request_type=duplex_type, duration_s=duration)
+            # Duplex 结束后 Worker 端会执行 full_reinit，期间不可被重新分配。
+            worker_pool.release_worker(
+                worker,
+                request_type=duplex_type,
+                duration_s=duration,
+                post_release_status=GatewayWorkerStatus.LOADING,
+            )
             logger.info(f"Duplex WS ended: session={session_id}, type={duplex_type}, Worker released ({duration:.1f}s)")
 
 
@@ -1340,11 +1346,10 @@ def main():
     # Worker 地址：优先命令行，否则根据 num_workers 自动生成
     if args.workers:
         worker_list = args.workers.split(",")
-    elif args.num_workers:
+    elif args.num_workers is not None:
         worker_list = cfg.worker_addresses(args.num_workers)
     else:
-        # 默认 1 个 Worker
-        worker_list = cfg.worker_addresses(1)
+        worker_list = cfg.worker_addresses(cfg.num_workers)
 
     GATEWAY_CONFIG.update({
         "workers": worker_list,

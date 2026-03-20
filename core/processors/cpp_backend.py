@@ -78,6 +78,7 @@ class CppBackendWorker:
         self._output_dir = os.path.join(llamacpp_root, f"tools/omni/output_{self._cpp_server_port}")
         self._last_duplex_mode: Optional[bool] = None
         self._last_media_type: int = 2
+        self._last_lang: str = "zh"
 
         self._duplex_chunk_counter: int = 0
         self._current_session_id: Optional[str] = None
@@ -118,6 +119,7 @@ class CppBackendWorker:
         ref_audio_path: Optional[str] = None,
         prompt_wav_path: Optional[str] = None,
         media_type: int = 2,
+        lang: Optional[str] = None,
     ) -> str:
         """Duplex 准备 → update_session_config"""
         self._reset_output_dir()
@@ -125,10 +127,14 @@ class CppBackendWorker:
         self._round_number = 0
         self._sent_wav_files = set()
         voice_audio = ref_audio_path or self.ref_audio_path or ""
+        print(f"aaaaavoice_audio: {voice_audio}")
+        print(f"aaaaavoice_audio: {ref_audio_path}")
+        print(f"aaaaavoice_audio: {self.ref_audio_path}")
         self._call_update_session_config(
             media_type=media_type,
             duplex_mode=True,
             voice_audio=voice_audio,
+            lang=lang,
         )
         os.makedirs(os.path.join(self._output_dir, "tts_wav"), exist_ok=True)
         os.makedirs(os.path.join(self._output_dir, "tts_txt"), exist_ok=True)
@@ -224,6 +230,7 @@ class CppBackendWorker:
 
     def duplex_stop(self) -> None:
         """Duplex 停止 → /v1/stream/break"""
+        self._last_break_time = time.time()
         try:
             self._http_client.post(
                 f"{self._cpp_server_url}/v1/stream/break",
@@ -245,6 +252,78 @@ class CppBackendWorker:
         except Exception as e:
             logger.warning(f"duplex_cleanup session reset failed: {e}")
         gc.collect()
+
+    def _stop_cpp_server(self) -> None:
+        if self._cpp_process is not None:
+            proc = self._cpp_process
+            try:
+                if proc.poll() is None:
+                    try:
+                        pgid = os.getpgid(proc.pid)
+                        os.killpg(pgid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    except Exception:
+                        proc.terminate()
+
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        try:
+                            pgid = os.getpgid(proc.pid)
+                            os.killpg(pgid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        except Exception:
+                            proc.kill()
+                        proc.wait(timeout=5)
+            except Exception as e:
+                logger.warning(f"_stop_cpp_server: {e}")
+            finally:
+                self._cpp_process = None
+                logger.info("llama-server stopped")
+
+    def full_reinit(self) -> None:
+        """每次会话结束后完全重启 llama-server，保证下次会话状态绝对干净。"""
+        self._round_number = 0
+        self._last_duplex_mode = None
+        self._last_media_type = 2
+        t_break = getattr(self, '_last_break_time', 0.0)
+        if t_break > 0.0:
+            flag_paths = [
+                os.path.join(self._output_dir, "generation_done.flag"),
+                os.path.join(self._output_dir, "tts_wav", "generation_done.flag"),
+            ]
+
+            def _flag_exists() -> bool:
+                latest_round = self._find_latest_round_dir()
+                if latest_round:
+                    latest_flag = os.path.join(latest_round, "tts_wav", "generation_done.flag")
+                    if latest_flag not in flag_paths:
+                        flag_paths.append(latest_flag)
+                return any(os.path.exists(p) for p in flag_paths)
+
+            if not _flag_exists():
+                for _ in range(20):
+                    time.sleep(0.5)
+                    if _flag_exists():
+                        break
+                else:
+                    logger.warning(
+                        "full_reinit: T2W completion flag not seen within 10s, proceeding; "
+                        f"checked_paths={flag_paths}"
+                    )
+        try:
+            logger.info("full_reinit: stopping llama-server...")
+            self._stop_cpp_server()
+            logger.info("full_reinit: restarting llama-server...")
+            self._start_cpp_server()
+            self._call_omni_init(media_type=2, duplex_mode=True)
+            logger.info("full_reinit: omni context re-initialized successfully")
+        except Exception as e:
+            logger.error(f"full_reinit failed: {e}", exc_info=True)
+            # 关键约束：重初始化失败时必须向上抛出，禁止调用方误判为可分配。
+            raise
 
     # ================================================================
     # Half-Duplex
@@ -455,13 +534,14 @@ class CppBackendWorker:
         else:
             yield StreamingChunk(chunk_index=chunk_idx, is_final=True)
 
-    def reset_half_duplex_session(self) -> None:
+    def reset_half_duplex_session(self, lang: Optional[str] = None, ref_audio_path: Optional[str] = None) -> None:
         """重置 Half-Duplex 会话"""
-        voice_audio = self.ref_audio_path or ""
+        voice_audio = ref_audio_path or self.ref_audio_path or ""
         self._call_update_session_config(
-            media_type=2,
+            media_type=1,
             duplex_mode=False,
             voice_audio=voice_audio,
+            lang=lang,
         )
         self._duplex_chunk_counter = 0
         self._round_number = 0
@@ -515,20 +595,35 @@ class CppBackendWorker:
         )
 
     def chat_prefill(self, session_id, msgs, omni_mode=False, max_slice_nums=None,
-                     use_tts_template=False, enable_thinking=False) -> str:
-        """Chat prefill — 同时重置 round 和 output 目录"""
-        self._call_update_session_config(
-            media_type=2,
-            duplex_mode=False,
-            voice_audio=self.ref_audio_path or "",
+                     use_tts_template=False, enable_thinking=False, lang: Optional[str] = None,
+                     ref_audio_path: Optional[str] = None,
+                     reset_context: bool = True) -> str:
+        """Chat prefill — reset_context=True 时重置会话上下文"""
+        media_type = 2 if omni_mode else 1
+        if reset_context:
+            self._call_update_session_config(
+                media_type=media_type,
+                duplex_mode=False,
+                voice_audio=ref_audio_path or self.ref_audio_path or "",
+                lang=lang,
+            )
+        logger.info(
+            f"[ChatPrefill] session={session_id} omni_mode={omni_mode} media_type={media_type} "
+            f"lang={lang or self._last_lang} reset_context={reset_context} "
+            f"ref_audio_path={ref_audio_path or self.ref_audio_path or ''}"
         )
-        self._reset_output_dir()
-        self._round_number = 0
+        if reset_context:
+            self._reset_output_dir()
+            self._round_number = 0
 
-        # cnt = 0
-        # for msg in msgs:
         cnt = self._round_number
-        for msg in msgs[-1:]:
+        prefill_msgs: List[Dict[str, Any]] = []
+        # if msgs and reset_context and len(msgs) > 1:
+        #     prefill_msgs.append(msgs[0])
+        if msgs:
+            prefill_msgs.append(msgs[-1])
+
+        for msg in prefill_msgs:
             content_list = msg.get("content", [])
             if isinstance(content_list, str):
                 continue
@@ -609,13 +704,14 @@ class CppBackendWorker:
             cmd, env=env, cwd=self.llamacpp_root,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             bufsize=1, encoding="utf-8", errors="replace",
+            start_new_session=True,
         )
 
         def _log_reader():
             try:
                 for line in self._cpp_process.stdout:
                     stripped = line.rstrip()
-                    if any(kw in stripped for kw in ("TTS", "T2W", "LLM->TTS", "wav_", "tts_thread", "generate_audio", "speek_done", "break_event")):
+                    if any(kw in stripped for kw in ("TTS", "T2W", "LLM->TTS", "wav_", "tts_thread", "generate_audio", "speek_done", "break_event", "lang", "language", "omni_set_language", "prefill", "change")):
                         logger.info(f"[CPP] {stripped}")
                     else:
                         logger.debug(f"[CPP] {stripped}")
@@ -649,7 +745,12 @@ class CppBackendWorker:
                 return c
         return candidates[0]
 
-    def _call_omni_init(self, media_type: int = 2, duplex_mode: bool = True) -> None:
+    def _call_omni_init(
+        self,
+        media_type: int = 2,
+        duplex_mode: bool = True,
+        lang: Optional[str] = None,
+    ) -> None:
         tts_bin_dir = os.path.join(self.model_dir, "tts")
         os.makedirs(self._output_dir, exist_ok=True)
 
@@ -666,8 +767,14 @@ class CppBackendWorker:
 
         if self.ref_audio_path and os.path.exists(self.ref_audio_path):
             req_body["voice_audio"] = self.ref_audio_path
+        if lang:
+            req_body["lang"] = lang
+            self._last_lang = lang
 
-        logger.info(f"Calling omni_init: media_type={media_type}, duplex={duplex_mode}")
+        logger.info(
+            f"Calling omni_init: media_type={media_type}, duplex={duplex_mode}, "
+            f"lang={req_body.get('lang', 'zh')}"
+        )
         resp = self._http_client.post(
             f"{self._cpp_server_url}/v1/stream/omni_init",
             json=req_body,
@@ -682,6 +789,7 @@ class CppBackendWorker:
         media_type: int = 2,
         duplex_mode: bool = True,
         voice_audio: str = "",
+        lang: Optional[str] = None,
     ) -> None:
         mode_changed = (
             self._last_duplex_mode is not None and
@@ -699,11 +807,11 @@ class CppBackendWorker:
                 f"media_type: {self._last_media_type} -> {media_type}), "
                 "calling omni_init for clean restart"
             )
-            self._call_omni_init(media_type=media_type, duplex_mode=duplex_mode)
+            self._call_omni_init(media_type=media_type, duplex_mode=duplex_mode, lang=lang)
             self._last_duplex_mode = duplex_mode
             self._last_media_type = media_type
             # omni_init already prefills voice_audio if set in ref_audio_path
-            return
+            # return
 
         self._last_duplex_mode = duplex_mode
         self._last_media_type = media_type
@@ -725,6 +833,9 @@ class CppBackendWorker:
         }
         if voice_audio and os.path.exists(voice_audio):
             req_body["voice_audio"] = voice_audio
+        if lang:
+            req_body["lang"] = lang
+            self._last_lang = lang
 
         resp = self._http_client.post(
             f"{self._cpp_server_url}/v1/stream/update_session_config",
@@ -1136,7 +1247,8 @@ class CppBackendWorker:
     def _auto_detect_llm_model(model_dir: str) -> str:
         import glob
 
-        patterns = ["*Q4_K_M*.gguf", "*Q4_K_S*.gguf", "*Q8_0*.gguf", "*F16*.gguf"]
+        # 优先 Q8，再回退到 Q4 / F16（与显式配置 llm_model 时的推荐一致）
+        patterns = ["*Q8_0*.gguf", "*Q4_K_M*.gguf", "*Q4_K_S*.gguf", "*F16*.gguf"]
         for pat in patterns:
             matches = glob.glob(os.path.join(model_dir, pat))
             root = [m for m in matches if os.path.dirname(m) == model_dir]

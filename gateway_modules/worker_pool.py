@@ -251,6 +251,7 @@ class WorkerPool:
 
         # 健康检查任务
         self._health_check_task: Optional[asyncio.Task] = None
+        self._recovery_tasks: Dict[str, asyncio.Task] = {}
 
         # 解析 Worker 地址
         for i, addr in enumerate(worker_addresses):
@@ -282,6 +283,10 @@ class WorkerPool:
 
     async def stop(self) -> None:
         """停止连接池"""
+        for task in list(self._recovery_tasks.values()):
+            task.cancel()
+        self._recovery_tasks.clear()
+
         if self._health_check_task:
             self._health_check_task.cancel()
             try:
@@ -502,23 +507,61 @@ class WorkerPool:
         if self._queue:
             self._recalc_positions_and_eta()
 
+    async def _wait_worker_ready(self, worker_id: str, timeout_s: float = 30.0, poll_s: float = 1.0) -> None:
+        """等待指定 worker 从 LOADING 恢复到 IDLE，再触发队列调度。"""
+        started = datetime.now()
+        try:
+            while (datetime.now() - started).total_seconds() < timeout_s:
+                worker = self.workers.get(worker_id)
+                if worker is None:
+                    return
+                await self._refresh_worker_status(worker)
+                if worker.status == GatewayWorkerStatus.IDLE:
+                    self._dispatch_next()
+                    return
+                await asyncio.sleep(poll_s)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._recovery_tasks.pop(worker_id, None)
+
     def release_worker(self, worker: WorkerConnection, request_type: Optional[str] = None,
-                       duration_s: Optional[float] = None) -> None:
+                       duration_s: Optional[float] = None,
+                       post_release_status: GatewayWorkerStatus = GatewayWorkerStatus.IDLE) -> None:
         """释放 Worker（任务完成后调用）
 
         Args:
             worker: 要释放的 Worker
             request_type: 完成的任务类型（用于 EMA 更新）
             duration_s: 任务实际耗时（用于 EMA 更新）
+            post_release_status: 释放后状态。默认 IDLE；需要等待内部重初始化时可设为 LOADING。
         """
-        worker.mark_idle()
+        worker.current_request_type = None
+        worker.task_started_at = None
+        worker.current_session_id = None
+        worker._gateway_dispatched = False
+        worker.status = post_release_status
 
         # 更新 EMA
         if request_type and duration_s is not None and duration_s > 0:
             self.eta_tracker.record_duration(request_type, duration_s)
 
-        # 尝试调度下一个
-        self._dispatch_next()
+        if post_release_status == GatewayWorkerStatus.IDLE:
+            # 尝试调度下一个
+            self._dispatch_next()
+            return
+
+        # 非 IDLE（如 LOADING）时，不可立即分配；启动快速就绪探测
+        prev_task = self._recovery_tasks.get(worker.worker_id)
+        if prev_task and not prev_task.done():
+            prev_task.cancel()
+        try:
+            self._recovery_tasks[worker.worker_id] = asyncio.create_task(
+                self._wait_worker_ready(worker.worker_id)
+            )
+        except RuntimeError:
+            # 无运行中的事件循环时，退化为依赖周期性 health check
+            pass
 
     def cancel(self, ticket_id: str) -> bool:
         """取消排队

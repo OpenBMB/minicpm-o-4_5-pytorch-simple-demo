@@ -14,6 +14,8 @@
     "service": {
         "gateway_port": 8006,
         "worker_base_port": 22400,
+        "_comment_num_workers": "仅在不传 gateway --workers/--num-workers 时使用；start_all.sh 会显式传 --workers",
+        "num_workers": 1,
         "max_queue_size": 1000,
         "request_timeout": 300.0,
         "compile": false,
@@ -33,7 +35,7 @@
         "_comment": "backend='cpp' 时生效，使用 C++ llama.cpp-omni 推理",
         "llamacpp_root": "/cache/caitianchi/code/llama.cpp-omni",
         "model_dir": "/cache/caitianchi/model/MiniCPM-o-4_5-gguf",
-        "llm_model": "",
+        "llm_model": "MiniCPM-o-4_5-Q8_0.gguf",
         "cpp_server_port": null,
         "ctx_size": 8192,
         "n_gpu_layers": 99
