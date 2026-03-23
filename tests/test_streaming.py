@@ -33,6 +33,7 @@ from conftest import (
     get_cases,
     load_case,
     assert_expected,
+    skip_if_placeholder_model_path,
 )
 
 from core.schemas import (
@@ -54,6 +55,7 @@ from core.processors import UnifiedProcessor, HalfDuplexView
 @pytest.fixture(scope="module")
 def processor():
     """创建共享的 HalfDuplexView 实例"""
+    skip_if_placeholder_model_path()
     from conftest import PT_PATH
     print(f"\n[Setup] 加载模型: {MODEL_PATH}")
     print(f"[Setup] 额外权重: {PT_PATH}")

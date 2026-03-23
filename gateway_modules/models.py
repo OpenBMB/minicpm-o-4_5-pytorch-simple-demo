@@ -106,9 +106,17 @@ class ServiceStatus(BaseModel):
 class EtaConfig(BaseModel):
     """ETA 基准配置（Admin 可调）"""
     eta_chat_s: float = Field(default=15.0, description="Chat 预估耗时（秒）")
+    eta_streaming_s: float = Field(
+        default=180.0,
+        description="Turn-based 流式 Chat（/ws/chat）预估耗时（秒），Admin 与队列 streaming 类型使用",
+    )
     eta_half_duplex_s: float = Field(default=180.0, description="Half-Duplex 预估耗时（秒）")
     eta_audio_duplex_s: float = Field(default=120.0, description="Audio Duplex 预估耗时（秒）")
     eta_omni_duplex_s: float = Field(default=90.0, description="Omni Duplex 预估耗时（秒）")
+    eta_duplex_s: float = Field(
+        default=90.0,
+        description="泛化 duplex 队列类型（测试/兼容）预估耗时（秒）",
+    )
     ema_alpha: Optional[float] = Field(default=None, description="EMA 平滑系数（0-1，越大越敏感），None 表示不修改")
 
 
@@ -117,13 +125,17 @@ class EtaStatus(BaseModel):
     config: EtaConfig
     ema_alpha: float = 0.3
     ema_chat_s: Optional[float] = None
+    ema_streaming_s: Optional[float] = None
     ema_half_duplex_s: Optional[float] = None
     ema_audio_duplex_s: Optional[float] = None
     ema_omni_duplex_s: Optional[float] = None
+    ema_duplex_s: Optional[float] = None
     ema_chat_samples: int = 0
+    ema_streaming_samples: int = 0
     ema_half_duplex_samples: int = 0
     ema_audio_duplex_samples: int = 0
     ema_omni_duplex_samples: int = 0
+    ema_duplex_samples: int = 0
 
 
 # ============ 响应模型 ============

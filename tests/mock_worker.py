@@ -6,7 +6,8 @@
 - POST /streaming/stop  → 停止 Streaming
 - POST /clear_cache     → 清缓存
 - GET  /cache_info      → 缓存信息
-- WS   /ws/streaming    → 模拟 Streaming（prefill_done → chunk × N → done）
+- WS   /ws/streaming    → 模拟旧版 Streaming（prefill / generate 多帧协议）
+- WS   /ws/chat         → 模拟 Turn-based Chat WS（与 worker.py / gateway 透传一致）
 - WS   /ws/duplex       → 模拟 Duplex（prepared → result × N → stopped）
 
 启动方式：
@@ -172,6 +173,56 @@ def create_app() -> FastAPI:
             logger.info("Streaming WS disconnected")
         except Exception as e:
             logger.error(f"Streaming WS error: {e}")
+        finally:
+            WORKER_STATUS = "idle"
+            CURRENT_SESSION_ID = None
+
+    # ============ Chat WebSocket（Turn-based，单帧请求） ============
+
+    @app.websocket("/ws/chat")
+    async def chat_ws(ws: WebSocket):
+        """模拟 worker.chat_ws：prefill_done → chunk(s) → done"""
+        global WORKER_STATUS, TOTAL_REQUESTS, CURRENT_SESSION_ID
+        await ws.accept()
+        logger.info("Chat WS connected")
+
+        try:
+            raw = await ws.receive_text()
+            data = json.loads(raw)
+            WORKER_STATUS = "busy_streaming"
+            TOTAL_REQUESTS += 1
+            CURRENT_SESSION_ID = "mock_chat_ws"
+
+            msgs = data.get("messages") or []
+            last_user = ""
+            for m in reversed(msgs):
+                if isinstance(m, dict) and m.get("role") == "user":
+                    c = m.get("content", "")
+                    last_user = c if isinstance(c, str) else str(c)
+                    break
+
+            await asyncio.sleep(CHAT_DELAY * 0.2)
+            await ws.send_json({"type": "prefill_done", "input_tokens": max(1, len(msgs) * 3)})
+
+            reply = f"[Mock/ChatWS] turns={len(msgs)} last_user={last_user[:120]!r}"
+            await asyncio.sleep(STREAM_CHUNK_DELAY)
+            await ws.send_json({"type": "chunk", "text_delta": reply})
+            await ws.send_json({
+                "type": "done",
+                "text": reply,
+                "generated_tokens": 8,
+                "input_tokens": max(1, len(msgs) * 3),
+            })
+            # 必须主动关闭，否则 Gateway 侧 `async for worker_ws` 会一直等下一帧，排队中的第二条连接会饿死
+            await ws.close()
+        except WebSocketDisconnect:
+            logger.info("Chat WS disconnected")
+        except Exception as e:
+            logger.error(f"Chat WS error: {e}")
+            try:
+                await ws.send_json({"type": "error", "error": str(e)})
+            except Exception:
+                pass
         finally:
             WORKER_STATUS = "idle"
             CURRENT_SESSION_ID = None

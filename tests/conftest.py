@@ -29,6 +29,16 @@ PROJECT_ROOT = Path(__file__).parent.parent
 MODEL_PATH = os.environ.get("MINICPMO45_MODEL_PATH", "/path/to/MiniCPM-o-4_5")
 PT_PATH = os.environ.get("MINICPMO45_PT_PATH")  # 可选，Duplex 微调权重
 
+
+def skip_if_placeholder_model_path() -> None:
+    """占位或未配置的模型路径：跳过需加载权重的集成测试。"""
+    p = (MODEL_PATH or "").strip()
+    if not p or "/path/to/" in p:
+        pytest.skip(
+            "未配置有效模型路径：设置环境变量 MINICPMO45_MODEL_PATH "
+            "(或指向本机目录 / HuggingFace 模型 ID) 后重跑本模块"
+        )
+
 # 测试目录
 TESTS_DIR = Path(__file__).parent
 CASES_DIR = TESTS_DIR / "cases"           # git 维护：测试用例定义

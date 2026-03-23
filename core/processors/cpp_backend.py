@@ -127,9 +127,6 @@ class CppBackendWorker:
         self._round_number = 0
         self._sent_wav_files = set()
         voice_audio = ref_audio_path or self.ref_audio_path or ""
-        print(f"aaaaavoice_audio: {voice_audio}")
-        print(f"aaaaavoice_audio: {ref_audio_path}")
-        print(f"aaaaavoice_audio: {self.ref_audio_path}")
         self._call_update_session_config(
             media_type=media_type,
             duplex_mode=True,

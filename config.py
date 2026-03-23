@@ -111,6 +111,10 @@ class ServiceSectionConfig(BaseModel):
         default=15.0,
         description="Chat 预估耗时基准（秒），Admin 可动态调整",
     )
+    eta_streaming_s: float = Field(
+        default=180.0,
+        description="Turn-based 流式 Chat 预估耗时基准（秒），队列 request_type=streaming 与 Admin 使用",
+    )
     eta_half_duplex_s: float = Field(
         default=180.0,
         description="Half-Duplex 预估耗时基准（秒），Admin 可动态调整",
@@ -122,6 +126,10 @@ class ServiceSectionConfig(BaseModel):
     eta_omni_duplex_s: float = Field(
         default=90.0,
         description="Omni Duplex 预估耗时基准（秒），Admin 可动态调整",
+    )
+    eta_duplex_s: float = Field(
+        default=90.0,
+        description="泛化 duplex 队列类型的 ETA 基准（秒），与 omni_duplex 可分别配置",
     )
     eta_ema_alpha: float = Field(
         default=0.3,
@@ -273,12 +281,20 @@ class ServiceConfig(BaseModel):
         return self.service.eta_half_duplex_s
 
     @property
+    def eta_streaming_s(self) -> float:
+        return self.service.eta_streaming_s
+
+    @property
     def eta_audio_duplex_s(self) -> float:
         return self.service.eta_audio_duplex_s
 
     @property
     def eta_omni_duplex_s(self) -> float:
         return self.service.eta_omni_duplex_s
+
+    @property
+    def eta_duplex_s(self) -> float:
+        return self.service.eta_duplex_s
 
     @property
     def eta_ema_alpha(self) -> float:

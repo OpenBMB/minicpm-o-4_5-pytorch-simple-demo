@@ -221,7 +221,7 @@ class ChatResponse(BaseModel):
     
     - audio_path: 生成的音频文件路径（如果指定了 output_path）
     - audio_data: 生成的音频 Base64 数据
-    - audio_sample_rate: 音频采样率（固定 24000 Hz）
+    - audio_sample_rate: 音频采样率（有音频时一般为 24000 Hz；无音频时为 null）
     
     **元信息**：
     
@@ -268,9 +268,9 @@ class ChatResponse(BaseModel):
         None, 
         description="生成的音频 Base64 数据（24kHz, float32）"
     )
-    audio_sample_rate: int = Field(
-        24000,
-        description="音频采样率（固定 24000 Hz）"
+    audio_sample_rate: Optional[int] = Field(
+        None,
+        description="音频采样率（有 TTS 输出时一般为 24000；无音频时为 null）",
     )
     
     # 元信息

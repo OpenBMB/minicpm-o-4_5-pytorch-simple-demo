@@ -339,9 +339,14 @@ async def _run(args: argparse.Namespace) -> None:
                 await ws.send(json.dumps(item["msg"], ensure_ascii=False))
                 if i % 10 == 0:
                     print(f"[SEND] chunk={i}/{len(send_items)} samples={item['samples']}")
+            # 末包发出后若立刻 stop，服务端可能仍在 prefill/decode，会导致 result 未送达就断连
+            if args.pre_stop_wait_s > 0:
+                await asyncio.sleep(args.pre_stop_wait_s)
             await ws.send(json.dumps({"type": "stop"}))
             sender_done.set()
             print("[SEND] stop sent")
+
+        duplex_stats = {"result_listen": 0, "result_speak": 0, "audio_only": 0}
 
         async def receiver() -> None:
             nonlocal recv_msg_count
@@ -371,6 +376,10 @@ async def _run(args: argparse.Namespace) -> None:
                 recv_ts_ms = (time.perf_counter() - start_send_wall) * 1000.0
 
                 if tp == "result":
+                    if msg.get("is_listen", True):
+                        duplex_stats["result_listen"] += 1
+                    else:
+                        duplex_stats["result_speak"] += 1
                     if not msg.get("is_listen", True) and msg.get("audio_data"):
                         audio = _from_base64_f32(msg["audio_data"]).astype(np.float32)
                         output_packets.append(
@@ -385,6 +394,7 @@ async def _run(args: argparse.Namespace) -> None:
                         packet_index += 1
                 elif tp == "audio_only":
                     if msg.get("audio_data"):
+                        duplex_stats["audio_only"] += 1
                         audio = _from_base64_f32(msg["audio_data"]).astype(np.float32)
                         output_packets.append(
                             AudioPacket(
@@ -417,6 +427,7 @@ async def _run(args: argparse.Namespace) -> None:
         "ws_url": ws_url,
         "send_chunks": len(send_items),
         "recv_messages": recv_msg_count,
+        "duplex_stats": duplex_stats,
         "output_packets": len(output_packets),
         "speed": args.speed,
         "output": save_summary,
@@ -426,11 +437,12 @@ async def _run(args: argparse.Namespace) -> None:
 
     print(f"[DONE] output saved to: {out_dir}")
     print(
-        "[DONE] packets=%d merged=%.2fs per_second=%d"
+        "[DONE] packets=%d merged=%.2fs per_second=%d duplex_stats=%s"
         % (
             summary["output_packets"],
             save_summary["merged_duration_s"],
             save_summary["per_second_count"],
+            duplex_stats,
         )
     )
 
@@ -456,6 +468,12 @@ def _parse_args() -> argparse.Namespace:
         help="fixed 模式下两个音频发送时间点的间隔（秒）",
     )
     parser.add_argument("--chunk-duration-s", type=float, default=1.0, help="fallback 切 chunk 时长（秒）")
+    parser.add_argument(
+        "--pre-stop-wait-s",
+        type=float,
+        default=8.0,
+        help="发完最后一个 audio_chunk 之后、发送 stop 之前等待秒数（给服务端跑完本轮推理）",
+    )
     parser.add_argument("--post-stop-wait-s", type=float, default=3.0, help="发送 stop 后额外接收等待秒数")
     parser.add_argument("--output-split-seconds", type=float, default=1.0, help="输出切片时长（秒）")
     parser.add_argument("--output-dir", default=None, help="输出目录；默认 session_dir/replay_out_<ts>")

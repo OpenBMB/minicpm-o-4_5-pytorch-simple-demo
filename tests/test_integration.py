@@ -38,7 +38,7 @@ PYTHON = os.path.join(PROJECT_ROOT, ".venv", "base", "bin", "python")
 
 # 超时配置
 STARTUP_TIMEOUT = 15.0  # 进程启动超时
-REQUEST_TIMEOUT = 30.0  # 请求超时
+REQUEST_TIMEOUT = 60.0  # 请求超时（含 Gateway 排队 + Mock 延迟，并发时放宽）
 
 
 # ============ 进程管理 ============
@@ -246,23 +246,30 @@ async def do_chat(gateway_url: str, message: str = "hello") -> Dict[str, Any]:
 async def do_streaming_turn(
     gateway_ws_url: str, session_id: str, messages: List[Dict[str, Any]]
 ) -> Tuple[str, List[Dict[str, Any]]]:
-    """执行一轮 Streaming（prefill + generate），返回 (full_text, all_ws_messages)"""
+    """执行一轮 Turn-based 流式 Chat（Gateway /ws/chat → Worker），返回 (full_text, all_ws_messages)。
+
+    session_id 仅用于区分调用方场景名；协议上与 turnbased.html 一致，单连接单条 JSON。
+    """
+    del session_id  # 保留参数以兼容现有测试调用签名
     ws_messages: List[Dict[str, Any]] = []
     full_text = ""
 
+    has_assistant = any(
+        isinstance(m, dict) and m.get("role") == "assistant" for m in messages
+    )
+    payload = {
+        "messages": messages,
+        "streaming": True,
+        "generation": {"max_new_tokens": 100, "do_sample": False},
+        "reset_context": not has_assistant,
+    }
+
     async with websockets.connect(
-        f"{gateway_ws_url}/ws/streaming/{session_id}",
+        f"{gateway_ws_url}/ws/chat",
         open_timeout=REQUEST_TIMEOUT,
     ) as ws:
-        # Prefill
-        await ws.send(json.dumps({
-            "type": "prefill",
-            "messages": messages,
-            "session_id": session_id,
-            "is_last_chunk": True,
-        }))
+        await ws.send(json.dumps(payload))
 
-        # 读取所有 prefill 阶段消息（可能含 queued/queue_update/queue_done/prefill_done）
         while True:
             raw = await asyncio.wait_for(ws.recv(), timeout=REQUEST_TIMEOUT)
             msg = json.loads(raw)
@@ -273,25 +280,19 @@ async def do_streaming_turn(
         if ws_messages[-1].get("type") == "error":
             return "", ws_messages
 
-        # Generate
-        await ws.send(json.dumps({
-            "type": "generate",
-            "session_id": session_id,
-            "generate_audio": False,
-            "max_new_tokens": 100,
-        }))
-
         while True:
             raw = await asyncio.wait_for(ws.recv(), timeout=REQUEST_TIMEOUT)
             msg = json.loads(raw)
             ws_messages.append(msg)
             if msg.get("type") == "chunk" and msg.get("text_delta"):
                 full_text += msg["text_delta"]
-            if msg.get("type") in ("done", "error"):
+            if msg.get("type") == "done":
+                full_text = full_text or (msg.get("text") or "")
                 break
-
-        # Close
-        await ws.send(json.dumps({"type": "close"}))
+            if msg.get("type") == "error":
+                break
+            if msg.get("type") == "heartbeat":
+                continue
 
     return full_text, ws_messages
 

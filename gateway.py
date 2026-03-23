@@ -1037,9 +1037,11 @@ async def update_eta_config(new_config: EtaConfig):
     alpha_str = f", ema_alpha={new_config.ema_alpha}" if new_config.ema_alpha is not None else ""
     logger.info(
         f"ETA config updated: chat={new_config.eta_chat_s}s, "
+        f"streaming={new_config.eta_streaming_s}s, "
         f"half_duplex={new_config.eta_half_duplex_s}s, "
         f"audio_duplex={new_config.eta_audio_duplex_s}s, "
-        f"omni_duplex={new_config.eta_omni_duplex_s}s{alpha_str}"
+        f"omni_duplex={new_config.eta_omni_duplex_s}s, "
+        f"duplex={new_config.eta_duplex_s}s{alpha_str}"
     )
     return worker_pool.eta_tracker.get_status()
 
@@ -1066,6 +1068,40 @@ async def list_cache():
 # ============ Session API ============
 
 _BASE_DIR = os.path.dirname(__file__)
+
+
+def _list_active_sessions_payload() -> Dict[str, Any]:
+    """Gateway 当前占用 Worker 的会话列表（Admin / 测试共用）。"""
+    if worker_pool is None:
+        raise HTTPException(status_code=503, detail="Service not ready")
+    sessions: List[Dict[str, Any]] = []
+    for w in worker_pool.workers.values():
+        if not w.current_session_id:
+            continue
+        last_active = w.last_heartbeat or w.task_started_at or datetime.now()
+        sessions.append(
+            {
+                "session_id": w.current_session_id,
+                "worker_id": w.worker_id,
+                "messages_hash": w.cached_hash or "",
+                "last_active": last_active.isoformat()
+                if hasattr(last_active, "isoformat")
+                else str(last_active),
+            }
+        )
+    return {"total": len(sessions), "sessions": sessions}
+
+
+@app.get("/sessions")
+async def list_active_sessions():
+    """列出活跃会话（与 admin.html `GET /sessions` 一致）。"""
+    return _list_active_sessions_payload()
+
+
+@app.get("/api/sessions")
+async def list_active_sessions_api():
+    """同 list_active_sessions，REST 风格路径便于与 `/api/sessions/{id}` 并列。"""
+    return _list_active_sessions_payload()
 
 
 def _session_dir(session_id: str) -> str:
@@ -1357,9 +1393,11 @@ def main():
         "timeout": args.timeout or cfg.request_timeout,
         "eta_config": {
             "eta_chat_s": cfg.eta_chat_s,
+            "eta_streaming_s": cfg.eta_streaming_s,
             "eta_half_duplex_s": cfg.eta_half_duplex_s,
             "eta_audio_duplex_s": cfg.eta_audio_duplex_s,
             "eta_omni_duplex_s": cfg.eta_omni_duplex_s,
+            "eta_duplex_s": cfg.eta_duplex_s,
         },
         "eta_ema_alpha": cfg.eta_ema_alpha,
         "eta_ema_min_samples": cfg.eta_ema_min_samples,
