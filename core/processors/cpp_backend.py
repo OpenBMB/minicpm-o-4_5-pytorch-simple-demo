@@ -37,6 +37,41 @@ logger = logging.getLogger("cpp_backend")
 _AUDIO_INPUT_SR = 16000
 _AUDIO_OUTPUT_SR = 24000
 
+# System prompt 模板 — 来自 modeling_minicpmo.py audio_assistant 模式
+# key: (duplex, lang) → (voice_clone_prompt, assistant_prompt)
+_SYSTEM_PROMPTS: Dict[tuple, Dict[str, str]] = {
+    # 双工模式 — 语言无关，固定英文 prompt
+    (True, "zh"): {
+        "voice_clone_prompt": "<|im_start|>system\nStreaming Duplex Conversation! You are a helpful assistant.\n<|audio_start|>",
+        "assistant_prompt":   "<|audio_end|><|im_end|>\n",
+    },
+    (True, "en"): {
+        "voice_clone_prompt": "<|im_start|>system\nStreaming Duplex Conversation! You are a helpful assistant.\n<|audio_start|>",
+        "assistant_prompt":   "<|audio_end|><|im_end|>\n",
+    },
+    # 非双工 — 中文
+    (False, "zh"): {
+        "voice_clone_prompt": "<|im_start|>system\n模仿音频样本的音色并生成新的内容。\n<|audio_start|>",
+        "assistant_prompt":   "<|audio_end|>你的任务是用这种声音模式来当一个助手。请认真、高质量地回复用户的问题。"
+                              "请用高自然度的方式和用户聊天。你是由面壁智能开发的人工智能助手：面壁小钢炮。"
+                              "<|im_end|>\n<|im_start|>user\n",
+    },
+    # 非双工 — 英文
+    (False, "en"): {
+        "voice_clone_prompt": "<|im_start|>system\nClone the voice in the provided audio prompt.\n<|audio_start|>",
+        "assistant_prompt":   "<|audio_end|>Please assist users while maintaining this voice style. "
+                              "Please answer the user's questions seriously and in a high quality. "
+                              "Please chat with the user in a highly human-like and oral style. "
+                              "You are a helpful assistant developed by ModelBest: MiniCPM-Omni."
+                              "<|im_end|>\n<|im_start|>user\n",
+    },
+}
+
+
+def _get_system_prompts(duplex: bool, lang: str = "zh") -> Dict[str, str]:
+    """根据模式和语言返回 voice_clone_prompt / assistant_prompt"""
+    return _SYSTEM_PROMPTS.get((duplex, lang), _SYSTEM_PROMPTS[(duplex, "zh")])
+
 
 class CppBackendWorker:
     """C++ llama-server 推理后端
@@ -764,13 +799,17 @@ class CppBackendWorker:
 
         if self.ref_audio_path and os.path.exists(self.ref_audio_path):
             req_body["voice_audio"] = self.ref_audio_path
+
+        effective_lang = lang or self._last_lang
+        prompts = _get_system_prompts(duplex_mode, effective_lang)
+        req_body["voice_clone_prompt"] = prompts["voice_clone_prompt"]
+        req_body["assistant_prompt"] = prompts["assistant_prompt"]
         if lang:
-            req_body["lang"] = lang
             self._last_lang = lang
 
         logger.info(
             f"Calling omni_init: media_type={media_type}, duplex={duplex_mode}, "
-            f"lang={req_body.get('lang', 'zh')}"
+            f"lang={effective_lang}"
         )
         resp = self._http_client.post(
             f"{self._cpp_server_url}/v1/stream/omni_init",
@@ -824,14 +863,18 @@ class CppBackendWorker:
         except Exception:
             pass
 
+        effective_lang = lang or self._last_lang
+        prompts = _get_system_prompts(duplex_mode, effective_lang)
+
         req_body: Dict[str, Any] = {
             "media_type": media_type,
             "duplex_mode": duplex_mode,
+            "voice_clone_prompt": prompts["voice_clone_prompt"],
+            "assistant_prompt": prompts["assistant_prompt"],
         }
         if voice_audio and os.path.exists(voice_audio):
             req_body["voice_audio"] = voice_audio
         if lang:
-            req_body["lang"] = lang
             self._last_lang = lang
 
         resp = self._http_client.post(
