@@ -549,7 +549,11 @@ class CppBackendWorker:
             with self._http_client.stream(
                 "POST",
                 f"{self._cpp_server_url}/v1/stream/decode",
-                json={"stream": True, "round_idx": cur_round},
+                json={
+                    "stream": True,
+                    "round_idx": cur_round,
+                    "length_penalty": float(length_penalty),
+                },
                 timeout=600.0,
             ) as resp:
                 if resp.status_code != 200:
