@@ -460,9 +460,11 @@ export class DuplexSession {
                 this._lastTTFS = 0;
             }
 
-            // Text accumulation — 与 is_listen 解耦：
-            // C++ 双工可能在同一个 decode 里先推 SPEAK 文本再推 __IS_LISTEN__
-            // 以前看到 is_listen=true 就丢弃 currentSpeakText，导致气泡不连续
+            // Text accumulation — 与 is_listen / end_of_turn 解耦：
+            // C++ 双工每次 stream_decode 结束都会推 __END_OF_TURN__（除非 ended_with_listen）
+            // 这实际上是"decode 结束"信号而非真正的"轮次结束"，双工 0.5s 一次 decode，
+            // 所以不能用 end_of_turn 触发气泡 finalize——否则每次 decode 都分块显示。
+            // 真正的 turn 切换信号是 is_listen=true（__IS_LISTEN__）。
             if (result.text) {
                 this.currentSpeakText += result.text;
                 if (!this._speakHandle) {
@@ -473,18 +475,14 @@ export class DuplexSession {
             }
 
             if (result.is_listen) {
-                // 切到 listen：先 finalize 当前 speak bubble（如果有），再通知 listen
+                // 切到 listen：finalize 当前 speak bubble（如果有），再通知 listen
                 if (this._speakHandle) {
                     this.onSpeakEnd();
                     this._speakHandle = null;
                     this.currentSpeakText = '';
+                    this.onSystemLog('— end of turn —');
                 }
                 this.onListenResult(result);
-            } else if (result.end_of_turn) {
-                this.onSpeakEnd();
-                this._speakHandle = null;
-                this.currentSpeakText = '';
-                this.onSystemLog('— end of turn —');
             }
 
             // Page-specific extensions
